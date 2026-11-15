@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#10251e">
+  <meta name="description" content="UrbanFlow — zbuduj sprawną sieć transportową Krakowa. Lekka gra strategiczna na prawdziwej mapie miasta.">
+  <title>UrbanFlow — Kraków w ruchu</title>
+  <link rel="preconnect" href="https://tile.openstreetmap.org">
+  <link rel="stylesheet" href="vendor/leaflet/leaflet.css?v=1.9.4">
+  <link rel="stylesheet" href="styles.css?v=8">
+</head>
+<body>
+  <section class="city-screen" id="cityScreen" aria-labelledby="gameTitle">
+    <div class="city-hero">
+      <p class="eyebrow">Strategia transportowa · kampania Kraków</p>
+      <h1 id="gameTitle"><span>Urban</span>Flow<span class="brand-period">.</span></h1>
+      <p class="city-intro">Twoje linie. Rytm całego miasta.</p>
+      <p class="city-description">Zacznij w losowej miejscowości aglomeracji. Zbuduj sieć przesiadkową, opanuj szczyt i doprowadź transport do lotniska.</p>
+      <div class="session-facts"><span>8 celów</span><span>12–20 minut</span><span>Automatyczny zapis</span></div>
+      <div class="city-grid" id="cityGrid"></div>
+      <p class="map-credit">Geografia © autorzy OpenStreetMap · stwórz własny Kraków w ruchu</p>
+    </div>
+    <div class="hero-network" aria-hidden="true"><i></i><i></i><i></i><i></i><b></b><b></b><b></b><b></b><b></b></div>
+  </section>
+
+  <main class="game is-hidden" id="game" aria-label="Gra UrbanFlow">
+    <header class="statusbar">
+      <button class="brand" id="backToCities" type="button" title="Ekran kampanii"><i></i>UrbanFlow<span>.</span></button>
+      <div class="status-stat budget-mobile"><span>Budżet</span><strong id="budgetStat">—</strong></div>
+      <div class="status-stat finance-stat"><span>Bilans sieci / h</span><strong id="networkBalanceStat">—</strong></div>
+      <div class="status-stat waiting-mobile"><span>Oczekuje</span><strong id="waitingStat">—</strong></div>
+      <div class="status-stat happiness-mobile"><span>Zadowolenie</span><strong id="happinessStat">—</strong></div>
+      <div class="status-stat carried-stat"><span>Przewieziono</span><strong id="carriedStat">—</strong></div>
+      <div class="status-stat time-stat"><span>Czas miasta</span><strong id="timeStat">Dzień 1 · 06:00</strong></div>
+      <button class="pause-button" id="pauseButton" type="button" aria-label="Wstrzymaj grę" title="Wstrzymaj grę">Ⅱ</button>
+      <span id="populationStat" hidden></span><span id="linesStat" hidden></span>
+    </header>
+
+    <section class="playfield">
+      <div class="map-wrap">
+        <div id="map" aria-label="Mapa transportowa Krakowa. Wybieraj punkty, aby zaplanować linię."></div>
+        <div class="map-context"><span class="live-dot"></span><span id="mobileTimeStat">Dzień 1 · 06:00</span><span id="trafficStatus">Ruch zwykły</span></div>
+        <div class="objective" id="objective">
+          <span class="objective-label">01 / Pierwsze połączenie</span>
+          <strong id="objectiveTitle">Z aglomeracji do Krakowa</strong>
+          <p id="objectiveCopy">Połącz miejscowość startową z najbliższym węzłem.</p>
+          <div class="route-options" id="routeOptions"></div>
+        </div>
+        <div class="map-build-hint is-hidden" id="mapBuildHint"><span id="mapBuildHintText">Wybieraj kolejne przystanki na mapie.</span><button type="button" data-action="open-panel">Podgląd →</button></div>
+        <div class="map-legend" id="mapLegend"></div>
+        <div class="mobile-dock" aria-label="Narzędzia mapy">
+          <button id="mobileCenterButton" type="button" title="Wyśrodkuj mapę"><span>◎</span><span class="dock-label">Centruj</span></button>
+          <button class="mobile-panel-button" id="mobilePanelButton" type="button" aria-controls="buildPanel" aria-expanded="false"><span>＋</span><span id="mobilePanelLabel">Sieć i budowa</span></button>
+        </div>
+      </div>
+
+      <button class="panel-scrim" id="panelScrim" type="button" aria-label="Zamknij panel budowy" tabindex="-1"></button>
+      <aside class="build-panel" id="buildPanel" aria-label="Zarządzanie transportem">
+        <div class="sheet-handle" aria-hidden="true"></div>
+        <div class="panel-head">
+          <div><span class="eyebrow">Twoje miasto w ruchu</span><h2 id="cityName">Kraków</h2></div>
+          <div class="panel-head-actions"><span class="campaign-tag">Kampania</span><button class="panel-close" id="panelClose" type="button" aria-label="Zamknij panel">×</button></div>
+        </div>
+
+        <section class="campaign-card" aria-labelledby="goalsTitle">
+          <button class="collapse-heading" id="toggleGoalsButton" type="button" aria-expanded="true" aria-controls="goalsBody"><span><span class="section-kicker">Plan dla Krakowa</span><strong id="goalsTitle">Cele kampanii</strong></span><span class="heading-end"><b id="goalCount">0/8</b><i aria-hidden="true">⌃</i></span></button>
+          <div class="campaign-track" id="campaignTrack" aria-hidden="true"></div>
+          <p class="active-goal" id="activeGoal">Połącz Wieliczkę z Krakowem.</p>
+          <div id="goalsBody"><ol class="goal-list" id="goalList"></ol></div>
+        </section>
+
+        <section class="tutorial-card" id="tutorialCard">
+          <button class="collapse-heading" id="toggleTutorialButton" type="button" aria-expanded="true" aria-controls="tutorialBody"><span><span class="step-number" id="stepNumber">01</span><strong id="tutorialTitle">Pierwsza trasa</strong></span><i aria-hidden="true">⌃</i></button>
+          <div id="tutorialBody"><p id="tutorialText">Wybierz pierwsze połączenie na mapie.</p><p class="tutorial-tip" id="tutorialTip">Klikaj punkty w kolejności przejazdu. Koszt poznasz przed budową.</p></div>
+        </section>
+
+        <section class="analytics-section" aria-labelledby="analyticsTitle">
+          <div class="section-title"><h3 id="analyticsTitle">Diagnostyka sieci</h3><span id="capacityComparison">0 oczekuje · 0 miejsc/h</span></div>
+          <div class="analytics-modes" id="analyticsModes" role="group" aria-label="Warstwa analityczna mapy"></div>
+          <div class="diagnostic-grid">
+            <div><div class="diagnostic-title"><strong>Najważniejsze relacje</strong><span id="latentDemandSummary">potencjalny popyt</span></div><ol id="topRelations" class="diagnostic-list"></ol></div>
+            <div><div class="diagnostic-title"><strong>Dlaczego nie dotarli</strong><span id="failureTotal">brak rezygnacji</span></div><ul id="failureReasons" class="diagnostic-list"></ul></div>
+          </div>
+          <div class="event-panel"><div class="diagnostic-title"><strong>Wydarzenia miejskie</strong><span>reaguj flotą i trasą</span></div><ul id="activeEvents" class="event-list"></ul></div>
+        </section>
+
+        <section class="fleet-section" aria-labelledby="fleetTitle">
+          <div class="section-title"><h3 id="fleetTitle">Globalna flota</h3><span>przenoś pojazdy między liniami</span></div>
+          <div class="fleet-list" id="fleetList"></div>
+        </section>
+
+        <section class="build-section" id="buildSection">
+          <div class="section-title"><h3 id="buildTitle">Zaplanuj linię</h3><span id="selectionLabel">Autobus</span></div>
+          <div class="transport-list" id="transportList" role="group" aria-label="Rodzaj transportu"></div>
+          <p class="transport-description" id="transportDescription"></p>
+          <div class="draft-card">
+            <div class="draft-header"><span>Przebieg trasy</span><span id="draftStopCount">0 przystanków</span></div>
+            <ol class="draft-stops" id="draftStopList"></ol>
+            <p class="draft-hint" id="draftHint">Kliknij pierwszy punkt na mapie.</p>
+            <button class="map-pick-button" type="button" data-action="pick-on-map">＋ Wybierz przystanki na mapie</button>
+          </div>
+          <div class="preview-card" id="previewCard"><div><span>Długość</span><strong id="previewDistance">—</strong></div><div><span>Przejazd</span><strong id="previewTime">—</strong></div><div><span>Budowa</span><strong id="previewCost">—</strong></div></div>
+          <p class="inline-feedback" id="previewMessage" role="status"></p>
+          <button class="primary-button" id="createLineButton" type="button" disabled>Zaznacz przystanki</button>
+          <button class="text-button" id="clearSelectionButton" type="button">Wyczyść wybór</button>
+        </section>
+
+        <section class="network-section">
+          <div class="section-title"><h3>Twoja sieć</h3><span id="networkCount">0 linii</span></div>
+          <div class="network-summary" id="networkSummary"></div>
+          <div class="line-list" id="lineList"><p class="empty-state">Pierwsza linia nada miastu rytm.</p></div>
+          <div class="line-detail is-hidden" id="lineDetail" aria-label="Szczegóły wybranej linii"></div>
+        </section>
+
+        <section class="progress-section">
+          <div class="section-title"><h3>Kolejny krok</h3><span id="nextUnlock">Tramwaj</span></div>
+          <div id="progressList"></div>
+          <p class="muted-copy" id="unlockExplanation">Użyteczna linia: 6 godzin pracy, 80 przewozów, średnio 8 przewozów/h lub dodatni bilans. Zadowolenie co najmniej 60%. Każdy typ pozostaje odblokowany.</p>
+          <p class="airport-rule" id="airportRule"></p>
+        </section>
+        <div class="panel-foot"><span id="saveStatus" role="status">Zapis automatyczny</span><button class="text-button" id="newGameButton" type="button">Nowa gra</button></div>
+      </aside>
+    </section>
+
+    <footer class="eventbar">
+      <div class="event-dot"></div>
+      <div class="event-copy"><span id="eventTime">06:00</span><strong id="eventMessage">Witaj w Krakowie. Zacznij od pierwszego połączenia.</strong></div>
+      <span class="speed-label">Tempo</span><button id="speedButton" type="button" aria-label="Zmień prędkość symulacji">×1</button>
+    </footer>
+  </main>
+
+  <dialog class="summary-dialog" id="summaryDialog" aria-labelledby="summaryTitle" aria-describedby="summaryDescription">
+    <div class="summary-emblem" id="summaryEmblem" aria-hidden="true">✦</div>
+    <p class="eyebrow" id="summaryEyebrow">Kampania Kraków</p>
+    <h2 id="summaryTitle">Kraków w ruchu</h2>
+    <p id="summaryDescription"></p>
+    <div class="summary-stats" id="summaryStats"></div>
+    <div class="summary-actions"><button class="primary-button" id="summaryNewGameButton" type="button">Zagraj ponownie</button><button class="text-button" id="summaryCloseButton" type="button">Obejrzyj swoją sieć</button></div>
+  </dialog>
+  <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="false"></div>
+  <script src="vendor/leaflet/leaflet.js?v=1.9.4"></script>
+  <script type="module" src="js/main.js?v=8"></script>
+</body>
+</html>

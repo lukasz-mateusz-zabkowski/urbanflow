@@ -1,0 +1,264 @@
+AUDYT URBANFLOW - STAN PROJEKTU I PLAN POPRAWEK
+Data: 27.09.2026
+
+PODSUMOWANIE
+
+Obecna wersja jest działającym prototypem technicznym, ale jeszcze nie
+pełnoprawną grą. Fundament można ocenić na około 5/10, natomiast aktualną
+grywalność na 3-4/10.
+
+Największy problem: systemy istnieją, ale gracz nie otrzymuje jeszcze
+wystarczająco ciekawych decyzji, informacji zwrotnej i poczucia rozwoju.
+
+
+CO JUŻ DZIAŁA
+
+Fundament techniczny:
+
+- lekki frontend bez ciężkiego frameworka,
+- modułowa architektura JavaScript,
+- Express i Docker,
+- działające wdrożenie przez Cloudflare,
+- responsywny interfejs,
+- lokalnie dostarczany Leaflet,
+- prawdziwa mapa OpenStreetMap,
+- testy automatyczne,
+- konfiguracja miasta oddzielona od logiki.
+
+Rozgrywka:
+
+- scenariusz Krakowa,
+- osiem rzeczywistych punktów,
+- dwie początkowe trasy,
+- budowanie linii pomiędzy punktami,
+- pięć rodzajów transportu,
+- odblokowywanie kolejnych środków transportu,
+- budżet, utrzymanie i wpływy z biletów,
+- generowanie pasażerów,
+- podstawowa obsługa przesiadek,
+- przeciążenia przystanków,
+- poziom zadowolenia,
+- zegar, pauza i prędkości symulacji,
+- godziny szczytu, noc i wydarzenia miejskie.
+
+
+NAJWAŻNIEJSZE PROBLEMY
+
+1. BRAKUJE WŁAŚCIWEGO CELU GRY
+
+Gracz buduje linie, ale nie wie, do czego ostatecznie dąży. Brakuje:
+
+- warunków zwycięstwa,
+- warunków porażki,
+- kampanii lub etapów,
+- oceny końcowej,
+- konkretnych celów czasowych.
+
+Obecnie po zbudowaniu kilku linii rozgrywka zamienia się w obserwowanie liczb.
+
+Do poprawy: scenariusz podzielony na rozdziały, np.:
+
+1. Połącz Wieliczkę.
+2. Przewieź 500 pasażerów.
+3. Utrzymaj zadowolenie powyżej 75%.
+4. Uruchom dwie linie autobusowe.
+5. Zbuduj pierwszy tramwaj.
+6. Połącz Nową Hutę.
+7. Doprowadź kolej do lotniska.
+8. Utrzymaj rentowność przez trzy dni.
+
+
+2. LINIE SĄ ZBYT PROSTE
+
+Po pierwszej trasie pozostałe linie mają tylko początek i koniec. Nie można:
+
+- dodawać przystanków pośrednich,
+- przeciągać przebiegu linii,
+- przedłużać linii,
+- usuwać lub przebudowywać linii,
+- zmieniać częstotliwości,
+- kupować pojazdów.
+
+To odbiera główną decyzję strategiczną znaną z dobrych gier transportowych.
+
+Priorytet: wprowadzić linie wielopunktowe i edycję trasy.
+
+
+3. SYMULACJA PASAŻERÓW JEST ZBYT UPROSZCZONA
+
+Aktualnie pojemność wszystkich linii trafia praktycznie do jednej wspólnej
+puli. W rezultacie:
+
+- konkretna linia nie może być faktycznie przeciążona,
+- przesiadki nie mają kosztu,
+- długość trasy nie wpływa wystarczająco na przewóz,
+- prędkość transportu ma ograniczone znaczenie,
+- źle zaprojektowana sieć może nadal działać zaskakująco dobrze.
+
+Do poprawy: pasażer powinien mieć trasę przez konkretne linie, a każda linia
+powinna posiadać własne:
+
+- obciążenie,
+- pojazdy,
+- częstotliwość,
+- czas przejazdu,
+- grupy pasażerów oczekujących na przejazd.
+
+Nie trzeba symulować pojedynczych osób - wystarczą grupy pasażerów.
+
+
+4. TRANSPORTY RÓŻNIĄ SIĘ GŁÓWNIE LICZBAMI
+
+Autobus, tramwaj, metro i kolej mają inne parametry, ale w praktyce buduje się
+je niemal identycznie.
+
+Powinny mieć wyraźne role:
+
+- autobus - tani, elastyczny, dobry na krótkie połączenia,
+- tramwaj - miejski kręgosłup o dużej pojemności,
+- metro - drogie, szybkie połączenie najbardziej obciążonych punktów,
+- kolej aglomeracyjna - dalekie połączenia z przedmieściami,
+- kolej międzymiastowa - połączenie różnych map miast.
+
+Potrzebne są ograniczenia i premie właściwe dla każdego typu.
+
+
+5. BRAKUJE CZYTELNEJ INFORMACJI EKONOMICZNEJ
+
+Gracz widzi budżet, ale nie wie dokładnie:
+
+- ile zarabia każda linia,
+- która linia przynosi stratę,
+- ile kosztuje utrzymanie na godzinę,
+- kiedy zabraknie pieniędzy,
+- dlaczego budżet rośnie lub maleje.
+
+Do poprawy: szczegóły linii oraz panel finansowy:
+
+- przychód na godzinę,
+- koszt na godzinę,
+- bilans na godzinę,
+- wykorzystanie pojemności,
+- liczba przewiezionych pasażerów,
+- średni czas oczekiwania.
+
+
+6. MAPA JEST STATYCZNA
+
+Punkty są prawdziwe geograficznie, ale linie są prostymi odcinkami. Nie ma:
+
+- trasowania po ulicach,
+- infrastruktury,
+- korków pokazanych na mapie,
+- animowanych pojazdów,
+- wizualizacji przepływu pasażerów.
+
+Nawet bardzo proste poruszające się kropki znacząco poprawiłyby odbiór gry.
+
+
+7. INTERFEJS MOBILNY NADAL WYMAGA DOPRACOWANIA
+
+Obecna wersja jest lepsza od pierwszej, ale nadal potrzebuje:
+
+- mniejszego samouczka zasłaniającego mapę,
+- możliwości zwinięcia zadania,
+- gestu przesunięcia do zamykania panelu,
+- automatycznego zamykania panelu po zbudowaniu linii,
+- lepszego wyróżnienia wybranych punktów,
+- podglądu planowanej linii przed zatwierdzeniem,
+- krótkiej animacji potwierdzającej budowę,
+- bardziej czytelnych komunikatów o braku pieniędzy.
+
+
+8. BRAKUJE ZAPISU ROZGRYWKI
+
+Odświeżenie strony zeruje całą grę. To poważna wada gry mobilnej.
+
+Priorytet krytyczny: automatyczny zapis do localStorage po każdej zmianie
+i możliwość rozpoczęcia nowej gry.
+
+
+9. PROGRESJĘ MOŻNA WYKORZYSTYWAĆ
+
+Można tworzyć podobne lub odwrócone połączenia, aby szybciej odblokować
+transport. Gra liczy liczbę linii, ale nie ocenia ich użyteczności.
+
+Odblokowania powinny wymagać również:
+
+- minimalnej liczby przewiezionych pasażerów,
+- odpowiedniego wykorzystania linii,
+- określonego zadowolenia,
+- dodatniego bilansu,
+- połączenia konkretnych dzielnic.
+
+
+10. BRAKUJE ŻYCIA I SATYSFAKCJI
+
+Gra działa, ale jest wizualnie spokojna do granicy statyczności. Potrzebne są:
+
+- animowane pojazdy,
+- pulsowanie zatłoczonych tras,
+- zmiana kolorystyki dnia i nocy,
+- efekty uruchomienia nowej linii,
+- rosnące budynki lub populacja,
+- krótkie dźwięki interfejsu,
+- widoczny przepływ pasażerów.
+
+
+REKOMENDOWANA KOLEJNOŚĆ PRAC
+
+ETAP 1 - GRYWALNE MVP
+
+1. Automatyczny zapis i wczytywanie gry.
+2. Cele scenariusza Krakowa.
+3. Warunek zwycięstwa i porażki.
+4. Linie wielopunktowe.
+5. Edycja i usuwanie linii.
+6. Osobne obciążenie każdej linii.
+7. Podgląd kosztu przed budową.
+8. Raport finansowy linii.
+9. Eliminacja duplikatów i prostych exploitów.
+
+Ten etap powinien podnieść grywalność do około 6-7/10.
+
+
+ETAP 2 - DYNAMIKA
+
+1. Animowane pojazdy.
+2. Regulacja częstotliwości.
+3. Zakup dodatkowych pojazdów.
+4. Rzeczywiste czasy przejazdu.
+5. Kolejki do konkretnych linii.
+6. Bardziej rozbudowane wydarzenia.
+7. Cykl dnia i nocy na mapie.
+8. Samouczek krok po kroku.
+
+
+ETAP 3 - ZAWARTOŚĆ
+
+- Warszawa, Wrocław, Gdańsk i Poznań,
+- połączenia pomiędzy miastami,
+- Overpass API,
+- historyczne wyniki,
+- poziomy trudności,
+- wyzwania dzienne,
+- ranking lokalny.
+
+
+NAJLEPSZY NASTĘPNY KROK
+
+Nie należy teraz dodawać kolejnych miast. Najpierw trzeba zrobić z Krakowa
+kompletną, zamkniętą rozgrywkę trwającą około 15-25 minut.
+
+Największy efekt da pakiet:
+
+- zapis gry,
+- kampania z ośmioma celami,
+- linie wielopunktowe,
+- osobne statystyki linii,
+- edycja i usuwanie połączeń,
+- animowane pojazdy,
+- ekran zwycięstwa lub bankructwa.
+
+Dopiero po tym UrbanFlow zacznie być faktycznie grą, a nie tylko działającą
+demonstracją systemu transportowego.

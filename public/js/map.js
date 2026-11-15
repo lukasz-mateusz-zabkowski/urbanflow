@@ -1,0 +1,391 @@
+import { TRANSPORT_TYPES, haversineKm, lineMetrics } from './transport.js?v=8';
+import { SIMULATION, gameClock } from './simulation.js?v=8';
+import { DISTRICT_PROFILES, inferProfile, latentDemand } from './demand.js?v=8';
+import { activeCityEvents, upcomingCityEvents } from './city-events.js?v=8';
+import { routeLine } from './routing.js?v=8';
+
+const FRAME_MS = 50;
+const MAX_VEHICLES_PER_LINE = 12;
+const MAX_VEHICLE_MARKERS = 120;
+const escapeHtml = value => String(value).replace(/[&<>"']/g, character => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[character]));
+const safeColor = (color, fallback) => /^#[0-9a-f]{3,8}$/i.test(color || '') ? color : fallback;
+export const MAP_LAYER_ORDER = Object.freeze({ base: 200, routes: 410, effects: 440, vehicles: 470, stops: 500, prospects: 520, ui: 650 });
+export const stopHitStyle = (order = 0, overloaded = false) => ({
+  ...(order ? { fillColor: '#efb84c', radius: 8 } : overloaded ? { fillColor: '#c65347', radius: 7 } : { fillColor: '#4a7d63', radius: 5 }),
+  weight: 18, opacity: 0.001
+});
+
+// Distance-weighted movement, independent of Leaflet and safe for zero-length segments.
+export function routeGeometry(points) {
+  const coordinates = points.map(point => [point.lat, point.lng]);
+  const cumulativeKm = [0];
+  for (let index = 1; index < points.length; index += 1) {
+    cumulativeKm.push(cumulativeKm.at(-1) + haversineKm(points[index - 1], points[index]));
+  }
+  return { coordinates, cumulativeKm, totalKm: cumulativeKm.at(-1) || 0 };
+}
+
+export function coordinateGeometry(coordinates) {
+  return routeGeometry((coordinates || []).map(([lat, lng]) => ({ lat, lng })));
+}
+
+export function positionOnRoute(geometry, progress, direction = 1) {
+  const { coordinates, cumulativeKm, totalKm } = geometry;
+  if (!coordinates.length) return null;
+  if (coordinates.length === 1 || totalKm <= 0) return { latlng: coordinates[0], heading: 0 };
+  const distance = Math.max(0, Math.min(1, progress)) * totalKm;
+  let segment = 1;
+  while (segment < coordinates.length - 1 && cumulativeKm[segment] <= distance) segment += 1;
+  const a = coordinates[segment - 1]; const b = coordinates[segment];
+  const length = cumulativeKm[segment] - cumulativeKm[segment - 1];
+  const ratio = length > 0 ? Math.max(0, Math.min(1, (distance - cumulativeKm[segment - 1]) / length)) : 0;
+  const latlng = [a[0] + (b[0] - a[0]) * ratio, a[1] + (b[1] - a[1]) * ratio];
+  // Heading is clockwise from north; compensate longitude for Kraków's latitude.
+  const heading = Math.atan2((b[1] - a[1]) * Math.cos(latlng[0] * Math.PI / 180), b[0] - a[0]) * 180 / Math.PI + (direction < 0 ? 180 : 0);
+  return { latlng, heading };
+}
+
+export function vehiclePhase(ageMinutes, index, fleet, frequency, travelMinutes, roundTripMinutes = travelMinutes * 2) {
+  if (!(fleet > 0) || !(frequency > 0) || !(travelMinutes > 0)) return { progress: 0, direction: 1, stopped: true };
+  const headway = 60 / frequency;
+  const trip = Math.max(travelMinutes * 2, roundTripMinutes);
+  const cycle = Math.max(trip, fleet * headway);
+  const age = ageMinutes - index * headway;
+  if (age < 0) return { progress: 0, direction: 1, stopped: true };
+  const phase = ((age % cycle) + cycle) % cycle;
+  const turn = Math.max(0, (trip - travelMinutes * 2) / 2);
+  if (phase < travelMinutes) return { progress: phase / travelMinutes, direction: 1, stopped: false };
+  if (phase < travelMinutes + turn) return { progress: 1, direction: -1, stopped: true };
+  if (phase < travelMinutes * 2 + turn) return { progress: 1 - (phase - travelMinutes - turn) / travelMinutes, direction: -1, stopped: false };
+  return { progress: 0, direction: 1, stopped: true };
+}
+
+export class GameMap {
+  constructor(elementId, onPointClick, onLineClick = null) {
+    this.onPointClick = onPointClick; this.onLineClick = onLineClick;
+    this.markers = new Map(); this.lines = new Map(); this.vehicles = new Map();
+    this.pointViews = new Map(); this.starterLayers = new Set(); this.effectTimers = new Set();
+    this.visible = true; this.intersecting = true; this.frameId = null; this.lastFrame = 0;
+    this.map = L.map(elementId, { zoomControl: false, attributionControl: true, preferCanvas: true });
+    this.element = this.map.getContainer(); this.wrapper = this.element.closest('.map-wrap');
+    for (const [name, zIndex] of Object.entries(MAP_LAYER_ORDER)) if (!['base', 'ui'].includes(name)) {
+      this.map.createPane(name); this.map.getPane(name).style.zIndex = String(zIndex);
+    }
+    this.map.getPane('routes').style.pointerEvents = 'auto';
+    this.map.getPane('effects').style.pointerEvents = 'none';
+    this.map.getPane('vehicles').style.pointerEvents = 'none';
+    // A few small SVG paths allow feedback without per-frame route redraws.
+    this.routeRenderer = L.svg({ padding: 0.3, pane: 'routes' });
+    L.control.zoom({ position: 'bottomleft' }).addTo(this.map);
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18, attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+    }).addTo(this.map);
+    this.analysisRenderer = L.canvas({ padding: 0.4, pane: 'effects' });
+    this.analysisLayer = L.layerGroup().addTo(this.map);
+    this.eventLayer = L.layerGroup().addTo(this.map);
+    this.onVisibilityChange = () => this.syncAnimation();
+    document.addEventListener('visibilitychange', this.onVisibilityChange);
+    if (typeof IntersectionObserver !== 'undefined') {
+      this.observer = new IntersectionObserver(entries => {
+        this.intersecting = entries[0]?.isIntersecting ?? true; this.syncAnimation();
+      });
+      this.observer.observe(this.element);
+    }
+  }
+
+  loadCity(city) {
+    this.stopAnimation(); this.state = null; this.clockSnapshot = null; this.pointsRendered = false;
+    this.city = city; this.pointById = new Map(city.points.map(point => [point.id, point]));
+    this.centerCity();
+    this.markers.forEach(marker => marker.remove());
+    this.lines.forEach(line => line.group.remove());
+    this.vehicles.forEach(vehicle => vehicle.marker.remove());
+    this.starterLayers.forEach(layer => layer.remove());
+    this.effectTimers.forEach(timer => clearTimeout(timer)); this.effectTimers.clear();
+    this.markers.clear(); this.pointViews.clear(); this.lines.clear(); this.vehicles.clear(); this.starterLayers.clear();
+    this.analysisLayer.clearLayers(); this.eventLayer.clearLayers(); this.eventSignature = '';
+    this.preview?.remove(); this.preview = null; this.previewSignature = ''; this.selectedLineId = null;
+  }
+
+  setLineClickHandler(callback) { this.onLineClick = callback; }
+  centerCity() {
+    if (!this.city) return;
+    const padding = this.element.clientWidth < 500 ? [30, 80] : [70, 70];
+    this.map.fitBounds(this.city.points.filter(p => p.type !== 'stop').map(p => [p.lat, p.lng]), { padding, maxZoom: this.city.zoom });
+  }
+  setVisible(visible) { this.visible = Boolean(visible); this.syncAnimation(); }
+
+  highlightLine(id) {
+    if (this.selectedLineId === id) return;
+    this.selectedLineId = id;
+    this.lines.forEach((record, lineId) => {
+      const selected = lineId === id;
+      record.route.setStyle({ weight: selected ? 8 : 6 }); record.casing.setStyle({ weight: selected ? 13 : 10 });
+      record.route.getElement()?.classList.toggle('selected', selected);
+      if (selected) { record.casing.bringToFront(); record.route.bringToFront(); }
+    });
+  }
+
+  render(points, gameState) {
+    if (this.destroyed || !this.city) return;
+    const snapshot = [gameState.elapsedMinutes, gameState.paused, gameState.speed, gameState.status].join('|');
+    if (snapshot !== this.clockSnapshot) { this.clockSnapshot = snapshot; this.clockAnchor = performance.now(); }
+    this.state = gameState;
+    const clock = gameClock(gameState.elapsedMinutes);
+    const night = clock.hour >= 21 || clock.hour < 6;
+    const rush = (clock.hour >= 7 && clock.hour < 10) || (clock.hour >= 16 && clock.hour < 19);
+    this.wrapper?.classList.toggle('is-night', night); this.wrapper?.classList.toggle('is-rush-hour', rush);
+    if (this.wrapper) { this.wrapper.dataset.timePeriod = night ? 'night' : rush ? 'rush' : 'day'; this.wrapper.dataset.analytics = gameState.analyticsMode || 'off'; }
+    this.renderPoints(points, gameState); this.renderLines(gameState, clock.minuteOfDay); this.renderAnalytics(points, gameState, clock.minuteOfDay);
+    this.renderEvents(gameState); this.renderPreview(gameState);
+    this.drawVehicles(performance.now()); this.syncAnimation();
+  }
+
+  renderPoints(points, gameState) {
+    const visible = new Set(points.map(point => point.id));
+    this.markers.forEach((marker, id) => { if (!visible.has(id)) { marker.remove(); this.markers.delete(id); this.pointViews.delete(id); } });
+    const selection = gameState.selectedNodes || [];
+    for (const point of points) {
+      const waiting = Math.round(gameState.passengers?.[point.id]?.waiting || 0);
+      const order = selection.indexOf(point.id) + 1;
+      const overloaded = waiting > (gameState.stopCapacity || 48);
+      const profile = DISTRICT_PROFILES[inferProfile(point)]?.label || 'lokalny';
+      const label = `${point.name}, profil ${profile}, oczekuje ${waiting}${order ? `, przystanek ${order} planowanej linii` : ''}`;
+      if (point.type === 'stop') { this.renderStop(point, label, order, overloaded); continue; }
+      if (!this.markers.has(point.id)) {
+        const offset = point.markerOffsetY || 0;
+        const leader = offset ? `<i class="node-leader" style="top:${22 - Math.max(0, offset)}px;height:${Math.abs(offset)}px"></i>` : '';
+        const html = `<div class="node-hit" style="width:44px;height:44px;display:grid;place-items:center">${leader}<div class="map-node ${escapeHtml(point.type)}"><span class="node-label">${escapeHtml(point.name)}</span><b class="node-count"></b><i class="node-order" aria-hidden="true" hidden></i></div></div>`;
+        const marker = L.marker([point.lat, point.lng], {
+          keyboard: true, title: label, riseOnHover: true, pane: 'stops',
+          icon: L.divIcon({ className: 'node-icon', html, iconSize: [44, 44], iconAnchor: [22, 22 - offset] })
+        }).addTo(this.map).on('click', () => this.onPointClick?.(point.id));
+        this.markers.set(point.id, marker);
+        const element = marker.getElement();
+        this.pointViews.set(point.id, { element, dot: element.querySelector('.map-node'), count: element.querySelector('.node-count'), order: element.querySelector('.node-order'), label: '' });
+      }
+      const view = this.pointViews.get(point.id);
+      if (view.label !== label) {
+        view.element.setAttribute('aria-label', label); view.element.title = label; view.label = label;
+        view.count.textContent = waiting || ''; view.order.textContent = order || ''; view.order.hidden = !order;
+      }
+      view.dot.classList.toggle('selected', Boolean(order)); view.dot.classList.toggle('overloaded', overloaded);
+    }
+    this.pointsRendered = true;
+  }
+
+  // Setki przystanków rysujemy lekko na canvasie, bez elementów DOM.
+  renderStop(point, label, order, overloaded) {
+    const base = stopHitStyle(order, overloaded);
+    let marker = this.markers.get(point.id);
+    if (!marker) {
+      // SVG keeps empty areas of the prospect pane transparent to pointer
+      // input. A full-size canvas above DOM markers would swallow their clicks.
+      this.stopRenderer ||= L.svg({ padding: 0.4, pane: 'prospects' });
+      // A transparent stroke enlarges the canvas hit area while the filled
+      // circle keeps its compact visual radius.
+      marker = L.circleMarker([point.lat, point.lng], { renderer: this.stopRenderer, pane: 'prospects', color: '#fffefa',
+        fillOpacity: 1, bubblingMouseEvents: false, ...base })
+        .addTo(this.map).on('click', () => this.onPointClick?.(point.id));
+      marker.bindTooltip(escapeHtml(label), { direction: 'top', offset: [0, -6] });
+      this.markers.set(point.id, marker); marker._label = label; marker._key = `${order}|${overloaded}`;
+      if (this.pointsRendered) { // nowo odkryty przystanek: krótki błysk
+        marker.setStyle({ radius: 12, fillColor: '#efb84c' });
+        const timer = setTimeout(() => { this.effectTimers.delete(timer); if (!this.destroyed) marker.setStyle(marker._base || base); }, 1600);
+        this.effectTimers.add(timer);
+      }
+    }
+    marker._base = base;
+    if (marker._label !== label) { marker._label = label; marker.setTooltipContent(escapeHtml(label)); }
+    const key = `${order}|${overloaded}`;
+    if (marker._key !== key) { marker._key = key; marker.setStyle(base); }
+  }
+
+  renderLines(gameState, minuteOfDay) {
+    const ids = new Set(gameState.lines.map(line => line.id));
+    this.lines.forEach((record, id) => { if (!ids.has(id)) { record.group.remove(); this.lines.delete(id); } });
+    let markerBudget = MAX_VEHICLE_MARKERS; const vehicleIds = new Set();
+    for (const line of gameState.lines) {
+      const transport = TRANSPORT_TYPES[line.type]; if (!transport) continue;
+      const signature = line.stops.join('|'); const color = safeColor(line.color, transport.color);
+      const geometry = this.lines.get(line.id)?.signature === signature ? this.lines.get(line.id).geometry
+        : coordinateGeometry(line.routeGeometry?.length ? line.routeGeometry : routeLine(line.stops, line.type, this.city));
+      let record = this.lines.get(line.id);
+      if (!record) {
+        const casing = L.polyline(geometry.coordinates, { renderer: this.routeRenderer, color: '#10201d', weight: 10, opacity: 0.78, lineCap: 'round', interactive: false });
+        const route = L.polyline(geometry.coordinates, { renderer: this.routeRenderer, color, weight: 6, opacity: 0.96, lineCap: 'round', className: 'transport-line route-born' });
+        const group = L.layerGroup([casing, route]).addTo(this.map);
+        route.on('click', event => { L.DomEvent.stopPropagation(event); this.onLineClick?.(line.id); });
+        record = { group, casing, route, signature, geometry, color }; this.lines.set(line.id, record);
+        const effect = setTimeout(() => { route.getElement()?.classList.remove('route-born'); this.effectTimers.delete(effect); }, 900);
+        this.effectTimers.add(effect);
+      } else if (record.signature !== signature) {
+        record.casing.setLatLngs(geometry.coordinates); record.route.setLatLngs(geometry.coordinates);
+        record.geometry = geometry; record.signature = signature;
+      }
+      const selected = this.selectedLineId === line.id;
+      const overloaded = (line.stats?.load || 0) >= 0.95 || (line.stats?.waiting || 0) > Math.max(48, transport.capacity);
+      const profitColor = finiteColor(line.stats?.balancePerHour || 0);
+      const displayColor = gameState.analyticsMode === 'profit' ? profitColor : color;
+      record.route.setStyle({ color: displayColor, weight: selected ? 8 : 6, opacity: gameState.analyticsMode === 'load' ? 0.3 : 0.96, dashArray: overloaded ? '8 5' : null });
+      record.casing.setStyle({ color: overloaded ? '#d94d42' : '#10201d', weight: selected ? 13 : 10, opacity: overloaded ? 0.95 : 0.78 });
+      record.route.getElement()?.classList.toggle('overloaded', overloaded); record.route.getElement()?.classList.toggle('selected', selected);
+      const title = `${line.name || transport.name} · ${Math.round((line.stats?.load || 0) * 100)}% obciążenia · ${Math.round(line.stats?.waiting || 0)} oczekuje`;
+      if (record.title !== title) {
+        if (record.route.getTooltip()) record.route.setTooltipContent(escapeHtml(title));
+        else record.route.bindTooltip(escapeHtml(title), { sticky: true, direction: 'top' });
+        record.title = title;
+      }
+      record.line = line; record.color = color; record.metrics = lineMetrics(line, this.city, minuteOfDay,
+        { events: gameState.cityEvents || [], elapsedMinutes: gameState.elapsedMinutes });
+      const frequency = record.metrics.effectiveFrequency || 0; const fleet = record.metrics.vehicles;
+      record.activeFleet = frequency > 0 ? Math.min(fleet, Math.max(1, Math.ceil(record.metrics.roundTripMinutes * frequency / 60 - 0.000001))) : 0;
+      const count = Math.min(record.activeFleet, MAX_VEHICLES_PER_LINE, markerBudget); markerBudget -= count;
+      for (let index = 0; index < count; index += 1) {
+        const key = `${line.id}:${index}`; vehicleIds.add(key);
+        let vehicle = this.vehicles.get(key); const iconSignature = `${line.type}|${color}`;
+        if (!vehicle) {
+          const marker = L.marker(geometry.coordinates[0] || this.city.center, { pane: 'vehicles', interactive: false, keyboard: false, icon: this.vehicleIcon(transport, color) }).addTo(this.map);
+          vehicle = { marker, iconSignature }; this.vehicles.set(key, vehicle);
+        } else if (vehicle.iconSignature !== iconSignature) {
+          vehicle.marker.setIcon(this.vehicleIcon(transport, color)); vehicle.iconSignature = iconSignature;
+        }
+        vehicle.heading = vehicle.marker.getElement()?.querySelector('.vehicle-heading');
+        vehicle.record = record; vehicle.index = Math.floor(index * record.activeFleet / count);
+      }
+    }
+    this.vehicles.forEach((vehicle, id) => { if (!vehicleIds.has(id)) { vehicle.marker.remove(); this.vehicles.delete(id); } });
+  }
+
+  renderAnalytics(points, gameState, minuteOfDay) {
+    this.analysisLayer.clearLayers();
+    const mode = gameState.analyticsMode || 'off';
+    if (mode === 'off' || mode === 'profit') return;
+    if (mode === 'demand' || mode === 'queues' || mode === 'access' || mode === 'travel') {
+      const analysisPoints = mode === 'demand' ? this.city.points : points;
+      const forecast = new Map(latentDemand(analysisPoints, gameState.lines, minuteOfDay, gameState.cityEvents, gameState.elapsedMinutes).map(item => [item.pointId, item]));
+      const served = new Set(gameState.lines.flatMap(line => line.stops));
+      const values = analysisPoints.map(point => mode === 'demand'
+        ? Math.max(gameState.diagnostics?.generatedByPoint?.[point.id] || 0, forecast.get(point.id)?.potential * 10 || 0)
+        : mode === 'access' ? (served.has(point.id) ? 1 : 0.18)
+          : mode === 'travel' ? (served.has(point.id) ? Math.max(5, gameState.passengers?.[point.id]?.waiting || 5) : 70)
+        : gameState.passengers?.[point.id]?.waiting || 0);
+      const maximum = Math.max(1, ...values);
+      analysisPoints.forEach((point, index) => {
+        const value = values[index]; if (value <= 0) return;
+        const ratio = Math.min(1, value / maximum);
+        const isServed = served.has(point.id);
+        const color = mode === 'demand' ? (isServed ? '#8f3fb0' : '#d36e33') : mode === 'access' ? (isServed ? '#2c9664' : '#c84b42')
+          : ratio > 0.65 ? '#c84b42' : ratio > 0.3 ? '#e48b35' : '#efc95d';
+        L.circleMarker([point.lat, point.lng], { renderer: this.analysisRenderer, interactive: false,
+          radius: 5 + Math.sqrt(ratio) * 20, color, fillColor: color, fillOpacity: 0.18 + ratio * 0.34, opacity: 0.65, weight: isServed ? 1 : 2,
+          dashArray: isServed ? null : '3 4' })
+          .addTo(this.analysisLayer);
+      });
+      return;
+    }
+    if (mode === 'load') for (const line of gameState.lines) {
+      const pointsOnLine = line.stops.map(id => this.pointById.get(id)).filter(Boolean);
+      pointsOnLine.slice(1).forEach((point, index) => {
+        const load = Math.max(0, Math.min(1.5, line.stats?.segmentLoad?.[index] || 0));
+        const color = load >= 0.95 ? '#c43f38' : load >= 0.65 ? '#e48632' : '#43a36f';
+        L.polyline([[pointsOnLine[index].lat, pointsOnLine[index].lng], [point.lat, point.lng]], {
+          renderer: this.routeRenderer, interactive: false, color, opacity: 0.88, weight: 10, lineCap: 'round'
+        }).addTo(this.analysisLayer);
+      });
+    }
+  }
+
+  renderEvents(gameState) {
+    const active = activeCityEvents(gameState.cityEvents, gameState.elapsedMinutes);
+    const upcoming = upcomingCityEvents(gameState.cityEvents, gameState.elapsedMinutes);
+    const events = [...active, ...upcoming];
+    const signature = events.map(event => `${event.id}:${event.startMinute}:${event.endMinute}`).join('|');
+    if (signature === this.eventSignature) return;
+    this.eventSignature = signature; this.eventLayer.clearLayers();
+    for (const event of events) {
+      const point = event.locationId ? this.pointById.get(event.locationId) : { lat: this.city.center[0], lng: this.city.center[1], name: 'całe miasto' };
+      if (!point) continue;
+      const planned = event.startMinute > gameState.elapsedMinutes;
+      const circle = L.circleMarker([point.lat, point.lng], { renderer: this.analysisRenderer, radius: planned ? 14 : 18, color: planned ? '#9a6c23' : '#b63d36',
+        fillColor: planned ? '#efc95d' : '#ed6a55', fillOpacity: 0.22, opacity: 0.9, weight: 3, dashArray: planned ? '5 4' : null, className: 'event-marker' }).addTo(this.eventLayer);
+      circle.bindTooltip(`<strong>${planned ? 'Zapowiedź: ' : ''}${escapeHtml(event.title)}</strong><br>${escapeHtml(event.message)}<br>${planned ? `Start ${escapeHtml(gameClock(event.startMinute).label)}` : `Do ${escapeHtml(gameClock(event.endMinute).label)}`}`);
+    }
+  }
+
+  vehicleIcon(transport, color) {
+    return L.divIcon({ className: 'vehicle-icon', iconSize: [26, 26], iconAnchor: [13, 13],
+      html: `<div class="map-vehicle ${transport.id}" style="--vehicle-color:${color}"><i class="vehicle-heading" aria-hidden="true"></i><b>${escapeHtml(transport.short)}</b></div>` });
+  }
+
+  renderPreview(gameState) {
+    const stops = gameState.selectedNodes || []; const color = TRANSPORT_TYPES[gameState.selectedType]?.color || '#ffffff';
+    const signature = `${stops.join('|')}:${color}`; if (signature === this.previewSignature) return;
+    this.previewSignature = signature;
+    const coordinates = routeLine(stops, gameState.selectedType, this.city);
+    if (coordinates.length < 2) { this.preview?.remove(); this.preview = null; return; }
+    if (!this.preview) this.preview = L.polyline(coordinates, { renderer: this.routeRenderer, color, weight: 8, opacity: 0.8, dashArray: '5 11', interactive: false, className: 'route-preview', lineCap: 'round' }).addTo(this.map);
+    else this.preview.setLatLngs(coordinates).setStyle({ color });
+  }
+
+  shouldAnimate() {
+    return !this.destroyed && this.visible && this.intersecting && document.visibilityState !== 'hidden' && this.state && !this.state.paused && (!this.state.status || this.state.status === 'playing') && this.vehicles.size > 0;
+  }
+
+  drawVehicles(now) {
+    if (!this.state) return;
+    const extraMinutes = this.shouldAnimate() ? Math.min(SIMULATION.realTickMs, Math.max(0, now - this.clockAnchor)) / SIMULATION.realTickMs * SIMULATION.minutesPerTick * (this.state.speed || 1) : 0;
+    this.vehicles.forEach(vehicle => {
+      const { line, metrics, geometry, activeFleet } = vehicle.record;
+      const phase = vehiclePhase((line.ageMinutes ?? this.state.elapsedMinutes) + extraMinutes, vehicle.index, activeFleet, metrics.effectiveFrequency, metrics.travelMinutes, metrics.roundTripMinutes);
+      const position = positionOnRoute(geometry, phase.progress, phase.direction); if (!position) return;
+      vehicle.marker.setLatLng(position.latlng); vehicle.heading?.style.setProperty('--heading', `${position.heading}deg`);
+    });
+  }
+
+  syncAnimation() {
+    if (!this.shouldAnimate()) { this.stopAnimation(); return; }
+    if (this.frameId !== null) return;
+    const frame = now => {
+      this.frameId = null; if (!this.shouldAnimate()) return;
+      if (now - this.lastFrame >= FRAME_MS) { this.drawVehicles(now); this.lastFrame = now; }
+      this.frameId = requestAnimationFrame(frame);
+    };
+    this.frameId = requestAnimationFrame(frame);
+  }
+
+  stopAnimation() { if (this.frameId !== null) cancelAnimationFrame(this.frameId); this.frameId = null; }
+
+  showStarterRoutes(city, onSelect) {
+    const layers = city.starterRoutes.map((route, index) => {
+      const coordinates = routeLine(route.stops, 'bus', city);
+      const layer = L.polyline(coordinates, { renderer: this.routeRenderer, color: index ? '#f7d37c' : '#f2b84b', weight: 7, opacity: 0.72, dashArray: '8 10', className: 'starter-route' })
+        .addTo(this.map).on('click', () => onSelect(route.id));
+      layer.bindTooltip(escapeHtml(route.label)); this.starterLayers.add(layer); return layer;
+    });
+    return () => layers.forEach(layer => { layer.remove(); this.starterLayers.delete(layer); });
+  }
+
+  invalidate() {
+    clearTimeout(this.invalidateTimer);
+    this.invalidateTimer = setTimeout(() => { if (!this.destroyed) { this.map.invalidateSize(); this.syncAnimation(); } }, 50);
+  }
+
+  destroy() {
+    if (this.destroyed) return;
+    this.destroyed = true; this.stopAnimation(); this.observer?.disconnect();
+    document.removeEventListener('visibilitychange', this.onVisibilityChange); clearTimeout(this.invalidateTimer);
+    this.effectTimers.forEach(timer => clearTimeout(timer)); this.effectTimers.clear(); this.map.remove();
+    this.markers.clear(); this.pointViews.clear(); this.lines.clear(); this.vehicles.clear(); this.starterLayers.clear(); this.state = null;
+  }
+
+  dispose() { this.destroy(); }
+}
+
+function finiteColor(balance) {
+  if (!Number.isFinite(balance)) return '#7a8580';
+  if (balance > 150) return '#23865d';
+  if (balance >= 0) return '#79a944';
+  if (balance > -150) return '#df9737';
+  return '#c34b43';
+}
