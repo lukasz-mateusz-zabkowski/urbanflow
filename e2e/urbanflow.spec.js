@@ -82,7 +82,7 @@ for (const viewport of DESKTOPS) {
     await page.mouse.up();
     await expect.poll(() => page.evaluate(() => parseFloat(getComputedStyle(document.querySelector('#playfield')).getPropertyValue('--panel-width')))).toBe(522);
     await expect.poll(() => page.evaluate(() => window.__invalidateSizeCalls)).toBeGreaterThan(0);
-    expect(await page.locator('#map').evaluate(element => element.clientWidth)).toBe(mapWidthBefore - 60);
+    await expect.poll(() => page.locator('#map').evaluate(element => element.clientWidth)).toBe(mapWidthBefore - 60);
     expect(await page.evaluate(() => localStorage.getItem('urbanflow.ui.panel-width.v1'))).toBe('522');
 
     await page.locator('#panelResizer').focus();

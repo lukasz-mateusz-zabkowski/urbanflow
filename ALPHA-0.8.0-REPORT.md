@@ -19,6 +19,7 @@ Wersja jest gotowa do akceptacji na gałęzi zależnej od kandydata 0.7.0. Nie w
 - Konsola i `pageerror`: bez błędów w zakończonej serii Playwright.
 - GitHub Actions dla SHA `348f4c36d00b614139ec165eff8ac8274cfde949`: **success**. Zadania Node 18, 20 i 22 oraz `browser-test` zakończyły się sukcesem: [workflow 43954231848](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/43954231848).
 - Pierwszy workflow implementacyjny wykrył testowy przypadek kopiowania rozkładu do niedzieli. Obsługa została poprawiona tak, by kopiowanie odczytywało aktualnie wybrany dzień z interfejsu; następny pełny workflow i workflow końcowego SHA przeszły.
+- Workflow HEAD z raportem ujawnił wyścig asercji szerokości mapy z przejściem CSS. Asercja czeka teraz na stabilny wymiar; pełna seria Playwright w trybie `CI=1` ponownie przeszła 7/7.
 
 ## Mechanika pasażerów
 
