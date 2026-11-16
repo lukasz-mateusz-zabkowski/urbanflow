@@ -119,7 +119,11 @@ export class UI {
       }
       if (action === 'restore-timetable') { this.checkResult(this.game.restoreTimetable(line)); return; }
       if (action === 'copy-timetable-day') {
-        this.checkResult(this.game.copyTimetableDay(line, $('#timetableCopySource').value, this.selectedServiceDayType));
+        const sourceDay = $('#lineDetail [data-timetable-copy-source]').value;
+        const targetDay = $('#lineDetail [data-service-day]').value;
+        this.selectedServiceDayType = targetDay;
+        this.checkResult(this.game.copyTimetableDay(line, sourceDay, targetDay));
+        this.renderDetails();
         return;
       }
       if (action === 'toggle-special-today' || action === 'toggle-special-next') {
