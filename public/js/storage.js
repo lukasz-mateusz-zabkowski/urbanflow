@@ -93,7 +93,7 @@ export function validateState(s, city) {
     if (!nonnegative(group.waitMinutes) || !nonnegative(group.totalWaitMinutes) || group.totalWaitMinutes < group.waitMinutes) return false;
     if (group.route !== null && (!Array.isArray(group.route) || group.route.length > city.points.length || !group.route.every(validLeg))) return false;
     if (!Array.isArray(group.completedLegs) || group.completedLegs.length > 100 || group.completedLegs.some(leg => !plain(leg) || !lineId(leg.lineId) || !nonnegative(leg.distanceKm))) return false;
-    if (['journeyMinutes', 'crowdingMinutes', 'transferCount'].some(key => group[key] !== undefined && !nonnegative(group[key]))) return false;
+    if (['journeyMinutes', 'rideMinutes', 'crowdingMinutes', 'transferCount'].some(key => group[key] !== undefined && !nonnegative(group[key]))) return false;
     if (group.phase === 'riding' && (!group.route?.[group.legIndex] || !nonnegative(group.remainingMinutes) || group.remainingMinutes === 0)) return false;
   }
   if (!plain(s.mobility) || s.mobility.version !== 1 || !Array.isArray(s.mobility.patterns) || s.mobility.patterns.length > city.points.length * 8) return false;

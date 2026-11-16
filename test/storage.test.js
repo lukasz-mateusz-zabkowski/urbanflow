@@ -179,4 +179,8 @@ test('schema 5 mobility templates and journey counters are validated as untruste
   const invalidCounter = snapshot(game.state);
   invalidCounter.mobility.completed.passengers = -1;
   assert.equal(validateState(invalidCounter, city), false);
+  const invalidJourney = snapshot(game.state);
+  invalidJourney.cohorts = [{ origin: 'wieliczka', destination: 'centrum', currentStop: 'wieliczka', count: 1,
+    phase: 'waiting', waitMinutes: 0, totalWaitMinutes: 0, rideMinutes: -1, route: null, legIndex: 0, completedLegs: [] }];
+  assert.equal(validateState(invalidJourney, city), false);
 });
