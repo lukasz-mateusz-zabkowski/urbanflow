@@ -1,8 +1,8 @@
-import { lineMetrics } from './transport.js?v=8';
+import { lineMetrics } from './transport.js?v=9';
 import { SIMULATION, gameClock } from './simulation.js?v=8';
-import { createLineStats } from './passengers.js?v=8';
+import { createLineStats } from './passengers.js?v=9';
 import { fleetSnapshot } from './fleet.js?v=8';
-import { TRANSPORT_TYPES } from './transport.js?v=8';
+import { TRANSPORT_TYPES } from './transport.js?v=9';
 
 export const formatMoney = value => new Intl.NumberFormat('pl-PL', {
   style: 'currency', currency: 'PLN', maximumFractionDigits: 0
@@ -21,13 +21,14 @@ export function applyEconomyTick(state, transported, deltaMinutes = SIMULATION.m
   let maintenancePerHour = 0;
   for (const line of state.lines) {
     line.stats = { ...createLineStats(), ...line.stats };
-    const metrics = lineMetrics(line, state.city, minuteOfDay, { events: state.cityEvents || [], elapsedMinutes: state.elapsedMinutes ?? now });
-    const cost = metrics.costPerHour * deltaMinutes / 60;
+    const metrics = lineMetrics(line, state.city, minuteOfDay, { events: state.cityEvents || [], elapsedMinutes: state.elapsedMinutes ?? now,
+      intervalMinutes: deltaMinutes, intervalStartMinuteOfDay: minuteOfDay - deltaMinutes });
+    const cost = metrics.averageCostPerHour * deltaMinutes / 60;
     const linePassengerKm = pendingPassengerKm[line.id] || 0;
     const subsidy = linePassengerKm * SIMULATION.subsidyPerPassengerKm;
     const revenue = (pending[line.id] || 0) + subsidy;
     maintenance += cost;
-    maintenancePerHour += metrics.costPerHour;
+    maintenancePerHour += metrics.averageCostPerHour;
     line.stats.revenue += revenue;
     line.stats.passengerKm = (line.stats.passengerKm || 0) + linePassengerKm;
     line.stats.subsidy = (line.stats.subsidy || 0) + subsidy;

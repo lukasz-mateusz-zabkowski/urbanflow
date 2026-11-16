@@ -1,6 +1,6 @@
 import { formatMoney } from './economy.js?v=8';
-import { TRANSPORT_TYPES, eligibleCounts, lineCost, unlockedTypes, lineMetrics } from './transport.js?v=8';
-import { totalWaiting } from './passengers.js?v=8';
+import { TRANSPORT_TYPES, eligibleCounts, lineCost, unlockedTypes, lineMetrics } from './transport.js?v=9';
+import { totalWaiting } from './passengers.js?v=9';
 import { gameClock, demandMultiplier } from './simulation.js?v=8';
 import { campaignObjectives } from './campaign.js?v=8';
 import { diagnosticSnapshot, FAILURE_LABELS } from './analytics.js?v=8';
@@ -10,6 +10,7 @@ import { latentDemand } from './demand.js?v=8';
 import { describePlace } from './place-profiles.js?v=8';
 import { clampPanelWidth, DEFAULT_PANEL_WIDTH, loadPanelWidth, savePanelWidth } from './ui-preferences.js?v=8';
 import { createFeedbackReport, feedbackJson } from './feedback.js?v=8';
+import { TIMETABLE_PROFILES, formatTimetableTime, periodAt, setPeriodFrequency } from './timetable.js?v=9';
 
 const $ = selector => document.querySelector(selector);
 const formatNumber = value => new Intl.NumberFormat('pl-PL').format(Math.round(Number(value) || 0));
@@ -113,6 +114,7 @@ export class UI {
         if (this.checkResult(result)) this.renderNetwork();
         return;
       }
+      if (action === 'restore-timetable') { this.checkResult(this.game.restoreTimetable(line)); return; }
       switch (button.id) {
         case 'createLineButton': {
           const editing = this.game.state.editingLineId;
@@ -150,10 +152,18 @@ export class UI {
     document.addEventListener('change', event => {
       if (event.target.matches('[data-frequency]')) {
         this.checkResult(this.game.setFrequency(event.target.dataset.frequency, Number(event.target.value)));
+      } else if (event.target.matches('[data-timetable-frequency]')) {
+        this.checkResult(this.game.setTimetableFrequency(event.target.dataset.line, event.target.dataset.timetableFrequency, Number(event.target.value)));
+      } else if (event.target.matches('[data-timetable-profile]')) {
+        this.checkResult(this.game.setTimetableProfile(event.target.dataset.line, event.target.value));
       }
     }, { signal });
     document.addEventListener('input', event => {
       if (event.target.matches('[data-frequency]')) $('#frequencyValue').textContent = `${decimal(event.target.value)} kursów/h`;
+      if (event.target.matches('[data-timetable-frequency]')) {
+        const output = event.target.closest('.timetable-row')?.querySelector('[data-frequency-value]');
+        if (output) output.textContent = Number(event.target.value) ? `${decimal(event.target.value)} kursów/h` : 'Kursy wyłączone';
+      }
     }, { signal });
     document.addEventListener('keydown', event => {
       if (event.key === 'Escape') this.closePanel();
@@ -470,7 +480,7 @@ export class UI {
     const metrics = lineMetrics(line, city, gameClock(state.elapsedMinutes).minuteOfDay,
       { events: state.cityEvents || [], elapsedMinutes: state.elapsedMinutes });
     if (this.detailLineId !== line.id) {
-      container.innerHTML = `<div class="detail-heading"><span class="section-kicker">Szczegóły linii</span><strong data-detail="name"></strong></div><p class="detail-route" data-detail="route"></p><dl class="detail-stats"><div><dt>Długość</dt><dd data-detail="distance"></dd></div><div><dt>Przejazd w jedną stronę</dt><dd data-detail="travel"></dd></div><div><dt>Wpływy / h</dt><dd class="positive" data-detail="revenue"></dd></div><div><dt>Koszt / h</dt><dd data-detail="cost"></dd></div><div><dt>Bilans / h</dt><dd data-detail="balance"></dd></div><div><dt>Dotacja pasażerokm</dt><dd data-detail="subsidy"></dd></div><div><dt>Przewozy od przebudowy</dt><dd data-detail="carried"></dd></div><div><dt>Średni czas oczekiwania</dt><dd data-detail="wait"></dd></div><div><dt>Kolejka tej linii</dt><dd data-detail="waiting"></dd></div><div><dt>Wykorzystanie floty</dt><dd data-detail="vehicles"></dd></div></dl><div class="load-heading"><span>Wykorzystanie przepustowości</span><b data-detail="load"></b></div><div class="load-track"><i id="detailLoadBar"></i></div><p class="line-diagnosis" data-detail="diagnosis"></p><div class="frequency-control"><label for="lineFrequency">Częstotliwość <strong id="frequencyValue"></strong></label><input id="lineFrequency" type="range" min="1" max="${type.maxFrequency}" step="1" data-frequency="${escapeHtml(line.id)}"><p data-detail="frequency"></p></div><div class="fleet-line-actions"><button type="button" data-action="unassign-vehicle" data-line="${escapeHtml(line.id)}">− Do rezerwy</button><button type="button" data-action="assign-vehicle" data-line="${escapeHtml(line.id)}">＋ Z rezerwy</button></div><button class="secondary-button" type="button" data-action="buy-vehicle" data-line="${escapeHtml(line.id)}" id="buyVehicleButton"></button><div class="line-actions"><button type="button" data-action="edit-line" data-line="${escapeHtml(line.id)}">Edytuj przystanki</button><button type="button" class="danger-button" data-action="delete-line" data-line="${escapeHtml(line.id)}">Usuń linię</button></div>`;
+      container.innerHTML = `<div class="detail-heading"><span class="section-kicker">Szczegóły linii</span><strong data-detail="name"></strong></div><p class="detail-route" data-detail="route"></p><dl class="detail-stats"><div><dt>Długość</dt><dd data-detail="distance"></dd></div><div><dt>Przejazd w jedną stronę</dt><dd data-detail="travel"></dd></div><div><dt>Wpływy / h</dt><dd class="positive" data-detail="revenue"></dd></div><div><dt>Koszt / h</dt><dd data-detail="cost"></dd></div><div><dt>Bilans / h</dt><dd data-detail="balance"></dd></div><div><dt>Dotacja pasażerokm</dt><dd data-detail="subsidy"></dd></div><div><dt>Przewozy od przebudowy</dt><dd data-detail="carried"></dd></div><div><dt>Średni czas oczekiwania</dt><dd data-detail="wait"></dd></div><div><dt>Kolejka tej linii</dt><dd data-detail="waiting"></dd></div><div><dt>Wykorzystanie floty</dt><dd data-detail="vehicles"></dd></div></dl><div class="load-heading"><span>Wykorzystanie przepustowości</span><b data-detail="load"></b></div><div class="load-track"><i id="detailLoadBar"></i></div><p class="line-diagnosis" data-detail="diagnosis"></p><section class="timetable-control" aria-labelledby="timetableTitle"><div class="timetable-heading"><div><span class="section-kicker">Rozkład jazdy</span><strong id="timetableTitle">Częstotliwość w ciągu doby</strong></div><select data-timetable-profile data-line="${escapeHtml(line.id)}" aria-label="Gotowy profil rozkładu"></select></div><p class="timetable-current" data-current-period></p><p class="timetable-overview" data-detail="frequency"></p><div class="timetable-periods" data-timetable-periods></div><p class="timetable-capacity" data-timetable-capacity></p><button type="button" class="text-button timetable-restore" data-action="restore-timetable" data-line="${escapeHtml(line.id)}">Przywróć poprzednią konfigurację</button></section><div class="fleet-line-actions"><button type="button" data-action="unassign-vehicle" data-line="${escapeHtml(line.id)}">− Do rezerwy</button><button type="button" data-action="assign-vehicle" data-line="${escapeHtml(line.id)}">＋ Z rezerwy</button></div><button class="secondary-button" type="button" data-action="buy-vehicle" data-line="${escapeHtml(line.id)}" id="buyVehicleButton"></button><div class="line-actions"><button type="button" data-action="edit-line" data-line="${escapeHtml(line.id)}">Edytuj przystanki</button><button type="button" class="danger-button" data-action="delete-line" data-line="${escapeHtml(line.id)}">Usuń linię</button></div>`;
       this.detailLineId = line.id;
     }
     const values = {
@@ -480,16 +490,16 @@ export class UI {
       revenue: money(stats.revenuePerHour), cost: money(stats.costPerHour), balance: money(stats.balancePerHour),
       carried: formatNumber(stats.carried), wait: `${decimal(stats.avgWaitMinutes)} min`, waiting: `${formatNumber(stats.waiting)} os.`,
       subsidy: money(stats.subsidy), vehicles: `${metrics.activeVehicles}/${line.vehicles} aktywne · ${metrics.idleVehicles} rezerwa`, load: `${decimal(finite(stats.load) * 100)}%`,
-      frequency: `W praktyce: co ${decimal(metrics.intervalMinutes)} min · ${decimal(metrics.effectiveFrequency || metrics.departuresPerHour)} kursów/h. Czas przejazdu i liczba pojazdów ograniczają częstotliwość.`,
+      frequency: metrics.effectiveFrequency
+        ? `Teraz: co ${decimal(metrics.intervalMinutes)} min · ${decimal(metrics.effectiveFrequency)} kursów/h.`
+        : 'Teraz kursy są wyłączone. Następny aktywny przedział uruchomi linię ponownie.',
       diagnosis: this.lineDiagnosis(line, metrics)
     };
     Object.entries(values).forEach(([key, value]) => { const element = container.querySelector(`[data-detail="${key}"]`); if (element.textContent !== value) element.textContent = value; });
     container.querySelector('[data-detail="balance"]').className = finite(stats.balancePerHour) < 0 ? 'negative' : 'positive';
     $('#detailLoadBar').style.width = `${Math.min(100, finite(stats.load) * 100)}%`;
     $('#detailLoadBar').classList.toggle('busy', finite(stats.load) > .9);
-    const frequency = $('#lineFrequency');
-    frequency.disabled = state.status !== 'playing';
-    if (document.activeElement !== frequency) { frequency.value = line.frequency; this.setText('frequencyValue', `${decimal(line.frequency)} kursów/h`); }
+    this.renderTimetable(line, metrics, gameClock(state.elapsedMinutes).minuteOfDay, state.status !== 'playing');
     const vehicleCost = finite(type.vehicleCost);
     this.setText('buyVehicleButton', `＋ Kup pojazd${vehicleCost ? ` · ${money(vehicleCost)}` : ''}`);
     $('#buyVehicleButton').disabled = state.status !== 'playing';
@@ -500,6 +510,48 @@ export class UI {
     container.querySelectorAll('.line-actions button').forEach(button => { button.disabled = state.status !== 'playing'; });
   }
 
+  renderTimetable(line, metrics, minuteOfDay, disabled) {
+    const section = this.game.state.lines.find(item => item.id === line.id)?.timetable;
+    if (!section) return;
+    const root = $('#lineDetail');
+    const profile = root.querySelector('[data-timetable-profile]');
+    const profileOptions = [
+      ...Object.entries(TIMETABLE_PROFILES).map(([id, value]) => `<option value="${id}">${value.label}</option>`),
+      '<option value="custom">Własny</option>', '<option value="legacy-uniform">Jednolity ze starszego zapisu</option>'
+    ];
+    if (!profile.dataset.ready) { profile.innerHTML = profileOptions.join(''); profile.dataset.ready = 'true'; }
+    profile.value = section.profileId;
+    profile.disabled = disabled;
+    const rows = root.querySelector('[data-timetable-periods]');
+    if (!rows.dataset.ready) {
+      rows.innerHTML = section.periods.map(period => `<div class="timetable-row" data-timetable-row="${escapeHtml(period.id)}"><div class="timetable-row-heading"><strong>${escapeHtml(period.label)}</strong><span>${formatTimetableTime(period.startMinute)}–${formatTimetableTime(period.endMinute)}</span></div><output data-frequency-value></output><input type="range" min="0" max="${TRANSPORT_TYPES[line.type].maxFrequency}" step="0.5" data-line="${escapeHtml(line.id)}" data-timetable-frequency="${escapeHtml(period.id)}" aria-label="${escapeHtml(period.label)} — kursy na godzinę"><small data-period-metrics></small></div>`).join('');
+      rows.dataset.ready = 'true';
+    }
+    const active = periodAt(section, minuteOfDay);
+    root.querySelector('[data-current-period]').textContent = active
+      ? `Teraz: ${active.label} · ${active.frequency ? `co ${decimal(60 / active.frequency)} min` : 'kursy wyłączone'}` : 'Brak aktywnego przedziału.';
+    for (const period of section.periods) {
+      const row = rows.querySelector(`[data-timetable-row="${CSS.escape(period.id)}"]`);
+      const input = row.querySelector('input');
+      input.disabled = disabled;
+      if (document.activeElement !== input) input.value = period.frequency;
+      row.querySelector('[data-frequency-value]').textContent = period.frequency ? `${decimal(period.frequency)} kursów/h` : 'Kursy wyłączone';
+      row.classList.toggle('is-current', active?.id === period.id);
+      const periodLine = { ...line, timetable: setPeriodFrequency(section, period.id, period.frequency, TRANSPORT_TYPES[line.type].maxFrequency) };
+      const periodMetrics = lineMetrics(periodLine, this.game.city, period.startMinute,
+        { events: this.game.state.cityEvents || [], elapsedMinutes: this.game.state.elapsedMinutes });
+      const deficit = Math.max(0, periodMetrics.requiredVehicles - line.vehicles);
+      const capacityState = line.stats?.waiting > 0 || line.stats?.load >= 0.9 ? ' · możliwy niedobór przepustowości' : '';
+      row.querySelector('[data-period-metrics]').textContent = `${money(periodMetrics.costPerHour)}/h · ${periodMetrics.requiredVehicles} poj. wymagane${deficit ? ` · brakuje ${deficit}` : ''}${capacityState}`;
+    }
+    const currentCapacity = metrics.capacityPerHour;
+    const capacityNote = line.stats?.waiting > 0 || line.stats?.load >= 0.9
+      ? `Kolejka ${formatNumber(line.stats.waiting)} os. · obciążenie ${decimal(finite(line.stats.load) * 100)}% wskazują na możliwy niedobór. `
+      : 'Brak bieżącego sygnału przeciążenia. ';
+    root.querySelector('[data-timetable-capacity]').textContent = `${capacityNote}Przepustowość w tym przedziale: ${formatNumber(currentCapacity)} miejsc/h. Koszt uwzględnia aktywną flotę, utrzymanie i kilometry według obecnego modelu.`;
+    root.querySelector('[data-action="restore-timetable"]').disabled = disabled || !line.previousTimetable;
+  }
+
   lineDiagnosis(line, metrics) {
     const stats = line.stats || {};
     if (metrics.eventCapacityMultiplier === 0) return 'Aktywne wydarzenie wstrzymało tę linię na wskazanym odcinku. Uruchom objazd albo wzmocnij alternatywne połączenia.';
@@ -508,7 +560,7 @@ export class UI {
     if (finite(stats.load) > .88 && finite(stats.waiting) > 0) return 'Duży popyt i kolejka. Dodatkowy pojazd lub częstsze kursy mogą zwiększyć przepustowość.';
     if (finite(stats.balancePerHour) < 0 && finite(stats.carried) === 0) return 'Brak pasażerów. Sprawdź połączenie z pozostałą siecią i kierunki podróży.';
     if (finite(stats.balancePerHour) < 0) return 'Bilety nie pokrywają utrzymania. Ogranicz puste kursy lub połącz trasę z większą liczbą dzielnic.';
-    if (finite(metrics.effectiveFrequency || metrics.departuresPerHour) + .05 < line.frequency) return 'Pojazdy nie nadążają za ustawioną częstotliwością. Więcej pojazdów skróci odstępy między kursami.';
+    if (metrics.effectiveFrequency + .05 < metrics.requestedFrequency) return 'Przydzielona flota ogranicza wybraną częstotliwość. Więcej pojazdów skróci odstępy między kursami.';
     return 'Wpływy pokrywają utrzymanie. Obserwuj kolejkę i zapełnienie w godzinach szczytu.';
   }
 

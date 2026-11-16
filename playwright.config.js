@@ -2,7 +2,7 @@ import { defineConfig } from '@playwright/test';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const artifactDir = process.env.UF_VISUAL_QA_DIR || join(tmpdir(), 'urbanflow-alpha-0.5.0-visual-qa');
+const artifactDir = process.env.UF_VISUAL_QA_DIR || join(tmpdir(), 'urbanflow-alpha-0.6.0-visual-qa');
 
 export default defineConfig({
   testDir: './e2e',

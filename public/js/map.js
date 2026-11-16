@@ -1,4 +1,4 @@
-import { TRANSPORT_TYPES, haversineKm, lineMetrics } from './transport.js?v=8';
+import { TRANSPORT_TYPES, haversineKm, lineMetrics } from './transport.js?v=9';
 import { SIMULATION, gameClock } from './simulation.js?v=8';
 import { DISTRICT_PROFILES, inferProfile, latentDemand } from './demand.js?v=8';
 import { activeCityEvents, upcomingCityEvents } from './city-events.js?v=8';

@@ -1,6 +1,6 @@
-import { applyEconomyTick } from './economy.js?v=8';
-import { airportUnlocked, haversineKm, lineCost, lineMetrics, unlockedTypes, TRANSPORT_TYPES } from './transport.js?v=8';
-import { createLineStats, createPassengerState, passengerTick, totalWaiting } from './passengers.js?v=8';
+import { applyEconomyTick } from './economy.js?v=9';
+import { airportUnlocked, haversineKm, lineCost, lineMetrics, unlockedTypes, TRANSPORT_TYPES } from './transport.js?v=9';
+import { createLineStats, createPassengerState, passengerTick, totalWaiting } from './passengers.js?v=9';
 import { SIMULATION, gameClock } from './simulation.js?v=8';
 import { createCampaign, updateCampaign } from './campaign.js?v=8';
 import { pickStopsToReveal } from './stops.js?v=8';
@@ -9,6 +9,7 @@ import { ensureDiagnostics } from './analytics.js?v=8';
 import { chooseStartScenario, starterRoutesFor } from './cities.js?v=8';
 import { routeLine, routeLineDetails, routingMode } from './routing.js?v=8';
 import { ensureFleet, fleetStatus, missingFleetCost } from './fleet.js?v=8';
+import { createTimetable, createUniformTimetable, setPeriodFrequency, TIMETABLE_PROFILES } from './timetable.js?v=9';
 
 const fail = message => ({ ok: false, message });
 const blankStats = () => createLineStats();
@@ -39,7 +40,10 @@ export class UrbanFlowGame {
     this.state.cityEvents ||= []; this.state.nextEventId ||= 1; this.state.analyticsMode ||= 'off';
     this.state.preferences = { tutorialCollapsed: false, goalsCollapsed: true, ...(this.state.preferences || {}) };
     this.state.campaign = { ...createCampaign(), ...(this.state.campaign || {}), stress: { ...createCampaign().stress, ...(this.state.campaign?.stress || {}) } };
-    this.state.lines.forEach(line => { line.stats = { ...blankStats(), ...(line.stats || {}), segmentLoad: { ...(line.stats?.segmentLoad || {}) } }; });
+    this.state.lines.forEach(line => {
+      line.stats = { ...blankStats(), ...(line.stats || {}), segmentLoad: { ...(line.stats?.segmentLoad || {}) } };
+      line.timetable ||= createUniformTimetable(line.frequency ?? 3, TRANSPORT_TYPES[line.type]?.maxFrequency);
+    });
     this.state.lines.forEach(line => {
       line.routeGeometry ||= routeLine(line.stops, line.type, this.city);
       line.routingMode ||= routingMode(line.type);
@@ -119,7 +123,8 @@ export class UrbanFlowGame {
     const line = { id: `line-${id}`, type, stops: [...stops], distanceKm: preview.distanceKm, cost: preview.cost,
       routeGeometry: preview.routeGeometry, routingMode: preview.routingMode, infrastructureCost: preview.infrastructureCost,
       name: name || `${TRANSPORT_TYPES[type].short}${id}`, color: TRANSPORT_TYPES[type].color,
-      vehicles: 2, frequency: 3, ageMinutes: 0, stats: blankStats() };
+      vehicles: 2, frequency: 3, timetable: createTimetable('balanced', TRANSPORT_TYPES[type].maxFrequency),
+      ageMinutes: 0, stats: blankStats() };
     this.state.lines.push(line); this.state.budget -= preview.cost; this.state.networkVersion++;
     this.state.unlockedPointLevel = Math.min(2, Math.max(this.state.unlockedPointLevel, this.state.lines.length));
     this.state.selectedNodes = []; this.state.editingLineId = null;
@@ -194,7 +199,32 @@ export class UrbanFlowGame {
   setFrequency(id, value) {
     const line = this.state.lines.find(l => l.id === id), frequency = Number(value);
     if (!line || this.state.status !== 'playing' || !Number.isFinite(frequency) || frequency < 1 || frequency > TRANSPORT_TYPES[line.type].maxFrequency) return fail('Nieprawidłowa częstotliwość.');
-    line.frequency = frequency; this.state.networkVersion++; this.changed(); return { ok: true };
+    line.previousTimetable = structuredClone(line.timetable);
+    line.frequency = frequency; line.timetable = createUniformTimetable(frequency, TRANSPORT_TYPES[line.type].maxFrequency);
+    this.state.networkVersion++; this.changed(); return { ok: true };
+  }
+  setTimetableFrequency(id, periodId, value) {
+    const line = this.state.lines.find(item => item.id === id), frequency = Number(value);
+    if (!line || this.state.status !== 'playing' || !Number.isFinite(frequency) || frequency < 0
+      || frequency > TRANSPORT_TYPES[line.type].maxFrequency) return fail('Nieprawidłowa częstotliwość rozkładu.');
+    const timetable = setPeriodFrequency(line.timetable, periodId, frequency, TRANSPORT_TYPES[line.type].maxFrequency);
+    if (!timetable) return fail('Nieznany przedział rozkładu.');
+    line.previousTimetable = structuredClone(line.timetable); line.timetable = timetable;
+    this.state.networkVersion++; this.changed(); return { ok: true };
+  }
+  setTimetableProfile(id, profileId) {
+    const line = this.state.lines.find(item => item.id === id);
+    if (!line || this.state.status !== 'playing' || !TIMETABLE_PROFILES[profileId]) return fail('Nieznany profil rozkładu.');
+    line.previousTimetable = structuredClone(line.timetable);
+    line.timetable = createTimetable(profileId, TRANSPORT_TYPES[line.type].maxFrequency);
+    this.state.networkVersion++; this.changed(); return { ok: true };
+  }
+  restoreTimetable(id) {
+    const line = this.state.lines.find(item => item.id === id);
+    if (!line || this.state.status !== 'playing' || !line.previousTimetable) return fail('Brak poprzedniej konfiguracji rozkładu.');
+    const current = structuredClone(line.timetable);
+    line.timetable = structuredClone(line.previousTimetable); line.previousTimetable = current;
+    this.state.networkVersion++; this.changed(); return { ok: true };
   }
   selectNode(id) {
     if (this.state.status !== 'playing' || !this.visiblePoints().some(p => p.id === id)) return;

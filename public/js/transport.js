@@ -1,5 +1,6 @@
 import { trafficMultiplier } from './simulation.js?v=8';
 import { eventImpactForLine } from './city-events.js?v=8';
+import { frequencyAt } from './timetable.js?v=9';
 
 export const TRANSPORT_TYPES = {
   bus: { id: 'bus', name: 'Autobus', short: 'A', color: '#f2b84b', capacity: 48, speed: 27, buildCost: 95000, vehicleCost: 24000, maintenance: 36, kmCost: 1.05, maxFrequency: 8, description: 'Tani i elastyczny. W szczycie korki wydłużają przejazd.' },
@@ -98,7 +99,7 @@ export function lineMetrics(line, city = null, minuteOfDay = 720, context = null
   const travelMinutes = distanceKm / (type.speed * trafficMultiplier(line.type, minuteOfDay) * eventImpact.speedMultiplier) * 60 + Math.max(1, (line.stops?.length || 2) - 1) * 0.7;
   const roundTripMinutes = travelMinutes * 2 + 4;
   const vehicles = Math.max(0, Math.floor(line.vehicles ?? 2));
-  const requestedFrequency = Math.max(0, Math.min(type.maxFrequency, line.frequency ?? 3));
+  const requestedFrequency = Math.max(0, Math.min(type.maxFrequency, frequencyAt(line.timetable, minuteOfDay, line.frequency ?? 3)));
   const scheduledFrequency = Math.min(requestedFrequency, vehicles * 60 / roundTripMinutes);
   const effectiveFrequency = eventImpact.capacityMultiplier > 0 ? scheduledFrequency : 0;
   const capacityPerHour = type.capacity * effectiveFrequency * eventImpact.capacityMultiplier;
@@ -108,10 +109,40 @@ export function lineMetrics(line, city = null, minuteOfDay = 720, context = null
   const idleCostPerHour = idleVehicles * type.maintenance * 0.16;
   const costPerHour = (type.maintenance + activeFleet * type.maintenance * 0.48 + idleCostPerHour
     + 2 * distanceKm * scheduledFrequency * type.kmCost) * (corridorBonus ? 0.78 : 1);
+  let averageEffectiveFrequency = effectiveFrequency;
+  let averageCapacityPerHour = capacityPerHour;
+  let averageCostPerHour = costPerHour;
+  let averageActiveFleet = activeFleet;
+  let averageIdleCostPerHour = idleCostPerHour;
+  const intervalMinutes = Math.floor(Number(context?.intervalMinutes) || 0);
+  if (intervalMinutes > 0 && intervalMinutes <= 1440 && Number.isFinite(context?.intervalStartMinuteOfDay)) {
+    let service = 0; let capacity = 0; let cost = 0; let fleet = 0; let idleCost = 0;
+    for (let minute = 0; minute < intervalMinutes; minute += 1) {
+      const requested = Math.max(0, Math.min(type.maxFrequency,
+        frequencyAt(line.timetable, context.intervalStartMinuteOfDay + minute, line.frequency ?? 3)));
+      const scheduled = Math.min(requested, vehicles * 60 / roundTripMinutes);
+      const active = scheduled * roundTripMinutes / 60;
+      const activeCount = Math.min(vehicles, Math.ceil(active - 0.000001));
+      const idleCount = Math.max(0, vehicles - activeCount);
+      const idle = idleCount * type.maintenance * 0.16;
+      const hourlyCost = (type.maintenance + active * type.maintenance * 0.48 + idle
+        + 2 * distanceKm * scheduled * type.kmCost) * (corridorBonus ? 0.78 : 1);
+      const effective = eventImpact.capacityMultiplier > 0 ? scheduled : 0;
+      service += effective; capacity += type.capacity * effective * eventImpact.capacityMultiplier;
+      cost += hourlyCost; fleet += active; idleCost += idle;
+    }
+    averageEffectiveFrequency = service / intervalMinutes;
+    averageCapacityPerHour = capacity / intervalMinutes;
+    averageCostPerHour = cost / intervalMinutes;
+    averageActiveFleet = fleet / intervalMinutes;
+    averageIdleCostPerHour = idleCost / intervalMinutes;
+  }
   return {
     distanceKm, travelMinutes, roundTripMinutes, effectiveFrequency, capacityPerHour, costPerHour,
     corridorBonus, capacity: type.capacity, intervalMinutes: effectiveFrequency ? 60 / effectiveFrequency : Infinity,
     departuresPerHour: effectiveFrequency, vehicles, requestedFrequency, activeVehicles, idleVehicles,
-    idleCostPerHour, eventSpeedMultiplier: eventImpact.speedMultiplier, eventCapacityMultiplier: eventImpact.capacityMultiplier
+    idleCostPerHour, requiredVehicles: requestedFrequency ? Math.ceil(roundTripMinutes * requestedFrequency / 60 - 0.000001) : 0,
+    averageEffectiveFrequency, averageCapacityPerHour, averageCostPerHour, averageActiveFleet, averageIdleCostPerHour,
+    eventSpeedMultiplier: eventImpact.speedMultiplier, eventCapacityMultiplier: eventImpact.capacityMultiplier
   };
 }

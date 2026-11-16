@@ -1,4 +1,4 @@
-import { TRANSPORT_TYPES, haversineKm, lineMetrics } from './transport.js?v=8';
+import { TRANSPORT_TYPES, haversineKm, lineMetrics } from './transport.js?v=9';
 import { SIMULATION, demandMultiplier } from './simulation.js?v=8';
 import { chooseDestination, pointDemandScore } from './demand.js?v=8';
 import { eventDemandMultiplier } from './city-events.js?v=8';
@@ -50,7 +50,8 @@ export function buildTransportGraph(lines, points = [], minuteOfDay = 720, city 
   const byId = new Map(points.map(point => [point.id, point]));
   for (const line of lines) {
     const metrics = lineMetrics(line, city || { points }, minuteOfDay, context);
-    if (!line.id || !metrics.effectiveFrequency) continue;
+    const routeFrequency = context?.intervalMinutes ? metrics.averageEffectiveFrequency : metrics.effectiveFrequency;
+    if (!line.id || !routeFrequency) continue;
     const lengths = line.stops.slice(1).map((stop, index) => {
       const a = byId.get(line.stops[index]);
       const b = byId.get(stop);
@@ -70,7 +71,7 @@ export function buildTransportGraph(lines, points = [], minuteOfDay = 720, city 
         graph.get(from).push({ lineId: line.id, from, to: line.stops[toIndex], fromIndex, toIndex, direction,
           stopSequence: line.stops.slice(low, high + 1),
           segments, distanceKm, travelMinutes: Math.max(0.5, metrics.travelMinutes * distanceKm / lengthSum),
-          waitMinutes: metrics.intervalMinutes / 2, weight: metrics.travelMinutes * distanceKm / lengthSum + metrics.intervalMinutes / 2 + 3 });
+          waitMinutes: 60 / routeFrequency / 2, weight: metrics.travelMinutes * distanceKm / lengthSum + 60 / routeFrequency / 2 + 3 });
       }
     }
   }
@@ -150,7 +151,8 @@ export function passengerTick(state, visiblePoints, minuteOfDay = 720, random = 
   const metricsByLine = new Map();
   const segmentCapacity = new Map();
   const usedCapacity = new Map();
-  const context = { events: state.cityEvents || [], elapsedMinutes: state.elapsedMinutes || state.transportMinutes };
+  const context = { events: state.cityEvents || [], elapsedMinutes: state.elapsedMinutes || state.transportMinutes,
+    intervalMinutes: delta, intervalStartMinuteOfDay: minuteOfDay - delta };
   const graph = buildTransportGraph(state.lines, visiblePoints, minuteOfDay, state.city, context);
   const routeCache = new Map();
   const routeFor = (from, to) => {
@@ -167,7 +169,7 @@ export function passengerTick(state, visiblePoints, minuteOfDay = 720, random = 
     metricsByLine.set(line.id, metrics);
     // Capacity is an averaged departure flow for THIS line, direction and
     // segment. Empty trains on another route cannot drain this route's queue.
-    const capacity = metrics.capacityPerHour * delta / 60;
+    const capacity = metrics.averageCapacityPerHour * delta / 60;
     line.serviceRemainder ||= {};
     for (let index = 0; index < line.stops.length - 1; index += 1) {
       for (const direction of [1, -1]) {
@@ -296,7 +298,7 @@ export function passengerTick(state, visiblePoints, minuteOfDay = 720, random = 
   }
   for (const line of state.lines) {
     const metrics = metricsByLine.get(line.id);
-    const capacity = metrics.capacityPerHour * delta / 60;
+    const capacity = metrics.averageCapacityPerHour * delta / 60;
     const peak = Math.max(0, ...Array.from(usedCapacity, ([key, value]) => key.startsWith(`${line.id}:`) ? value : 0));
     const load = capacity ? Math.min(1, peak / capacity) : 0;
     line.stats.load = Math.min(1, (line.stats.load || 0) * 0.75 + load * 0.25);

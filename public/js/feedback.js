@@ -1,4 +1,4 @@
-export const FEEDBACK_VERSION = '0.5.0';
+export const FEEDBACK_VERSION = '0.6.0';
 export const FEEDBACK_CATEGORIES = Object.freeze([
   'Błąd techniczny', 'Interfejs i grafika', 'Mechanika gry', 'Balans ekonomiczny', 'Pomysł na rozwój'
 ]);

@@ -3,7 +3,8 @@ import { mkdir, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const artifactDir = process.env.UF_VISUAL_QA_DIR || join(tmpdir(), 'urbanflow-alpha-0.5.0-visual-qa');
+const artifactDir = process.env.UF_VISUAL_QA_DIR || join(tmpdir(), 'urbanflow-alpha-0.6.0-visual-qa');
+const CI_TEST_TILE = '<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect width="256" height="256" fill="#e9eee4"/><path d="M-20 210 90 120 180 80 280 10M-20 40 100 110 270 200M40 -20 120 80 140 270" fill="none" stroke="#fffefa" stroke-width="12"/><path d="M-20 210 90 120 180 80 280 10M-20 40 100 110 270 200M40 -20 120 80 140 270" fill="none" stroke="#c8d3c4" stroke-width="2"/><path d="M10 30h30v20H10zM190 210h35v18h-35z" fill="#d5e2cc"/></svg>';
 const DESKTOPS = [
   { name: 'desktop-1920x1080', width: 1920, height: 1080 },
   { name: 'desktop-1366x768', width: 1366, height: 768 },
@@ -16,6 +17,7 @@ const MOBILES = [
 async function startGame(page, viewport, mobile = false) {
   await page.setViewportSize({ width: viewport.width, height: viewport.height });
   await page.addInitScript(() => localStorage.clear());
+  if (process.env.CI) await page.route('https://tile.openstreetmap.org/**', route => route.fulfill({ status: 200, contentType: 'image/svg+xml', body: CI_TEST_TILE }));
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
@@ -142,7 +144,7 @@ for (const viewport of MOBILES) {
     await page.locator('#feedbackForm button[type="submit"]').click();
     await expect(page.locator('#feedbackExport')).toBeVisible();
     const report = JSON.parse(await page.locator('#feedbackJson').inputValue());
-    expect(report.gameVersion).toBe('0.5.0');
+    expect(report.gameVersion).toBe('0.6.0');
     expect(report).not.toHaveProperty('diagnostics');
     const downloadPromise = page.waitForEvent('download');
     await page.locator('#feedbackDownload').click();
@@ -156,3 +158,59 @@ for (const viewport of MOBILES) {
     await context.close();
   });
 }
+
+async function exerciseTimetable(page, viewport, mobile) {
+  const errors = await startGame(page, viewport, mobile);
+  if (mobile && await page.locator('#mobilePanelButton').getAttribute('aria-expanded') === 'true') {
+    await page.locator('#panelClose').tap();
+  }
+  const starterRoute = page.locator('#routeOptions button').first();
+  await starterRoute.scrollIntoViewIfNeeded();
+  if (mobile) await starterRoute.tap();
+  else await starterRoute.click();
+  if (mobile && await page.locator('#mobilePanelButton').getAttribute('aria-expanded') !== 'true') {
+    await page.locator('#mobilePanelButton').tap();
+  }
+  const createLine = page.locator('#createLineButton');
+  await createLine.scrollIntoViewIfNeeded();
+  if (mobile) await createLine.tap();
+  else await createLine.click();
+  await expect(page.locator('.line-item')).toHaveCount(1);
+  if (mobile && await page.locator('#mobilePanelButton').getAttribute('aria-expanded') !== 'true') {
+    await page.locator('#mobilePanelButton').tap();
+  }
+  await expect(page.locator('#lineDetail')).toBeVisible();
+  await expect(page.locator('.timetable-control')).toBeVisible();
+  const periodRow = page.locator('[data-timetable-row="morning-peak"]');
+  const frequencyOutput = periodRow.locator('[data-frequency-value]');
+  await expect(frequencyOutput).toHaveText('4 kursów/h');
+  await page.locator('[data-timetable-profile]').selectOption('economic');
+  await expect(frequencyOutput).toHaveText('2 kursów/h');
+  const slider = periodRow.locator('input[type="range"]');
+  await slider.focus();
+  await slider.press('Home');
+  await expect(frequencyOutput).toHaveText('Kursy wyłączone');
+  await expect(page.locator('[data-current-period]')).toContainText('kursy wyłączone');
+  await expect(periodRow.locator('[data-period-metrics]')).toContainText('/h');
+  await page.locator('[data-action="restore-timetable"]').click();
+  await expect(frequencyOutput).toHaveText('2 kursów/h');
+  const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('urbanflow.krakow.v2')));
+  expect(saved.version).toBe(3);
+  expect(saved.state.lines[0].timetable.profileId).toBe('economic');
+  await page.locator('#timetableTitle').scrollIntoViewIfNeeded();
+  await expect(page.locator('#toastStack .toast')).toHaveCount(0, { timeout: 8000 });
+  await assertNoViewportOverflow(page, viewport.width);
+  await saveScreenshot(page, mobile ? 'mobile-390x844-timetable' : `desktop-${viewport.width}x${viewport.height}-timetable`);
+  expect(errors, `browser errors: ${errors.join('; ')}`).toEqual([]);
+}
+
+test('desktop timetable editor changes actual frequency, cost estimate and persists schema 3', async ({ page }) => {
+  await exerciseTimetable(page, { width: 1280, height: 720 }, false);
+});
+
+test('mobile timetable editor supports touch interaction and persists schema 3', async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const page = await context.newPage();
+  await exerciseTimetable(page, { width: 390, height: 844 }, true);
+  await context.close();
+});

@@ -1,7 +1,8 @@
-import { TRANSPORT_TYPES } from './transport.js?v=8';
+import { TRANSPORT_TYPES } from './transport.js?v=9';
+import { createUniformTimetable, validateTimetable } from './timetable.js?v=9';
 
 export const SAVE_KEY = 'urbanflow.krakow.v2';
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 const goals = new Set(['wieliczka', 'gateway', 'center', 'passengers', 'quality', 'buses', 'tram', 'huta', 'airport', 'profit', 'stress']);
 const finite = value => typeof value === 'number' && Number.isFinite(value);
 const nonnegative = value => finite(value) && value >= 0;
@@ -37,6 +38,9 @@ export function validateState(s, city) {
   for (const l of s.lines) {
     if (!plain(l) || !lineId(l.id) || !transportType(l.type) || !validStops(l.stops) || l.stops.length < 2) return false;
     if (!Number.isInteger(l.vehicles) || l.vehicles < 1 || l.vehicles > 16 || !finite(l.frequency) || l.frequency < 1 || l.frequency > TRANSPORT_TYPES[l.type].maxFrequency) return false;
+    if (!validateTimetable(l.timetable, TRANSPORT_TYPES[l.type].maxFrequency)) return false;
+    if (l.previousTimetable !== undefined && l.previousTimetable !== null
+      && !validateTimetable(l.previousTimetable, TRANSPORT_TYPES[l.type].maxFrequency)) return false;
     if (!nonnegative(l.distanceKm) || !nonnegative(l.cost) || !nonnegative(l.ageMinutes) || !plain(l.stats) || !['carried', 'revenue', 'expenses'].every(k => nonnegative(l.stats[k]))) return false;
     if (typeof l.name !== 'string' || l.name.length > 100 || !/^#[0-9a-f]{6}$/i.test(l.color)) return false;
     if (l.infrastructureCost !== undefined && !nonnegative(l.infrastructureCost)) return false;
@@ -137,8 +141,20 @@ export function loadGame(storage, city) {
     raw = storage.getItem(SAVE_KEY);
     if (!raw) return { state: null, error: null };
     if (raw.length > 2000000) throw new Error('size');
-    const data = JSON.parse(raw);
-    if (data.version !== SAVE_VERSION || data.cityId !== city.id || !validateState(data.state, city)) throw new Error('format');
+    let data = JSON.parse(raw);
+    if (data.cityId !== city.id) throw new Error('format');
+    let migrated = false;
+    if (data.version === 2 && plain(data.state) && Array.isArray(data.state.lines)) {
+      data = { ...data, version: SAVE_VERSION,
+        state: { ...data.state, lines: data.state.lines.map(line => ({
+          ...line, timetable: createUniformTimetable(line.frequency, TRANSPORT_TYPES[line.type]?.maxFrequency)
+        })) } };
+      migrated = true;
+    }
+    if (data.version !== SAVE_VERSION || !validateState(data.state, city)) throw new Error('format');
+    if (migrated) {
+      try { storage.setItem(SAVE_KEY, JSON.stringify(data)); } catch { /* Keep the migrated in-memory state playable. */ }
+    }
     return { state: data.state, error: null };
   } catch {
     if (raw) { try { storage.setItem(`${SAVE_KEY}.recovery`, raw); } catch { /* Keep the original if storage is unavailable. */ } }
