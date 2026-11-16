@@ -7,7 +7,7 @@ import { pickStopsToReveal } from './stops.js?v=8';
 import { CITY_EVENT_DEFINITIONS, createCityEvent } from './city-events.js?v=8';
 import { ensureDiagnostics } from './analytics.js?v=8';
 import { chooseStartScenario, starterRoutesFor } from './cities.js?v=8';
-import { routeLine, polylineDistanceKm, routingMode } from './routing.js?v=8';
+import { routeLine, routeLineDetails, routingMode } from './routing.js?v=8';
 import { ensureFleet, fleetStatus, missingFleetCost } from './fleet.js?v=8';
 
 const fail = message => ({ ok: false, message });
@@ -94,8 +94,10 @@ export class UrbanFlowGame {
       .some(route => signature(route) === signature(stops));
     if (!this.state.lines.length && !legacyStarter && !this.starterRoutes.some(r => signature(r.stops) === signature(stops))) return fail(`Zacznij od połączenia ${this.startScenario.name} z lokalnym węzłem.`);
     if (this.state.lines.some(l => l.id !== editingId && l.type === type && signature(l.stops) === signature(stops))) return fail('Taka linia już działa, także w przeciwnym kierunku.');
-    const routeGeometry = routeLine(stops, type, this.city, this.events.routingProvider);
-    const distanceKm = Math.max(0.1, polylineDistanceKm(routeGeometry));
+    const routeDetails = routeLineDetails(stops, type, this.city, this.events.routingProvider,
+      gameClock(this.state.elapsedMinutes).minuteOfDay);
+    const routeGeometry = routeDetails.coordinates;
+    const distanceKm = Math.max(0.1, routeDetails.distanceKm);
     const infrastructureCost = lineCost(type, distanceKm, stops, this.city);
     const old = this.state.lines.find(l => l.id === editingId);
     const unchanged = old && signature(old.stops) === signature(stops);
@@ -106,7 +108,7 @@ export class UrbanFlowGame {
     const metrics = lineMetrics({ type, stops, distanceKm, vehicles: old?.vehicles ?? 2, frequency: old?.frequency ?? 3 }, this.city,
       gameClock(this.state.elapsedMinutes).minuteOfDay, { events: this.state.cityEvents, elapsedMinutes: this.state.elapsedMinutes });
     return { ok: true, cost, infrastructureCost, fleetCost: fleetPurchase.cost, vehiclesToBuy: fleetPurchase.missing,
-      distanceKm, routeGeometry, routingMode: routingMode(type), metrics, affordable: this.state.budget >= cost };
+      distanceKm, routeGeometry, routeDetails, routingMode: routingMode(type), metrics, affordable: this.state.budget >= cost };
   }
   addLine(type, stops, _legacyForcedCost = null, name = null) {
     const preview = this.previewLine(type, stops, null);

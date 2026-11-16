@@ -7,6 +7,9 @@ import { diagnosticSnapshot, FAILURE_LABELS } from './analytics.js?v=8';
 import { activeCityEvents, upcomingCityEvents, describeEventImpact } from './city-events.js?v=8';
 import { fleetSnapshot } from './fleet.js?v=8';
 import { latentDemand } from './demand.js?v=8';
+import { describePlace } from './place-profiles.js?v=8';
+import { clampPanelWidth, DEFAULT_PANEL_WIDTH, loadPanelWidth, savePanelWidth } from './ui-preferences.js?v=8';
+import { createFeedbackReport, feedbackJson } from './feedback.js?v=8';
 
 const $ = selector => document.querySelector(selector);
 const formatNumber = value => new Intl.NumberFormat('pl-PL').format(Math.round(Number(value) || 0));
@@ -44,6 +47,10 @@ export class UI {
     this.previousGoals = null;
     this.summaryShown = false;
     this.detailLineId = null;
+    this.selectedPlaceId = null;
+    this.panelStorage = null;
+    try { this.panelStorage = window.localStorage; } catch { /* Panel width is an optional preference. */ }
+    this.setupPanelWidth();
     this.bind();
   }
 
@@ -128,6 +135,13 @@ export class UI {
         case 'toggleTutorialButton': this.game.setPreference('tutorialCollapsed', !this.game.state.preferences?.tutorialCollapsed); break;
         case 'mobilePanelButton': this.openPanel(); break;
         case 'panelClose': case 'panelScrim': this.closePanel(); break;
+        case 'panelCollapseButton': this.collapsePanel(); break;
+        case 'panelExpandButton': this.expandPanel(); break;
+        case 'placeProfileClose': this.selectedPlaceId = null; this.renderPlaceProfile(); break;
+        case 'feedbackButton': this.openFeedback(); break;
+        case 'feedbackClose': $('#feedbackDialog').close(); break;
+        case 'feedbackCopy': this.copyFeedback(); break;
+        case 'feedbackDownload': this.downloadFeedback(); break;
         case 'mobileCenterButton': this.map.centerCity(); break;
         case 'newGameButton': case 'summaryNewGameButton': this.onNewGame(); break;
         case 'summaryCloseButton': $('#summaryDialog').close(); break;
@@ -156,6 +170,30 @@ export class UI {
       if (gesture && point.clientY - gesture.y > 70 && Math.abs(point.clientX - gesture.x) < 100) this.closePanel();
       gesture = null;
     }, { passive: true, signal });
+    const resizer = $('#panelResizer');
+    let resizing = false;
+    resizer.addEventListener('pointerdown', event => {
+      if (window.matchMedia('(max-width: 760px)').matches || $('#playfield').classList.contains('panel-collapsed')) return;
+      resizing = true; resizer.setPointerCapture(event.pointerId); event.preventDefault();
+    }, { signal });
+    resizer.addEventListener('pointermove', event => {
+      if (resizing) this.setPanelWidth(window.innerWidth - event.clientX, false);
+    }, { signal });
+    const endResize = () => { if (!resizing) return; resizing = false; this.setPanelWidth($('#playfield').style.getPropertyValue('--panel-width'), true); this.map.invalidate?.(); };
+    resizer.addEventListener('pointerup', endResize, { signal });
+    resizer.addEventListener('pointercancel', endResize, { signal });
+    resizer.addEventListener('keydown', event => {
+      if (!['ArrowLeft', 'ArrowRight'].includes(event.key)) return;
+      event.preventDefault();
+      const current = parseFloat($('#playfield').style.getPropertyValue('--panel-width')) || DEFAULT_PANEL_WIDTH;
+      this.setPanelWidth(current + (event.key === 'ArrowLeft' ? 20 : -20), true);
+    }, { signal });
+    window.addEventListener('resize', () => {
+      if (!window.matchMedia('(max-width: 760px)').matches) this.setPanelWidth($('#playfield').style.getPropertyValue('--panel-width') || DEFAULT_PANEL_WIDTH, false);
+      this.map.invalidate?.();
+    }, { signal });
+    $('#feedbackForm').addEventListener('submit', event => this.prepareFeedback(event), { signal });
+    $('#feedbackDialog').addEventListener('click', event => { if (event.target === $('#feedbackDialog')) $('#feedbackDialog').close(); }, { signal });
   }
 
   checkResult(result) {
@@ -170,12 +208,81 @@ export class UI {
     this.timers.add(timer); return timer;
   }
   openPanel() {
+    $('#playfield').classList.remove('panel-collapsed');
     $('#buildPanel').classList.add('open'); $('#panelScrim').classList.add('open');
     $('#mobilePanelButton').setAttribute('aria-expanded', 'true');
+    $('#panelCollapseButton').setAttribute('aria-expanded', 'true'); $('#panelExpandButton').setAttribute('aria-expanded', 'true');
+    this.map.invalidate?.();
   }
   closePanel() {
     $('#buildPanel').classList.remove('open'); $('#panelScrim').classList.remove('open');
     $('#mobilePanelButton').setAttribute('aria-expanded', 'false');
+    this.map.invalidate?.();
+  }
+  setupPanelWidth() {
+    const width = loadPanelWidth(this.panelStorage, window.innerWidth);
+    $('#playfield').style.setProperty('--panel-width', `${width}px`);
+    $('#panelResizer').setAttribute('aria-valuenow', String(width));
+  }
+  setPanelWidth(value, persist = true) {
+    const width = persist ? savePanelWidth(this.panelStorage, value, window.innerWidth) : clampPanelWidth(value, window.innerWidth);
+    $('#playfield').style.setProperty('--panel-width', `${width}px`);
+    $('#panelResizer').setAttribute('aria-valuenow', String(width));
+    this.map.invalidate?.();
+    return width;
+  }
+  collapsePanel() {
+    if (window.matchMedia('(max-width: 760px)').matches) { this.closePanel(); return; }
+    $('#playfield').classList.add('panel-collapsed');
+    $('#panelCollapseButton').setAttribute('aria-expanded', 'false'); $('#panelExpandButton').setAttribute('aria-expanded', 'false');
+    this.map.invalidate?.();
+  }
+  expandPanel() { $('#playfield').classList.remove('panel-collapsed'); $('#panelCollapseButton').setAttribute('aria-expanded', 'true'); $('#panelExpandButton').setAttribute('aria-expanded', 'true'); this.map.invalidate?.(); }
+  selectPlace(id) {
+    this.selectedPlaceId = id;
+    this.renderPlaceProfile();
+    if (window.matchMedia('(max-width: 760px)').matches) {
+      this.openPanel(); this.later(() => $('#placeProfile').scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 60);
+    }
+  }
+  renderPlaceProfile() {
+    const section = $('#placeProfile');
+    const point = this.game.city.points.find(item => item.id === this.selectedPlaceId);
+    const profile = describePlace(point, this.game.city, this.game.state.lines, gameClock(this.game.state.elapsedMinutes).minuteOfDay);
+    section.hidden = !profile;
+    if (!profile) return;
+    this.setText('placeProfileName', profile.name); this.setText('placeProfileType', `${profile.type} · profil ${profile.profile}`);
+    this.setText('placeProfileDescription', profile.description); this.setText('placeProfileSignificance', profile.significance);
+    this.setText('placeProfileDemand', `${profile.demand.label}: ${decimal(profile.demand.score)}`);
+    this.setHtml('placeProfileConnections', profile.connections.length
+      ? `<strong>Powiązania</strong><ul>${profile.connections.map(item => `<li>${escapeHtml(item)}</li>`).join('')}</ul>`
+      : '<span>Brak zapisanych połączeń z innymi miejscami.</span>');
+  }
+  openFeedback() {
+    $('#feedbackForm').reset(); $('#feedbackError').textContent = ''; $('#feedbackExport').hidden = true;
+    $('#feedbackDialog').showModal();
+  }
+  prepareFeedback(event) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const input = Object.fromEntries(form.entries()); input.includeDiagnostics = form.has('includeDiagnostics');
+    const result = createFeedbackReport(input, { city: this.game.city.id, lines: this.game.state.lines.length, elapsedMinutes: this.game.state.elapsedMinutes });
+    $('#feedbackError').textContent = result.ok ? '' : result.errors.join(' ');
+    if (!result.ok) return;
+    $('#feedbackJson').value = feedbackJson(result.report); $('#feedbackExport').hidden = false;
+    $('#feedbackStatus').textContent = 'Zgłoszenie jest przygotowane lokalnie. Nic nie zostało wysłane.';
+  }
+  async copyFeedback() {
+    const value = $('#feedbackJson').value;
+    try { await navigator.clipboard.writeText(value); }
+    catch { $('#feedbackJson').select(); document.execCommand('copy'); }
+    $('#feedbackStatus').textContent = 'Skopiowano JSON.';
+  }
+  downloadFeedback() {
+    const blob = new Blob([$('#feedbackJson').value], { type: 'application/json' });
+    const url = URL.createObjectURL(blob); const link = document.createElement('a');
+    link.href = url; link.download = `urbanflow-feedback-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click(); URL.revokeObjectURL(url); $('#feedbackStatus').textContent = 'Pobrano plik JSON.';
   }
   scrollToBuild() { this.later(() => $('#buildSection').scrollIntoView({ block: 'start', behavior: 'smooth' }), 40); }
 
@@ -220,6 +327,7 @@ export class UI {
     this.renderNetwork();
     this.renderFleet();
     this.renderProgress(unlocked, counts);
+    this.renderPlaceProfile();
     $('#objective').classList.toggle('completed', state.lines.length > 0 || state.selectedNodes.length > 0 || state.status !== 'playing');
     this.map.render(this.game.visiblePoints(), state);
     this.map.highlightLine?.(this.selectedLineId);
@@ -247,6 +355,11 @@ export class UI {
     this.setText('previewDistance', hasRoute ? `${decimal(preview.distanceKm)} km` : '—');
     this.setText('previewTime', hasRoute && preview.metrics ? `${decimal(preview.metrics.travelMinutes)} min` : '—');
     this.setText('previewCost', hasRoute ? money(preview.cost) : '—');
+    this.setText('previewRoutingSource', hasRoute ? preview.routeDetails?.source || '—' : '—');
+    this.setText('previewRoutingAlgorithm', hasRoute ? preview.routeDetails?.algorithm || '—' : '—');
+    this.setText('previewRoutingReason', hasRoute ? preview.routeDetails?.reason || '' : '');
+    this.setText('previewRoutingSnap', hasRoute && preview.routeDetails?.mode !== 'direct'
+      ? `${decimal(preview.routeDetails?.snappedDistanceKm || 0)} km (do najbliższych wierzchołków, bez limitu)` : 'nie dotyczy');
     const fleetCopy = preview.vehiclesToBuy ? ` W cenie: zakup ${preview.vehiclesToBuy} pojazdów (${money(preview.fleetCost)}).` : ' Pojazdy zostaną przydzielone z rezerwy.';
     const message = hasRoute ? preview.message || (!preview.affordable ? `Brakuje ${money(preview.cost - state.budget)} na budowę.` : editing ? 'Przebudowa resetuje statystyki tej trasy i wymaga ponownego wykorzystania do odblokowań.' : `Trasa korzysta z routingu: ${preview.routingMode === 'road' ? 'drogi' : preview.routingMode === 'rail-corridor' ? 'korytarz kolejowy' : 'tunel bezpośredni'}.${fleetCopy}`) : 'Co najmniej dwa przystanki tworzą połączenie.';
     this.setText('previewMessage', state.status === 'playing' ? message : 'Kampania zakończona. Możesz obejrzeć swoją sieć.');

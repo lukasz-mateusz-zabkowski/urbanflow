@@ -4,12 +4,14 @@ import { GameMap } from './map.js?v=8';
 import { UI, confirmAction } from './ui.js?v=8';
 import { TRANSPORT_TYPES } from './transport.js?v=8';
 import { SIMULATION } from './simulation.js?v=8';
+import { applyAtlasView } from './theme.js?v=8';
 import { loadGame, saveGame, clearSave } from './storage.js?v=8';
 
 let game, gameMap, ui, timer, removeStarterRoutes;
 let storage, storageWarningShown = false;
 try { storage = window.localStorage; } catch { /* Private mode can refuse storage entirely. */ }
 const city = getCity('krakow');
+applyAtlasView();
 await loadStops(city);
 const cityScreen = document.getElementById('cityScreen');
 const gameElement = document.getElementById('game');
@@ -67,7 +69,7 @@ function startCity(savedState = null) {
       else if (result.overcrowded.length && game.state.elapsedMinutes % 60 === 0) ui?.event(`Przeciążone przystanki: ${result.overcrowded.length}. Sprawdź kolejki i częstotliwości linii.`);
     }
   }, savedState);
-  gameMap = new GameMap('map', id => game.selectNode(id), id => {
+  gameMap = new GameMap('map', id => { game.selectNode(id); ui?.selectPlace(id); }, id => {
     ui.selectedLineId = id; ui.renderNetwork(); gameMap.highlightLine(id); ui.openPanel();
     document.getElementById('lineDetail').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   });

@@ -116,3 +116,21 @@ Zapis obejmuje linie, przypisanie floty, pasażerów w podróży, budżet, kampa
 - osobne korytarze torowe dla tramwajów,
 - porównanie wariantów linii przed budową,
 - profilowanie FPS/CPU na fizycznym Raspberry Pi 5 i strojenie po sesjach z graczami.
+
+## UrbanFlow Alpha 0.5.0
+
+Wersja 0.5.0 zachowuje lokalny stos i schemat zapisu 2. Panel boczny ma szerszy domyślny układ na desktopie, uchwyt zmiany szerokości (mysz i klawiatura), zwijanie oraz zapamiętywanie szerokości osobno od zapisu gry. Na telefonach korzysta z wysuwanego arkusza.
+
+Kliknięcie punktu otwiera jego profil z typem, znaczeniem w symulacji i szacunkowym indeksem popytu wyliczanym przez istniejący model `demand.js`. Podgląd trasy wyjaśnia źródło geometrii, algorytm i wariant. Trasy offline pozostają lokalne; brak ścieżki w grafie jest oznaczany jako bezpośredni fallback.
+
+Formularz „Zgłoś uwagę” przygotowuje JSON do skopiowania lub pobrania. Nic nie jest wysyłane. Dane diagnostyczne trafiają do raportu wyłącznie po zaznaczeniu zgody.
+
+Uruchomienie developerskie pozostaje takie samo:
+
+```bash
+npm ci
+npm test
+npm start
+```
+
+Raport sprintu: [ALPHA-0.5.0-REPORT.md](ALPHA-0.5.0-REPORT.md). Fundament motywów: [docs/URBANFLOW-ATLAS.md](docs/URBANFLOW-ATLAS.md).

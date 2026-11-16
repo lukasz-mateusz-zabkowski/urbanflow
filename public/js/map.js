@@ -3,6 +3,7 @@ import { SIMULATION, gameClock } from './simulation.js?v=8';
 import { DISTRICT_PROFILES, inferProfile, latentDemand } from './demand.js?v=8';
 import { activeCityEvents, upcomingCityEvents } from './city-events.js?v=8';
 import { routeLine } from './routing.js?v=8';
+import { describePlace } from './place-profiles.js?v=8';
 
 const FRAME_MS = 50;
 const MAX_VEHICLES_PER_LINE = 12;
@@ -91,6 +92,10 @@ export class GameMap {
       });
       this.observer.observe(this.element);
     }
+    if (typeof ResizeObserver !== 'undefined') {
+      this.resizeObserver = new ResizeObserver(() => this.invalidate());
+      this.resizeObserver.observe(this.element);
+    }
   }
 
   loadCity(city) {
@@ -160,6 +165,8 @@ export class GameMap {
           keyboard: true, title: label, riseOnHover: true, pane: 'stops',
           icon: L.divIcon({ className: 'node-icon', html, iconSize: [44, 44], iconAnchor: [22, 22 - offset] })
         }).addTo(this.map).on('click', () => this.onPointClick?.(point.id));
+        const details = describePlace(point, this.city, this.state?.lines || [], 720);
+        marker.bindTooltip(`<strong>${escapeHtml(details.name)}</strong><br>${escapeHtml(details.type)}<br>${escapeHtml(details.description)}`, { direction: 'top', offset: [0, -12], sticky: true, className: 'place-tooltip' });
         this.markers.set(point.id, marker);
         const element = marker.getElement();
         this.pointViews.set(point.id, { element, dot: element.querySelector('.map-node'), count: element.querySelector('.node-count'), order: element.querySelector('.node-order'), label: '' });
@@ -374,7 +381,7 @@ export class GameMap {
   destroy() {
     if (this.destroyed) return;
     this.destroyed = true; this.stopAnimation(); this.observer?.disconnect();
-    document.removeEventListener('visibilitychange', this.onVisibilityChange); clearTimeout(this.invalidateTimer);
+    document.removeEventListener('visibilitychange', this.onVisibilityChange); clearTimeout(this.invalidateTimer); this.resizeObserver?.disconnect();
     this.effectTimers.forEach(timer => clearTimeout(timer)); this.effectTimers.clear(); this.map.remove();
     this.markers.clear(); this.pointViews.clear(); this.lines.clear(); this.vehicles.clear(); this.starterLayers.clear(); this.state = null;
   }
