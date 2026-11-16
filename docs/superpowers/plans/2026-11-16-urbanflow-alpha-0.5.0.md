@@ -67,4 +67,4 @@
 - [x] Set application and health endpoint version to 0.5.0 without changing save schema.
 - [x] Add CI using the existing Node test suite and Node 18/20/22.
 - [x] Document local start, routing findings, known limits, and rollback-safe release boundaries.
-- [ ] Run full tests, start local server, verify health and browser behavior, inspect diff, commit on the feature branch, and prepare a PR if GitHub write access permits. (Tests, server, health, and diff verified; visual browser review still needs a developer.)
+- [ ] Run full tests, start local server, verify health and browser behavior, inspect diff, commit on the feature branch, and prepare a PR if GitHub write access permits. (96 tests, server, health, diff, commit, and push verified; visual review was blocked and GitHub PR creation returned 403.)

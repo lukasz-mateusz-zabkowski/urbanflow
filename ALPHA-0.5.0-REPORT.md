@@ -3,7 +3,9 @@
 ## Status: NO GO do zatwierdzenia wizualnego; kod gotowy do lokalnej akceptacji
 
 - **Gałąź:** `feature/alpha-0.5.0`
-- **Commit SHA:** zostanie dopisany po lokalnym commicie.
+- **Commit SHA:** `9c5e9ae` (`feat: prepare UrbanFlow alpha 0.5.0`)
+- **Gałąź zdalna:** wypchnięta na GitHub.
+- **Pull Request:** nieutworzony — GitHub API zwróciło 403 `Resource not accessible by integration`; lokalnie nie ma `gh` CLI. [Otwórz formularz PR](https://github.com/lukasz-mateusz-zabkowski/urbanflow/pull/new/feature/alpha-0.5.0).
 - **Baza:** `main` / `76654dc` (`Release UrbanFlow 0.4.0`)
 - **Produkcja:** bez zmian; nic nie wdrożono ani nie zrestartowano.
 
