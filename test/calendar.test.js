@@ -129,7 +129,7 @@ test('schema 2 migrates the legacy uniform frequency to all four day profiles wi
   assert.equal(loaded.state.lines[0].timetable.profiles.special.periods[4].frequency, 2.5);
   assert.deepEqual(loaded.state.campaign.completed, ['gateway']);
   assert.equal(loaded.state.budget, state.budget);
-  assert.equal(JSON.parse(storage.values.get(SAVE_KEY)).version, 4);
+  assert.equal(JSON.parse(storage.values.get(SAVE_KEY)).version, 5);
 });
 
 test('schema 3 daily profiles migrate identically to every day and schema 4 round-trips deterministically', () => {
@@ -149,7 +149,7 @@ test('schema 3 daily profiles migrate identically to every day and schema 4 roun
   assert.equal(loaded.error, null);
   assert.equal(loaded.state.lines[0].timetable.profiles.saturday.periods[0].frequency, 5);
   assert.equal(loaded.state.lines[0].timetable.profiles.weekday.periods[4].frequency, 0);
-  assert.equal(SAVE_VERSION, 4);
+  assert.equal(SAVE_VERSION, 5);
 });
 
 test('malformed schema 4 special-day data is rejected and preserved for recovery', () => {
@@ -159,4 +159,19 @@ test('malformed schema 4 special-day data is rejected and preserved for recovery
   const raw = storage.values.get(SAVE_KEY);
   assert.equal(loadGame(storage, CITIES.krakow).state, null);
   assert.equal(storage.values.get(`${SAVE_KEY}.recovery`), raw);
+});
+
+test('schema 4 migrates to schema 5 without changing lines, fleet, budget, or campaign progress', () => {
+  const state = savedGameState();
+  state.budget = 12345;
+  state.campaign.completed = ['gateway'];
+  const storage = makeStorage({ version: 4, cityId: CITIES.krakow.id, state });
+  const result = loadGame(storage, CITIES.krakow);
+  assert.equal(result.error, null);
+  assert.equal(result.state.budget, 12345);
+  assert.deepEqual(result.state.lines, state.lines);
+  assert.deepEqual(result.state.fleet, state.fleet);
+  assert.deepEqual(result.state.campaign.completed, ['gateway']);
+  assert.equal(result.state.mobility.version, 1);
+  assert.equal(JSON.parse(storage.values.get(SAVE_KEY)).version, 5);
 });

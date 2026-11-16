@@ -36,8 +36,11 @@ test('cohorts take travel time, change vehicles, conserve people and count final
   seed(state, 'a', 'c', 12);
   let arrived = 0;
   let abandoned = 0;
+  let ticketRevenue = 0;
   for (let tick = 0; tick < 25; tick += 1) {
-    const result = step(state);
+    const result = passengerTick(state, state.city.points, 720, () => 0.99);
+    ticketRevenue += Object.values(state._pendingLineRevenue || {}).reduce((sum, value) => sum + value, 0);
+    applyEconomyTick(state, result.transported);
     arrived += result.transported; abandoned += result.abandoned;
     if (tick < 4) assert.equal(arrived, 0, 'must not teleport through a transfer');
     assert.equal(arrived + abandoned + state.cohorts.reduce((sum, group) => sum + group.count, 0), 12);
@@ -46,6 +49,9 @@ test('cohorts take travel time, change vehicles, conserve people and count final
   assert.equal(abandoned, 0);
   assert.equal(state.lines[0].stats.carried, 12);
   assert.equal(state.lines[1].stats.carried, 12);
+  assert.equal(ticketRevenue, 12 * SIMULATION.farePerPassenger, 'a single ticket is split over transfer legs, not charged again');
+  assert.equal(state.mobility.completed.passengers, 12);
+  assert.equal(state.mobility.completed.transferPassengers, 12);
   assert.ok(state.revenue > 12 * SIMULATION.farePerPassenger);
   assert.ok(state.subsidies > 0);
   assert.ok(Math.abs(state.lines.reduce((sum, line) => sum + line.stats.revenue, 0) - state.revenue) < 0.001);

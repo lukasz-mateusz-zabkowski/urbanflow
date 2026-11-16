@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.8.0 — Alpha 4
+
+- Added deterministic aggregate commute, school, shopping, recreation, and occasional travel patterns derived from place profiles and demand.
+- Added local time-, wait-, transfer-, and crowding-aware route planning with up to two transfers and passenger demand diagnostics.
+- Added separate completed-trip quality and reachable-network accessibility metrics, plus a passenger mobility panel and relation checker.
+- Fixed passenger demand averaging across calendar day boundaries to match minute-based service.
+- Migrated save schema 4 to 5 while retaining line, fleet, budget, timetable, and campaign data; schemas 2 and 3 remain supported.
+- Added mobility, migration, boundary, and scaling performance tests; browser coverage includes the mobility panel on desktop and touch layouts.
+- See `docs/URBANFLOW-PASSENGER-MOBILITY.md` and `ALPHA-0.8.0-REPORT.md` for model parameters and verification.
+
 ## 0.7.0 — Alpha 3
 
 - Added a deterministic weekday calendar starting on Monday, 5 January 2026, with editable special dates and a weekday indicator.

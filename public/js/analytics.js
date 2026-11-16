@@ -1,6 +1,10 @@
 import { pointDemandScore } from './demand.js?v=10';
 
 export const FAILURE_LABELS = {
+  noService: 'Brak kursow w tym czasie',
+  lowCapacity: 'Za malo wolnych miejsc',
+  longWait: 'Zbyt dlugie oczekiwanie',
+  inefficientTransfer: 'Nieoplacalna przesiadka',
   noConnection: 'Brak połączenia',
   excessiveTime: 'Zbyt długi czas podróży',
   noCapacity: 'Brak przepustowości',
@@ -9,7 +13,7 @@ export const FAILURE_LABELS = {
 
 export const createDiagnostics = () => ({
   relations: {}, generatedByPoint: {}, deliveredByPoint: {},
-  failures: { noConnection: 0, excessiveTime: 0, noCapacity: 0, longQueue: 0 },
+  failures: { noConnection: 0, noService: 0, excessiveTime: 0, noCapacity: 0, lowCapacity: 0, longWait: 0, inefficientTransfer: 0, longQueue: 0 },
   failureByPoint: {}, lastUpdated: 0
 });
 

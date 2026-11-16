@@ -8,7 +8,7 @@
   <title>UrbanFlow — Kraków w ruchu</title>
   <link rel="preconnect" href="https://tile.openstreetmap.org">
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css?v=1.9.4">
-  <link rel="stylesheet" href="styles.css?v=10">
+  <link rel="stylesheet" href="styles.css?v=11">
 </head>
 <body>
   <section class="city-screen" id="cityScreen" aria-labelledby="gameTitle">
@@ -92,6 +92,23 @@
             <div><div class="diagnostic-title"><strong>Dlaczego nie dotarli</strong><span id="failureTotal">brak rezygnacji</span></div><ul id="failureReasons" class="diagnostic-list"></ul></div>
           </div>
           <div class="event-panel"><div class="diagnostic-title"><strong>Wydarzenia miejskie</strong><span>reaguj flotą i trasą</span></div><ul id="activeEvents" class="event-list"></ul></div>
+          <section class="mobility-panel" aria-labelledby="mobilityTitle">
+            <div class="diagnostic-title"><strong id="mobilityTitle">Pasażerowie i mobilność</strong><span>zrealizowane podróże i dostępność sieci</span></div>
+            <div class="mobility-metrics" aria-live="polite">
+              <div><span>Aktywne</span><b id="mobilityActive">0</b></div><div><span>Ukończone</span><b id="mobilityCompleted">0</b></div>
+              <div><span>Śr. oczekiwanie</span><b id="mobilityWait">—</b></div><div><span>Śr. podróż</span><b id="mobilityJourney">—</b></div>
+              <div><span>Z przesiadką</span><b id="mobilityTransfers">—</b></div><div><span>Jakość podróży</span><b id="mobilitySatisfaction">—</b></div>
+              <div><span>Dostępność sieci</span><b id="mobilityAccess">—</b></div>
+            </div>
+            <div class="diagnostic-grid"><div><strong class="mobility-subtitle">Najbardziej obciążone relacje</strong><ol id="mobilityRelations" class="diagnostic-list"></ol></div>
+              <div><strong class="mobility-subtitle">Przyczyny niepowodzeń</strong><ul id="mobilityFailures" class="diagnostic-list"></ul></div></div>
+            <div class="mobility-route">
+              <label for="mobilityOrigin">Początek</label><select id="mobilityOrigin"></select>
+              <label for="mobilityDestination">Cel</label><select id="mobilityDestination"></select>
+              <button type="button" class="secondary-button" data-action="diagnose-mobility">Sprawdź połączenie</button>
+              <p id="mobilityRouteResult" role="status">Wybierz relację, aby sprawdzić dostępność.</p>
+            </div>
+          </section>
         </section>
 
         <section class="fleet-section" aria-labelledby="fleetTitle">
@@ -160,10 +177,10 @@
       <p class="feedback-error" id="feedbackError" role="alert"></p>
       <button class="primary-button" type="submit">Przygotuj zgłoszenie</button>
     </form>
-    <section class="feedback-export" id="feedbackExport" hidden><label for="feedbackJson">Gotowe zgłoszenie JSON · wersja gry 0.7.0</label><textarea id="feedbackJson" rows="8" readonly></textarea><div class="feedback-actions"><button class="secondary-button" type="button" id="feedbackCopy">Kopiuj JSON</button><button class="secondary-button" type="button" id="feedbackDownload">Pobierz JSON</button></div><p role="status" id="feedbackStatus"></p></section>
+    <section class="feedback-export" id="feedbackExport" hidden><label for="feedbackJson">Gotowe zgłoszenie JSON · wersja gry 0.8.0</label><textarea id="feedbackJson" rows="8" readonly></textarea><div class="feedback-actions"><button class="secondary-button" type="button" id="feedbackCopy">Kopiuj JSON</button><button class="secondary-button" type="button" id="feedbackDownload">Pobierz JSON</button></div><p role="status" id="feedbackStatus"></p></section>
   </dialog>
   <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="false"></div>
   <script src="vendor/leaflet/leaflet.js?v=1.9.4"></script>
-  <script type="module" src="js/main.js?v=10"></script>
+  <script type="module" src="js/main.js?v=11"></script>
 </body>
 </html>

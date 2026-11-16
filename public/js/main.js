@@ -1,11 +1,11 @@
 import { getCity, loadStops } from './cities.js?v=10';
-import { UrbanFlowGame } from './game.js?v=10';
+import { UrbanFlowGame } from './game.js?v=11';
 import { GameMap } from './map.js?v=10';
-import { UI, confirmAction } from './ui.js?v=10';
+import { UI, confirmAction } from './ui.js?v=11';
 import { TRANSPORT_TYPES } from './transport.js?v=10';
 import { SIMULATION } from './simulation.js?v=10';
 import { applyAtlasView } from './theme.js?v=10';
-import { loadGame, saveGame, clearSave } from './storage.js?v=10';
+import { loadGame, saveGame, clearSave } from './storage.js?v=11';
 
 let game, gameMap, ui, timer, removeStarterRoutes;
 let storage, storageWarningShown = false;

@@ -1,11 +1,12 @@
 import { applyEconomyTick } from './economy.js?v=10';
 import { airportUnlocked, haversineKm, lineCost, lineMetrics, unlockedTypes, TRANSPORT_TYPES } from './transport.js?v=10';
-import { createLineStats, createPassengerState, passengerTick, totalWaiting } from './passengers.js?v=10';
+import { createLineStats, createPassengerState, passengerTick, totalWaiting } from './passengers.js?v=11';
 import { SIMULATION, calendarTickContext, createSimulationCalendar, gameClock, setSpecialDay } from './simulation.js?v=10';
 import { createCampaign, updateCampaign } from './campaign.js?v=10';
 import { pickStopsToReveal } from './stops.js?v=10';
 import { CITY_EVENT_DEFINITIONS, createCityEvent } from './city-events.js?v=10';
-import { ensureDiagnostics } from './analytics.js?v=10';
+import { ensureDiagnostics } from './analytics.js?v=11';
+import { ensureMobilityState } from './mobility.js?v=11';
 import { chooseStartScenario, starterRoutesFor } from './cities.js?v=10';
 import { routeLine, routeLineDetails, routingMode } from './routing.js?v=10';
 import { ensureFleet, fleetStatus, missingFleetCost } from './fleet.js?v=10';
@@ -56,6 +57,7 @@ export class UrbanFlowGame {
     });
     ensureFleet(this.state);
     ensureDiagnostics(this.state);
+    ensureMobilityState(this.state, this.visiblePoints());
     Object.defineProperty(this.state, 'city', { value: city, enumerable: false, configurable: true });
   }
   changed() { this.events.onSave?.(this.state); this.events.onChange?.(); }

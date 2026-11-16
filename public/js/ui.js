@@ -1,16 +1,17 @@
 import { formatMoney } from './economy.js?v=10';
 import { TRANSPORT_TYPES, eligibleCounts, lineCost, unlockedTypes, lineMetrics } from './transport.js?v=10';
-import { totalWaiting } from './passengers.js?v=10';
+import { totalWaiting, diagnoseTransitRelation } from './passengers.js?v=11';
 import { calendarAt, gameClock, demandMultiplier } from './simulation.js?v=10';
 import { campaignObjectives } from './campaign.js?v=10';
-import { diagnosticSnapshot, FAILURE_LABELS } from './analytics.js?v=10';
+import { diagnosticSnapshot, FAILURE_LABELS } from './analytics.js?v=11';
 import { activeCityEvents, upcomingCityEvents, describeEventImpact } from './city-events.js?v=10';
 import { fleetSnapshot } from './fleet.js?v=10';
 import { latentDemand } from './demand.js?v=10';
 import { describePlace } from './place-profiles.js?v=10';
 import { clampPanelWidth, DEFAULT_PANEL_WIDTH, loadPanelWidth, savePanelWidth } from './ui-preferences.js?v=10';
-import { createFeedbackReport, feedbackJson } from './feedback.js?v=10';
+import { createFeedbackReport, feedbackJson } from './feedback.js?v=11';
 import { TIMETABLE_PROFILES, SERVICE_DAY_TYPES, SERVICE_DAY_LABELS, formatTimetableTime, periodAt, timetableForDay } from './timetable.js?v=10';
+import { mobilitySnapshot } from './mobility.js?v=11';
 
 const $ = selector => document.querySelector(selector);
 const formatNumber = value => new Intl.NumberFormat('pl-PL').format(Math.round(Number(value) || 0));
@@ -70,6 +71,7 @@ export class UI {
       }
       if (type) { this.checkResult(this.game.setTransport(type)); return; }
       if (action === 'analytics-mode') { this.checkResult(this.game.setAnalyticsMode(button.dataset.mode)); return; }
+      if (action === 'diagnose-mobility') { this.renderMobilityRelation(); return; }
       if (action === 'select-line') {
         this.selectedLineId = this.selectedLineId === line ? null : line;
         this.renderNetwork();
@@ -447,11 +449,30 @@ export class UI {
     const clock = gameClock(state.elapsedMinutes, state.calendar);
     const points = this.game.visiblePoints();
     const snapshot = diagnosticSnapshot(state, points, minuteOfDay);
+    const mobility = mobilitySnapshot(state, points);
+    const originSelect = $('#mobilityOrigin'); const destinationSelect = $('#mobilityDestination');
+    const originValue = originSelect?.value; const destinationValue = destinationSelect?.value;
+    const options = points.filter(point => point.type !== 'stop').map(point => `<option value="${escapeHtml(point.id)}">${escapeHtml(point.name)}</option>`).join('');
+    this.setHtml('mobilityOrigin', options);
+    this.setHtml('mobilityDestination', options);
+    if (originValue && points.some(point => point.id === originValue)) $('#mobilityOrigin').value = originValue;
+    if (destinationValue && points.some(point => point.id === destinationValue)) $('#mobilityDestination').value = destinationValue;
+    this.setText('mobilityActive', formatNumber(mobility.activeTrips));
+    this.setText('mobilityCompleted', formatNumber(mobility.completedTrips));
+    this.setText('mobilityWait', `${decimal(mobility.averageWaitMinutes)} min`);
+    this.setText('mobilityJourney', `${decimal(mobility.averageJourneyMinutes)} min`);
+    this.setText('mobilityTransfers', `${Math.round(mobility.transferShare * 100)}%`);
+    this.setText('mobilitySatisfaction', mobility.completedSatisfaction === null ? '—' : `${decimal(mobility.completedSatisfaction)}/100`);
+    this.setText('mobilityAccess', mobility.accessibility.score === null ? '—' : `${Math.round(mobility.accessibility.score * 100)}%`);
+    this.setHtml('mobilityRelations', mobility.busiestRelations.length ? mobility.busiestRelations.map(item => `<li><span>${escapeHtml(item.label)}</span><b>${formatNumber(item.passengers || item.generated)}</b></li>`).join('') : '<li class="empty-mini">Relacje pojawią się po rozpoczęciu podróży.</li>');
+    const mobilityFailures = mobility.failures.filter(item => item.passengers > 0);
+    this.setHtml('mobilityFailures', mobilityFailures.length ? mobilityFailures.map(item => `<li><span>${escapeHtml(FAILURE_LABELS[item.reason] || item.reason)}</span><b>${formatNumber(item.passengers)}</b></li>`).join('') : '<li class="empty-mini">Brak zarejestrowanych niepowodzeń.</li>');
     const modes = [['off', 'Zwykła'], ['demand', 'Popyt'], ['queues', 'Kolejki'], ['load', 'Odcinki'], ['profit', 'Rentowność'], ['travel', 'Czas'], ['access', 'Dostępność']];
     this.setHtml('analyticsModes', modes.map(([id, label]) => `<button type="button" data-action="analytics-mode" data-mode="${id}" class="${state.analyticsMode === id ? 'active' : ''}" aria-pressed="${state.analyticsMode === id}" title="${id === 'demand' ? 'Potencjał i wygenerowane podróże' : id === 'queues' ? 'Liczba oczekujących na przystankach' : id === 'load' ? 'Obciążenie każdego odcinka' : id === 'profit' ? 'Zielone linie zarabiają, czerwone tracą' : 'Wyłącz warstwę analityczną'}">${label}</button>`).join(''));
     this.setHtml('topRelations', snapshot.relations.length ? snapshot.relations.map(relation => `<li><span>${escapeHtml(relation.label)}</span><b>${formatNumber(relation.count)}</b></li>`).join('') : '<li class="empty-mini">Relacje pojawią się po uruchomieniu miasta.</li>');
     const totalFailures = snapshot.failures.reduce((sum, item) => sum + item.count, 0);
-    this.setHtml('failureReasons', snapshot.failures.map(item => `<li title="${escapeHtml(FAILURE_LABELS[item.id])}"><span>${escapeHtml(item.label)}</span><b>${formatNumber(item.count)}</b></li>`).join(''));
+    const failures = snapshot.failures.filter(item => item.count > 0);
+    this.setHtml('failureReasons', failures.length ? failures.map(item => `<li title="${escapeHtml(FAILURE_LABELS[item.id])}"><span>${escapeHtml(item.label)}</span><b>${formatNumber(item.count)}</b></li>`).join('') : '<li class="empty-mini">Brak niezrealizowanych podróży.</li>');
     this.setText('failureTotal', totalFailures ? `${formatNumber(totalFailures)} rezygnacji` : 'brak rezygnacji');
     const capacity = state.lines.reduce((sum, line) => sum + lineMetrics(line, this.game.city, minuteOfDay,
       { events: state.cityEvents || [], elapsedMinutes: state.elapsedMinutes, serviceDayType: clock.dayType }).capacityPerHour, 0);
@@ -467,6 +488,18 @@ export class UI {
     const servedPotential = potential.filter(item => item.served).reduce((sum, item) => sum + item.potential, 0);
     const allPotential = potential.reduce((sum, item) => sum + item.potential, 0) || 1;
     this.setText('latentDemandSummary', `${Math.round(servedPotential / allPotential * 100)}% potencjalnego popytu w zasięgu`);
+  }
+
+  renderMobilityRelation() {
+    const origin = $('#mobilityOrigin')?.value; const destination = $('#mobilityDestination')?.value;
+    const clock = gameClock(this.game.state.elapsedMinutes, this.game.state.calendar);
+    const context = { events: this.game.state.cityEvents || [], elapsedMinutes: this.game.state.elapsedMinutes,
+      serviceDayType: clock.dayType, intervalMinutes: 0 };
+    const result = diagnoseTransitRelation(this.game.state.lines, this.game.visiblePoints(), origin, destination, clock.minuteOfDay, context);
+    const labels = { available: 'Dostępne połączenie', noConnection: 'Brak połączenia między tymi punktami', noService: 'Linie łączą punkty, ale teraz nie kursują',
+      excessiveTime: 'Szacowany czas przekracza 100 minut', lowCapacity: 'Trasa działa, ale ma ograniczoną przepustowość', unknownPlace: 'Wybierz dwa dostępne miejsca' };
+    const plan = result.plan;
+    this.setText('mobilityRouteResult', `${labels[result.reason] || result.reason}${plan?.diagnostics?.totalMinutes ? ` · ${decimal(plan.diagnostics.totalMinutes)} min łącznie (oczekiwanie ${decimal(plan.diagnostics.expectedWaitMinutes)} min), ${plan.diagnostics.transfers} przesiadek, ${formatNumber(plan.diagnostics.capacityPerHour)} miejsc/h · ${plan.diagnostics.source} · ${plan.diagnostics.algorithm}` : ''}`);
   }
 
   renderFleet() {

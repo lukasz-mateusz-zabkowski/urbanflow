@@ -1,9 +1,10 @@
 import { TRANSPORT_TYPES } from './transport.js?v=10';
 import { createUniformTimetable, createWeeklyTimetable, migrateDailyTimetable, validateWeeklyTimetable } from './timetable.js?v=10';
 import { createSimulationCalendar, validateSimulationCalendar } from './simulation.js?v=10';
+import { createMobilityState } from './mobility.js?v=11';
 
 export const SAVE_KEY = 'urbanflow.krakow.v2';
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 const goals = new Set(['wieliczka', 'gateway', 'center', 'passengers', 'quality', 'buses', 'tram', 'huta', 'airport', 'profit', 'stress']);
 const finite = value => typeof value === 'number' && Number.isFinite(value);
 const nonnegative = value => finite(value) && value >= 0;
@@ -92,8 +93,24 @@ export function validateState(s, city) {
     if (!nonnegative(group.waitMinutes) || !nonnegative(group.totalWaitMinutes) || group.totalWaitMinutes < group.waitMinutes) return false;
     if (group.route !== null && (!Array.isArray(group.route) || group.route.length > city.points.length || !group.route.every(validLeg))) return false;
     if (!Array.isArray(group.completedLegs) || group.completedLegs.length > 100 || group.completedLegs.some(leg => !plain(leg) || !lineId(leg.lineId) || !nonnegative(leg.distanceKm))) return false;
+    if (['journeyMinutes', 'crowdingMinutes', 'transferCount'].some(key => group[key] !== undefined && !nonnegative(group[key]))) return false;
     if (group.phase === 'riding' && (!group.route?.[group.legIndex] || !nonnegative(group.remainingMinutes) || group.remainingMinutes === 0)) return false;
   }
+  if (!plain(s.mobility) || s.mobility.version !== 1 || !Array.isArray(s.mobility.patterns) || s.mobility.patterns.length > city.points.length * 8) return false;
+  const patternIds = new Set();
+  for (const pattern of s.mobility.patterns) {
+    if (!plain(pattern) || typeof pattern.id !== 'string' || pattern.id.length > 300 || patternIds.has(pattern.id)
+      || !pointIds.has(pattern.origin) || !pointIds.has(pattern.destination) || pattern.origin === pattern.destination
+      || !['work', 'school', 'shopping', 'recreation', 'occasional'].includes(pattern.purpose)
+      || !['outbound', 'return'].includes(pattern.direction) || !integer(pattern.departureMinute) || pattern.departureMinute >= 1440
+      || !integer(pattern.passengers) || pattern.passengers < 1 || !Array.isArray(pattern.dayTypes) || !pattern.dayTypes.length
+      || pattern.dayTypes.some(day => !['weekday', 'saturday', 'sunday', 'special'].includes(day))) return false;
+    patternIds.add(pattern.id);
+  }
+  const mobilityCounters = s.mobility.completed; const access = s.mobility.accessibility;
+  if (!plain(mobilityCounters) || !['passengers', 'waitMinutesTotal', 'journeyMinutesTotal', 'transferPassengers', 'transfersTotal', 'crowdingMinutesTotal', 'satisfactionTotal'].every(key => nonnegative(mobilityCounters[key]))
+    || !plain(access) || !['opportunities', 'reachable', 'denied'].every(key => nonnegative(access[key])) || !plain(access.byReason)
+    || Object.values(access.byReason).some(value => !nonnegative(value))) return false;
   const c = s.campaign;
   if (!plain(c) || !Array.isArray(c.completed) || c.completed.some(id => !goals.has(id)) || new Set(c.completed).size !== c.completed.length) return false;
   if (!['qualityMinutes', 'profitableDays', 'profitMinutes', 'grants'].every(k => nonnegative(c[k])) || !finite(c.profitStart)) return false;
@@ -151,6 +168,7 @@ export function loadGame(storage, city) {
       data = { ...data, version: SAVE_VERSION, state: {
         ...data.state,
         calendar: data.state.calendar || createSimulationCalendar(),
+        mobility: data.state.mobility || createMobilityState(),
         lines: data.state.lines.map(line => {
           const maxFrequency = TRANSPORT_TYPES[line.type]?.maxFrequency;
           const sourceTimetable = oldVersion === 2
@@ -164,6 +182,10 @@ export function loadGame(storage, city) {
           };
         })
       } };
+      migrated = true;
+    }
+    if (data.version === 4 && plain(data.state)) {
+      data = { ...data, version: SAVE_VERSION, state: { ...data.state, mobility: createMobilityState() } };
       migrated = true;
     }
     if (data.version !== SAVE_VERSION || !validateState(data.state, city)) throw new Error('format');

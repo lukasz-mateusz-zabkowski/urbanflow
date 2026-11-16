@@ -169,3 +169,14 @@ test('validator rejects nonfinite, cyclic and deeply nested data without travers
   for (let index = 0; index < 30; index += 1) { cursor.child = {}; cursor = cursor.child; }
   assert.equal(validateState(state, city), false);
 });
+
+test('schema 5 mobility templates and journey counters are validated as untrusted save data', () => {
+  const game = activeGame();
+  assert.ok(game.state.mobility.patterns.length > 0);
+  const invalidMinute = snapshot(game.state);
+  invalidMinute.mobility.patterns[0].departureMinute = 1440;
+  assert.equal(validateState(invalidMinute, city), false);
+  const invalidCounter = snapshot(game.state);
+  invalidCounter.mobility.completed.passengers = -1;
+  assert.equal(validateState(invalidCounter, city), false);
+});
