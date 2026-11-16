@@ -1,4 +1,4 @@
-import { TRANSPORT_TYPES } from './transport.js?v=8';
+import { TRANSPORT_TYPES } from './transport.js?v=10';
 
 export const INITIAL_FLEET = { bus: 6, tram: 0, metro: 0, suburban: 0, intercity: 0 };
 

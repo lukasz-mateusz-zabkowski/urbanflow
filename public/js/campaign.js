@@ -1,5 +1,5 @@
-import { eligibleCounts, PROGRESSION } from './transport.js?v=8';
-import { buildNetwork, isConnected, totalWaiting } from './passengers.js?v=8';
+import { eligibleCounts, PROGRESSION } from './transport.js?v=10';
+import { buildNetwork, isConnected, totalWaiting } from './passengers.js?v=10';
 
 export const STRESS_PHASES = [
   { id: 'morning', title: 'Poranny szczyt', duration: 420, demand: 1.55, locationId: 'centrum', localDemand: 1.25, description: 'Dojazdy do centrum gwałtownie rosną.' },

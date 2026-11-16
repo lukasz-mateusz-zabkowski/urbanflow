@@ -8,7 +8,7 @@
   <title>UrbanFlow — Kraków w ruchu</title>
   <link rel="preconnect" href="https://tile.openstreetmap.org">
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css?v=1.9.4">
-  <link rel="stylesheet" href="styles.css?v=9">
+  <link rel="stylesheet" href="styles.css?v=10">
 </head>
 <body>
   <section class="city-screen" id="cityScreen" aria-labelledby="gameTitle">
@@ -32,7 +32,7 @@
       <div class="status-stat waiting-mobile"><span>Oczekuje</span><strong id="waitingStat">—</strong></div>
       <div class="status-stat happiness-mobile"><span>Zadowolenie</span><strong id="happinessStat">—</strong></div>
       <div class="status-stat carried-stat"><span>Przewieziono</span><strong id="carriedStat">—</strong></div>
-      <div class="status-stat time-stat"><span>Czas miasta</span><strong id="timeStat">Dzień 1 · 06:00</strong></div>
+      <div class="status-stat time-stat"><span>Czas miasta</span><strong id="timeStat">Dzień 1 · 06:00</strong><small id="weekdayStat">Poniedziałek · Dzień roboczy · T1</small></div>
       <button class="pause-button" id="pauseButton" type="button" aria-label="Wstrzymaj grę" title="Wstrzymaj grę">Ⅱ</button>
       <span id="populationStat" hidden></span><span id="linesStat" hidden></span>
     </header>
@@ -40,7 +40,7 @@
     <section class="playfield" id="playfield">
       <div class="map-wrap">
         <div id="map" aria-label="Mapa transportowa Krakowa. Wybieraj punkty, aby zaplanować linię."></div>
-        <div class="map-context"><span class="live-dot"></span><span id="mobileTimeStat">Dzień 1 · 06:00</span><span id="trafficStatus">Ruch zwykły</span></div>
+        <div class="map-context"><span class="live-dot"></span><span id="mobileTimeStat">Dzień 1 · 06:00</span><span id="weekdayMobileStat">Poniedziałek · Dzień roboczy</span><span id="trafficStatus">Ruch zwykły</span></div>
         <div class="objective" id="objective">
           <span class="objective-label">01 / Pierwsze połączenie</span>
           <strong id="objectiveTitle">Z aglomeracji do Krakowa</strong>
@@ -160,10 +160,10 @@
       <p class="feedback-error" id="feedbackError" role="alert"></p>
       <button class="primary-button" type="submit">Przygotuj zgłoszenie</button>
     </form>
-    <section class="feedback-export" id="feedbackExport" hidden><label for="feedbackJson">Gotowe zgłoszenie JSON · wersja gry 0.6.0</label><textarea id="feedbackJson" rows="8" readonly></textarea><div class="feedback-actions"><button class="secondary-button" type="button" id="feedbackCopy">Kopiuj JSON</button><button class="secondary-button" type="button" id="feedbackDownload">Pobierz JSON</button></div><p role="status" id="feedbackStatus"></p></section>
+    <section class="feedback-export" id="feedbackExport" hidden><label for="feedbackJson">Gotowe zgłoszenie JSON · wersja gry 0.7.0</label><textarea id="feedbackJson" rows="8" readonly></textarea><div class="feedback-actions"><button class="secondary-button" type="button" id="feedbackCopy">Kopiuj JSON</button><button class="secondary-button" type="button" id="feedbackDownload">Pobierz JSON</button></div><p role="status" id="feedbackStatus"></p></section>
   </dialog>
   <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="false"></div>
   <script src="vendor/leaflet/leaflet.js?v=1.9.4"></script>
-  <script type="module" src="js/main.js?v=9"></script>
+  <script type="module" src="js/main.js?v=10"></script>
 </body>
 </html>

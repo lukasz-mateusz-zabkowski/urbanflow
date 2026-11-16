@@ -8,7 +8,7 @@ const host = process.env.HOST || '0.0.0.0';
 const root = path.dirname(fileURLToPath(import.meta.url));
 
 app.disable('x-powered-by');
-app.get('/health', (_req, res) => res.json({ status: 'ok', app: 'UrbanFlow', version: '0.6.0' }));
+app.get('/health', (_req, res) => res.json({ status: 'ok', app: 'UrbanFlow', version: '0.7.0' }));
 app.use('/vendor/leaflet', express.static(path.join(root, 'node_modules', 'leaflet', 'dist'), {
   etag: true,
   maxAge: '30d'

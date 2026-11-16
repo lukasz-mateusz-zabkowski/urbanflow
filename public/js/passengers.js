@@ -1,8 +1,8 @@
-import { TRANSPORT_TYPES, haversineKm, lineMetrics } from './transport.js?v=9';
-import { SIMULATION, demandMultiplier } from './simulation.js?v=8';
-import { chooseDestination, pointDemandScore } from './demand.js?v=8';
-import { eventDemandMultiplier } from './city-events.js?v=8';
-import { ensureDiagnostics, recordDemand, recordDelivery, recordFailure } from './analytics.js?v=8';
+import { TRANSPORT_TYPES, haversineKm, lineMetrics } from './transport.js?v=10';
+import { SIMULATION, demandMultiplier } from './simulation.js?v=10';
+import { chooseDestination, pointDemandScore } from './demand.js?v=10';
+import { eventDemandMultiplier } from './city-events.js?v=10';
+import { ensureDiagnostics, recordDemand, recordDelivery, recordFailure } from './analytics.js?v=10';
 
 const MAX_WAIT_MINUTES = 120;
 const MAX_COHORTS = 1600;
@@ -141,7 +141,7 @@ function creditJourney(state, cohort) {
   recordDelivery(state, cohort.destination, cohort.count);
 }
 
-export function passengerTick(state, visiblePoints, minuteOfDay = 720, random = Math.random) {
+export function passengerTick(state, visiblePoints, minuteOfDay = 720, random = Math.random, calendarContext = null) {
   const delta = SIMULATION.minutesPerTick;
   hydrateCohorts(state);
   state.passengers ||= createPassengerState(visiblePoints);
@@ -151,8 +151,10 @@ export function passengerTick(state, visiblePoints, minuteOfDay = 720, random = 
   const metricsByLine = new Map();
   const segmentCapacity = new Map();
   const usedCapacity = new Map();
+  const serviceDayType = calendarContext?.serviceDayType || 'weekday';
   const context = { events: state.cityEvents || [], elapsedMinutes: state.elapsedMinutes || state.transportMinutes,
-    intervalMinutes: delta, intervalStartMinuteOfDay: minuteOfDay - delta };
+    intervalMinutes: delta, intervalStartMinuteOfDay: minuteOfDay - delta, serviceDayType,
+    intervalServiceDayTypes: calendarContext?.intervalServiceDayTypes || Array(delta).fill(serviceDayType) };
   const graph = buildTransportGraph(state.lines, visiblePoints, minuteOfDay, state.city, context);
   const routeCache = new Map();
   const routeFor = (from, to) => {
@@ -228,11 +230,11 @@ export function passengerTick(state, visiblePoints, minuteOfDay = 720, random = 
   if (active.length >= 2) for (const origin of active) {
     if (random() > (origin.type === 'stop' ? 0.22 : 0.78)) continue;
     const candidates = active.filter(point => point.id !== origin.id);
-    const destination = chooseDestination(origin, candidates, minuteOfDay, random);
+    const destination = chooseDestination(origin, candidates, minuteOfDay, random, serviceDayType);
     if (!destination) continue;
     const localEventDemand = eventDemandMultiplier(state.cityEvents, origin.id, state.elapsedMinutes || state.transportMinutes);
     const demand = demandMultiplier(minuteOfDay) * (state.demandModifier ?? 1) * (state.stressDemandMultiplier ?? 1) * localEventDemand;
-    const amount = Math.max(0, Math.round(pointDemandScore(origin, minuteOfDay, 'origin') * (0.42 + random() * 0.5) * demand));
+    const amount = Math.max(0, Math.round(pointDemandScore(origin, minuteOfDay, 'origin', serviceDayType) * (0.42 + random() * 0.5) * demand));
     if (!amount) continue;
     generated += amount;
     recordDemand(state, origin.id, destination.id, amount);

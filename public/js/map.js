@@ -1,9 +1,9 @@
-import { TRANSPORT_TYPES, haversineKm, lineMetrics } from './transport.js?v=9';
-import { SIMULATION, gameClock } from './simulation.js?v=8';
-import { DISTRICT_PROFILES, inferProfile, latentDemand } from './demand.js?v=8';
-import { activeCityEvents, upcomingCityEvents } from './city-events.js?v=8';
-import { routeLine } from './routing.js?v=8';
-import { describePlace } from './place-profiles.js?v=8';
+import { TRANSPORT_TYPES, haversineKm, lineMetrics } from './transport.js?v=10';
+import { SIMULATION, gameClock } from './simulation.js?v=10';
+import { DISTRICT_PROFILES, inferProfile, latentDemand } from './demand.js?v=10';
+import { activeCityEvents, upcomingCityEvents } from './city-events.js?v=10';
+import { routeLine } from './routing.js?v=10';
+import { describePlace } from './place-profiles.js?v=10';
 
 const FRAME_MS = 50;
 const MAX_VEHICLES_PER_LINE = 12;
@@ -136,7 +136,7 @@ export class GameMap {
     const snapshot = [gameState.elapsedMinutes, gameState.paused, gameState.speed, gameState.status].join('|');
     if (snapshot !== this.clockSnapshot) { this.clockSnapshot = snapshot; this.clockAnchor = performance.now(); }
     this.state = gameState;
-    const clock = gameClock(gameState.elapsedMinutes);
+    const clock = gameClock(gameState.elapsedMinutes, gameState.calendar);
     const night = clock.hour >= 21 || clock.hour < 6;
     const rush = (clock.hour >= 7 && clock.hour < 10) || (clock.hour >= 16 && clock.hour < 19);
     this.wrapper?.classList.toggle('is-night', night); this.wrapper?.classList.toggle('is-rush-hour', rush);
@@ -244,7 +244,7 @@ export class GameMap {
         record.title = title;
       }
       record.line = line; record.color = color; record.metrics = lineMetrics(line, this.city, minuteOfDay,
-        { events: gameState.cityEvents || [], elapsedMinutes: gameState.elapsedMinutes });
+        { events: gameState.cityEvents || [], elapsedMinutes: gameState.elapsedMinutes, serviceDayType: gameClock(gameState.elapsedMinutes, gameState.calendar).dayType });
       const frequency = record.metrics.effectiveFrequency || 0; const fleet = record.metrics.vehicles;
       record.activeFleet = frequency > 0 ? Math.min(fleet, Math.max(1, Math.ceil(record.metrics.roundTripMinutes * frequency / 60 - 0.000001))) : 0;
       const count = Math.min(record.activeFleet, MAX_VEHICLES_PER_LINE, markerBudget); markerBudget -= count;
@@ -270,7 +270,8 @@ export class GameMap {
     if (mode === 'off' || mode === 'profit') return;
     if (mode === 'demand' || mode === 'queues' || mode === 'access' || mode === 'travel') {
       const analysisPoints = mode === 'demand' ? this.city.points : points;
-      const forecast = new Map(latentDemand(analysisPoints, gameState.lines, minuteOfDay, gameState.cityEvents, gameState.elapsedMinutes).map(item => [item.pointId, item]));
+      const dayType = gameClock(gameState.elapsedMinutes, gameState.calendar).dayType;
+      const forecast = new Map(latentDemand(analysisPoints, gameState.lines, minuteOfDay, gameState.cityEvents, gameState.elapsedMinutes, dayType).map(item => [item.pointId, item]));
       const served = new Set(gameState.lines.flatMap(line => line.stops));
       const values = analysisPoints.map(point => mode === 'demand'
         ? Math.max(gameState.diagnostics?.generatedByPoint?.[point.id] || 0, forecast.get(point.id)?.potential * 10 || 0)
@@ -316,7 +317,7 @@ export class GameMap {
       const planned = event.startMinute > gameState.elapsedMinutes;
       const circle = L.circleMarker([point.lat, point.lng], { renderer: this.analysisRenderer, radius: planned ? 14 : 18, color: planned ? '#9a6c23' : '#b63d36',
         fillColor: planned ? '#efc95d' : '#ed6a55', fillOpacity: 0.22, opacity: 0.9, weight: 3, dashArray: planned ? '5 4' : null, className: 'event-marker' }).addTo(this.eventLayer);
-      circle.bindTooltip(`<strong>${planned ? 'Zapowiedź: ' : ''}${escapeHtml(event.title)}</strong><br>${escapeHtml(event.message)}<br>${planned ? `Start ${escapeHtml(gameClock(event.startMinute).label)}` : `Do ${escapeHtml(gameClock(event.endMinute).label)}`}`);
+      circle.bindTooltip(`<strong>${planned ? 'Zapowiedź: ' : ''}${escapeHtml(event.title)}</strong><br>${escapeHtml(event.message)}<br>${planned ? `Start ${escapeHtml(gameClock(event.startMinute, this.state?.calendar).label)}` : `Do ${escapeHtml(gameClock(event.endMinute, this.state?.calendar).label)}`}`);
     }
   }
 

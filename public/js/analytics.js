@@ -1,4 +1,4 @@
-import { pointDemandScore } from './demand.js?v=8';
+import { pointDemandScore } from './demand.js?v=10';
 
 export const FAILURE_LABELS = {
   noConnection: 'Brak połączenia',

@@ -94,13 +94,13 @@ test('line schedule presets can be customized and the prior schedule can be rest
   const line = game.chooseStarterRoute('loop-center').line;
   assert.ok(line);
   const initial = structuredClone(line.timetable);
-  assert.equal(game.setTimetableFrequency(line.id, 'morning-peak', 5).ok, true);
-  assert.equal(line.timetable.profileId, 'custom');
-  assert.equal(line.timetable.periods.find(period => period.id === 'morning-peak').frequency, 5);
+  assert.equal(game.setTimetableFrequency(line.id, 'morning-peak', 5, 'weekday').ok, true);
+  assert.equal(line.timetable.profiles.weekday.profileId, 'custom');
+  assert.equal(line.timetable.profiles.weekday.periods.find(period => period.id === 'morning-peak').frequency, 5);
   assert.equal(game.restoreTimetable(line.id).ok, true);
   assert.deepEqual(line.timetable, initial);
   assert.equal(game.setTimetableProfile(line.id, 'economic').ok, true);
-  assert.equal(line.timetable.profileId, 'economic');
+  assert.equal(line.timetable.profiles.weekday.profileId, 'economic');
   assert.equal(game.restoreTimetable(line.id).ok, true);
   assert.deepEqual(line.timetable, initial);
 });
@@ -119,12 +119,13 @@ test('schema-2 saves migrate each legacy line to a uniform timetable without los
   assert.equal(loaded.error, null);
   assert.equal(loaded.state.lines[0].id, line.id);
   assert.equal(loaded.state.lines[0].frequency, 2.5);
-  assert.ok(loaded.state.lines[0].timetable.periods.every(period => period.frequency === 2.5));
+  assert.ok(Object.values(loaded.state.lines[0].timetable.profiles)
+    .every(timetable => timetable.periods.every(period => period.frequency === 2.5)));
   assert.deepEqual(loaded.state.campaign.completed, ['gateway', 'center']);
   assert.equal(JSON.parse(stored.get(SAVE_KEY)).version, SAVE_VERSION);
 });
 
-test('schema-3 save and load retain each line profile and its previous configuration', () => {
+test('schema-4 save and load retain each line weekly profile and its previous configuration', () => {
   const game = new UrbanFlowGame(CITIES.krakow);
   const line = game.chooseStarterRoute('loop-center').line;
   assert.ok(line);

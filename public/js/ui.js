@@ -1,16 +1,16 @@
-import { formatMoney } from './economy.js?v=8';
-import { TRANSPORT_TYPES, eligibleCounts, lineCost, unlockedTypes, lineMetrics } from './transport.js?v=9';
-import { totalWaiting } from './passengers.js?v=9';
-import { gameClock, demandMultiplier } from './simulation.js?v=8';
-import { campaignObjectives } from './campaign.js?v=8';
-import { diagnosticSnapshot, FAILURE_LABELS } from './analytics.js?v=8';
-import { activeCityEvents, upcomingCityEvents, describeEventImpact } from './city-events.js?v=8';
-import { fleetSnapshot } from './fleet.js?v=8';
-import { latentDemand } from './demand.js?v=8';
-import { describePlace } from './place-profiles.js?v=8';
-import { clampPanelWidth, DEFAULT_PANEL_WIDTH, loadPanelWidth, savePanelWidth } from './ui-preferences.js?v=8';
-import { createFeedbackReport, feedbackJson } from './feedback.js?v=8';
-import { TIMETABLE_PROFILES, formatTimetableTime, periodAt, setPeriodFrequency } from './timetable.js?v=9';
+import { formatMoney } from './economy.js?v=10';
+import { TRANSPORT_TYPES, eligibleCounts, lineCost, unlockedTypes, lineMetrics } from './transport.js?v=10';
+import { totalWaiting } from './passengers.js?v=10';
+import { calendarAt, gameClock, demandMultiplier } from './simulation.js?v=10';
+import { campaignObjectives } from './campaign.js?v=10';
+import { diagnosticSnapshot, FAILURE_LABELS } from './analytics.js?v=10';
+import { activeCityEvents, upcomingCityEvents, describeEventImpact } from './city-events.js?v=10';
+import { fleetSnapshot } from './fleet.js?v=10';
+import { latentDemand } from './demand.js?v=10';
+import { describePlace } from './place-profiles.js?v=10';
+import { clampPanelWidth, DEFAULT_PANEL_WIDTH, loadPanelWidth, savePanelWidth } from './ui-preferences.js?v=10';
+import { createFeedbackReport, feedbackJson } from './feedback.js?v=10';
+import { TIMETABLE_PROFILES, SERVICE_DAY_TYPES, SERVICE_DAY_LABELS, formatTimetableTime, periodAt, timetableForDay } from './timetable.js?v=10';
 
 const $ = selector => document.querySelector(selector);
 const formatNumber = value => new Intl.NumberFormat('pl-PL').format(Math.round(Number(value) || 0));
@@ -43,6 +43,7 @@ export class UI {
     this.map = map;
     this.onNewGame = onNewGame;
     this.selectedLineId = null;
+    this.selectedServiceDayType = null;
     this.abortController = new AbortController();
     this.timers = new Set();
     this.previousGoals = null;
@@ -115,6 +116,18 @@ export class UI {
         return;
       }
       if (action === 'restore-timetable') { this.checkResult(this.game.restoreTimetable(line)); return; }
+      if (action === 'copy-timetable-day') {
+        this.checkResult(this.game.copyTimetableDay(line, $('#timetableCopySource').value, this.selectedServiceDayType));
+        return;
+      }
+      if (action === 'toggle-special-today' || action === 'toggle-special-next') {
+        const current = gameClock(this.game.state.elapsedMinutes, this.game.state.calendar);
+        const target = action === 'toggle-special-next'
+          ? calendarAt(this.game.state.elapsedMinutes + 1440, this.game.state.calendar) : current;
+        this.checkResult(this.game.setSpecialDay(target.date, target.dayType !== 'special'));
+        if (target.dayType !== 'special') this.selectedServiceDayType = 'special';
+        return;
+      }
       switch (button.id) {
         case 'createLineButton': {
           const editing = this.game.state.editingLineId;
@@ -153,9 +166,17 @@ export class UI {
       if (event.target.matches('[data-frequency]')) {
         this.checkResult(this.game.setFrequency(event.target.dataset.frequency, Number(event.target.value)));
       } else if (event.target.matches('[data-timetable-frequency]')) {
-        this.checkResult(this.game.setTimetableFrequency(event.target.dataset.line, event.target.dataset.timetableFrequency, Number(event.target.value)));
+        this.checkResult(this.game.setTimetableFrequency(event.target.dataset.line, event.target.dataset.timetableFrequency, Number(event.target.value), event.target.dataset.dayType));
       } else if (event.target.matches('[data-timetable-profile]')) {
-        this.checkResult(this.game.setTimetableProfile(event.target.dataset.line, event.target.value));
+        this.checkResult(this.game.setTimetableProfile(event.target.dataset.line, event.target.value, event.target.dataset.dayType));
+      } else if (event.target.matches('[data-service-day]')) {
+        this.selectedServiceDayType = event.target.value;
+        this.renderDetails();
+      } else if (event.target.matches('[data-same-every-day]')) {
+        this.checkResult(this.game.setSameTimetableEveryDay(event.target.dataset.line, event.target.checked, this.selectedServiceDayType));
+      } else if (event.target.matches('[data-timetable-copy-source]')) {
+        const button = $('#lineDetail [data-action="copy-timetable-day"]');
+        button.disabled = event.target.value === this.selectedServiceDayType || this.game.state.status !== 'playing';
       }
     }, { signal });
     document.addEventListener('input', event => {
@@ -258,7 +279,8 @@ export class UI {
   renderPlaceProfile() {
     const section = $('#placeProfile');
     const point = this.game.city.points.find(item => item.id === this.selectedPlaceId);
-    const profile = describePlace(point, this.game.city, this.game.state.lines, gameClock(this.game.state.elapsedMinutes).minuteOfDay);
+    const profile = describePlace(point, this.game.city, this.game.state.lines,
+      gameClock(this.game.state.elapsedMinutes, this.game.state.calendar).minuteOfDay);
     section.hidden = !profile;
     if (!profile) return;
     this.setText('placeProfileName', profile.name); this.setText('placeProfileType', `${profile.type} · profil ${profile.profile}`);
@@ -306,7 +328,7 @@ export class UI {
 
   render() {
     const { state, city } = this.game;
-    const clock = gameClock(state.elapsedMinutes);
+    const clock = gameClock(state.elapsedMinutes, state.calendar);
     const unlocked = this.game.availableTypes();
     const counts = eligibleCounts(state.lines, state.satisfaction);
     const balance = state.lines.reduce((sum, line) => sum + finite(line.stats?.balancePerHour), 0);
@@ -321,6 +343,8 @@ export class UI {
     this.setText('happinessStat', `${formatNumber(state.satisfaction)}%`);
     $('#happinessStat').classList.toggle('negative', state.satisfaction < 40);
     this.setText('timeStat', clock.label); this.setText('mobileTimeStat', clock.label);
+    this.setText('weekdayStat', `${clock.weekday} · ${clock.dayTypeLabel} · T${clock.week}`);
+    this.setText('weekdayMobileStat', `${clock.weekday} · ${clock.dayType === 'special' ? 'Specjalny' : clock.dayTypeLabel}`);
     this.setText('cityName', city.name);
     this.setText('pauseButton', state.paused || state.status !== 'playing' ? '▶' : 'Ⅱ');
     $('#pauseButton').disabled = state.status !== 'playing';
@@ -420,6 +444,7 @@ export class UI {
 
   renderAnalytics(minuteOfDay) {
     const { state } = this.game;
+    const clock = gameClock(state.elapsedMinutes, state.calendar);
     const points = this.game.visiblePoints();
     const snapshot = diagnosticSnapshot(state, points, minuteOfDay);
     const modes = [['off', 'Zwykła'], ['demand', 'Popyt'], ['queues', 'Kolejki'], ['load', 'Odcinki'], ['profit', 'Rentowność'], ['travel', 'Czas'], ['access', 'Dostępność']];
@@ -429,7 +454,7 @@ export class UI {
     this.setHtml('failureReasons', snapshot.failures.map(item => `<li title="${escapeHtml(FAILURE_LABELS[item.id])}"><span>${escapeHtml(item.label)}</span><b>${formatNumber(item.count)}</b></li>`).join(''));
     this.setText('failureTotal', totalFailures ? `${formatNumber(totalFailures)} rezygnacji` : 'brak rezygnacji');
     const capacity = state.lines.reduce((sum, line) => sum + lineMetrics(line, this.game.city, minuteOfDay,
-      { events: state.cityEvents || [], elapsedMinutes: state.elapsedMinutes }).capacityPerHour, 0);
+      { events: state.cityEvents || [], elapsedMinutes: state.elapsedMinutes, serviceDayType: clock.dayType }).capacityPerHour, 0);
     this.setText('capacityComparison', `${formatNumber(totalWaiting(state.passengers))} oczekuje · ${formatNumber(capacity)} miejsc/h`);
     const events = [...activeCityEvents(state.cityEvents, state.elapsedMinutes), ...upcomingCityEvents(state.cityEvents, state.elapsedMinutes)];
     this.setHtml('activeEvents', events.length ? events.map(event => {
@@ -438,7 +463,7 @@ export class UI {
       const hours = Math.max(1, Math.ceil(((planned ? event.startMinute : event.endMinute) - state.elapsedMinutes) / 60));
       return `<li class="${planned ? 'planned' : 'active'}"><b>${planned ? '◷ ' : '● '}${escapeHtml(event.title)}</b><span>${escapeHtml(location || 'Miasto')} · ${planned ? `za ${hours} h` : `jeszcze ${hours} h`}</span><small>${escapeHtml(describeEventImpact(event))}. ${escapeHtml(event.message)}</small></li>`;
     }).join('') : '<li class="empty-mini">Brak aktywnych i zapowiedzianych wydarzeń.</li>');
-    const potential = latentDemand(this.game.city.points, state.lines, minuteOfDay, state.cityEvents, state.elapsedMinutes);
+    const potential = latentDemand(this.game.city.points, state.lines, minuteOfDay, state.cityEvents, state.elapsedMinutes, clock.dayType);
     const servedPotential = potential.filter(item => item.served).reduce((sum, item) => sum + item.potential, 0);
     const allPotential = potential.reduce((sum, item) => sum + item.potential, 0) || 1;
     this.setText('latentDemandSummary', `${Math.round(servedPotential / allPotential * 100)}% potencjalnego popytu w zasięgu`);
@@ -477,11 +502,18 @@ export class UI {
     if (!line) { this.detailLineId = null; return; }
     const type = TRANSPORT_TYPES[line.type];
     const stats = line.stats || {};
-    const metrics = lineMetrics(line, city, gameClock(state.elapsedMinutes).minuteOfDay,
-      { events: state.cityEvents || [], elapsedMinutes: state.elapsedMinutes });
+    const clock = gameClock(state.elapsedMinutes, state.calendar);
+    this.selectedServiceDayType ||= clock.dayType;
+    const metrics = lineMetrics(line, city, clock.minuteOfDay,
+      { events: state.cityEvents || [], elapsedMinutes: state.elapsedMinutes, serviceDayType: clock.dayType });
     if (this.detailLineId !== line.id) {
       container.innerHTML = `<div class="detail-heading"><span class="section-kicker">Szczegóły linii</span><strong data-detail="name"></strong></div><p class="detail-route" data-detail="route"></p><dl class="detail-stats"><div><dt>Długość</dt><dd data-detail="distance"></dd></div><div><dt>Przejazd w jedną stronę</dt><dd data-detail="travel"></dd></div><div><dt>Wpływy / h</dt><dd class="positive" data-detail="revenue"></dd></div><div><dt>Koszt / h</dt><dd data-detail="cost"></dd></div><div><dt>Bilans / h</dt><dd data-detail="balance"></dd></div><div><dt>Dotacja pasażerokm</dt><dd data-detail="subsidy"></dd></div><div><dt>Przewozy od przebudowy</dt><dd data-detail="carried"></dd></div><div><dt>Średni czas oczekiwania</dt><dd data-detail="wait"></dd></div><div><dt>Kolejka tej linii</dt><dd data-detail="waiting"></dd></div><div><dt>Wykorzystanie floty</dt><dd data-detail="vehicles"></dd></div></dl><div class="load-heading"><span>Wykorzystanie przepustowości</span><b data-detail="load"></b></div><div class="load-track"><i id="detailLoadBar"></i></div><p class="line-diagnosis" data-detail="diagnosis"></p><section class="timetable-control" aria-labelledby="timetableTitle"><div class="timetable-heading"><div><span class="section-kicker">Rozkład jazdy</span><strong id="timetableTitle">Częstotliwość w ciągu doby</strong></div><select data-timetable-profile data-line="${escapeHtml(line.id)}" aria-label="Gotowy profil rozkładu"></select></div><p class="timetable-current" data-current-period></p><p class="timetable-overview" data-detail="frequency"></p><div class="timetable-periods" data-timetable-periods></div><p class="timetable-capacity" data-timetable-capacity></p><button type="button" class="text-button timetable-restore" data-action="restore-timetable" data-line="${escapeHtml(line.id)}">Przywróć poprzednią konfigurację</button></section><div class="fleet-line-actions"><button type="button" data-action="unassign-vehicle" data-line="${escapeHtml(line.id)}">− Do rezerwy</button><button type="button" data-action="assign-vehicle" data-line="${escapeHtml(line.id)}">＋ Z rezerwy</button></div><button class="secondary-button" type="button" data-action="buy-vehicle" data-line="${escapeHtml(line.id)}" id="buyVehicleButton"></button><div class="line-actions"><button type="button" data-action="edit-line" data-line="${escapeHtml(line.id)}">Edytuj przystanki</button><button type="button" class="danger-button" data-action="delete-line" data-line="${escapeHtml(line.id)}">Usuń linię</button></div>`;
       this.detailLineId = line.id;
+    }
+    const timetableControl = container.querySelector('.timetable-control');
+    if (!timetableControl.dataset.calendarReady) {
+      timetableControl.innerHTML = `<div class="timetable-heading"><div><span class="section-kicker">Kalendarz kursowania</span><strong id="timetableTitle">Częstotliwość według typu dnia</strong></div></div><label class="calendar-field">Typ dnia<select data-service-day></select></label><label class="same-day-toggle"><input type="checkbox" data-same-every-day data-line="${escapeHtml(line.id)}">Taki sam rozkład każdego dnia</label><div class="calendar-copy"><label>Kopiuj rozkład z<select id="timetableCopySource" data-timetable-copy-source></select></label><button type="button" class="secondary-button" data-action="copy-timetable-day" data-line="${escapeHtml(line.id)}">Kopiuj do wybranego dnia</button></div><div class="calendar-special-actions"><button type="button" class="text-button" data-action="toggle-special-today" data-line="${escapeHtml(line.id)}"></button><button type="button" class="text-button" data-action="toggle-special-next" data-line="${escapeHtml(line.id)}"></button></div><p class="timetable-next-day" data-next-day></p><div class="timetable-heading"><strong>Gotowy profil</strong><select data-timetable-profile data-line="${escapeHtml(line.id)}" aria-label="Gotowy profil rozkładu"></select></div><p class="timetable-current" data-current-period></p><p class="timetable-overview" data-detail="frequency"></p><div class="timetable-periods" data-timetable-periods></div><p class="timetable-capacity" data-timetable-capacity></p><button type="button" class="text-button timetable-restore" data-action="restore-timetable" data-line="${escapeHtml(line.id)}">Przywróć poprzednią konfigurację</button>`;
+      timetableControl.dataset.calendarReady = 'true';
     }
     const values = {
       name: `${line.name || type.name} · ${type.name}`,
@@ -499,7 +531,7 @@ export class UI {
     container.querySelector('[data-detail="balance"]').className = finite(stats.balancePerHour) < 0 ? 'negative' : 'positive';
     $('#detailLoadBar').style.width = `${Math.min(100, finite(stats.load) * 100)}%`;
     $('#detailLoadBar').classList.toggle('busy', finite(stats.load) > .9);
-    this.renderTimetable(line, metrics, gameClock(state.elapsedMinutes).minuteOfDay, state.status !== 'playing');
+    this.renderTimetable(line, metrics, clock.minuteOfDay, state.status !== 'playing', clock);
     const vehicleCost = finite(type.vehicleCost);
     this.setText('buyVehicleButton', `＋ Kup pojazd${vehicleCost ? ` · ${money(vehicleCost)}` : ''}`);
     $('#buyVehicleButton').disabled = state.status !== 'playing';
@@ -510,36 +542,66 @@ export class UI {
     container.querySelectorAll('.line-actions button').forEach(button => { button.disabled = state.status !== 'playing'; });
   }
 
-  renderTimetable(line, metrics, minuteOfDay, disabled) {
-    const section = this.game.state.lines.find(item => item.id === line.id)?.timetable;
-    if (!section) return;
+  renderTimetable(line, metrics, minuteOfDay, disabled, clock) {
+    const timetable = this.game.state.lines.find(item => item.id === line.id)?.timetable;
+    if (!timetable) return;
     const root = $('#lineDetail');
+    const dayType = this.selectedServiceDayType || clock.dayType;
+    const section = timetableForDay(timetable, dayType);
+    const daySelect = root.querySelector('[data-service-day]');
+    if (!daySelect.dataset.ready) {
+      daySelect.innerHTML = SERVICE_DAY_TYPES.map(type => `<option value="${type}">${SERVICE_DAY_LABELS[type]}</option>`).join('');
+      daySelect.dataset.ready = 'true';
+    }
+    daySelect.value = dayType;
+    daySelect.disabled = disabled;
+    const sameEveryDay = root.querySelector('[data-same-every-day]');
+    sameEveryDay.checked = timetable.sameEveryDay;
+    sameEveryDay.disabled = disabled;
+    const copySource = root.querySelector('[data-timetable-copy-source]');
+    if (!copySource.dataset.ready) {
+      copySource.innerHTML = SERVICE_DAY_TYPES.map(type => `<option value="${type}">${SERVICE_DAY_LABELS[type]}</option>`).join('');
+      copySource.dataset.ready = 'true';
+    }
+    if (copySource.value === dayType) copySource.value = SERVICE_DAY_TYPES.find(type => type !== dayType);
+    copySource.disabled = disabled || timetable.sameEveryDay;
+    const copyButton = root.querySelector('[data-action="copy-timetable-day"]');
+    copyButton.disabled = disabled || timetable.sameEveryDay || copySource.value === dayType;
+    const todayIsSpecial = clock.dayType === 'special';
+    const nextDay = calendarAt(this.game.state.elapsedMinutes + 1440, this.game.state.calendar);
+    root.querySelector('[data-action="toggle-special-today"]').textContent = todayIsSpecial ? 'Usuń oznaczenie dnia specjalnego' : 'Oznacz dziś jako dzień specjalny';
+    root.querySelector('[data-action="toggle-special-today"]').disabled = disabled;
+    root.querySelector('[data-action="toggle-special-next"]').textContent = nextDay.dayType === 'special' ? 'Usuń oznaczenie jutra jako specjalnego' : 'Oznacz jutro jako dzień specjalny';
+    root.querySelector('[data-action="toggle-special-next"]').disabled = disabled;
+    root.querySelector('[data-next-day]').textContent = `Dziś: ${clock.weekday}, ${clock.date} · jutro: ${nextDay.weekday}, ${nextDay.date} (${nextDay.dayTypeLabel}).`;
     const profile = root.querySelector('[data-timetable-profile]');
     const profileOptions = [
       ...Object.entries(TIMETABLE_PROFILES).map(([id, value]) => `<option value="${id}">${value.label}</option>`),
       '<option value="custom">Własny</option>', '<option value="legacy-uniform">Jednolity ze starszego zapisu</option>'
     ];
     if (!profile.dataset.ready) { profile.innerHTML = profileOptions.join(''); profile.dataset.ready = 'true'; }
+    profile.dataset.dayType = dayType;
     profile.value = section.profileId;
     profile.disabled = disabled;
     const rows = root.querySelector('[data-timetable-periods]');
     if (!rows.dataset.ready) {
-      rows.innerHTML = section.periods.map(period => `<div class="timetable-row" data-timetable-row="${escapeHtml(period.id)}"><div class="timetable-row-heading"><strong>${escapeHtml(period.label)}</strong><span>${formatTimetableTime(period.startMinute)}–${formatTimetableTime(period.endMinute)}</span></div><output data-frequency-value></output><input type="range" min="0" max="${TRANSPORT_TYPES[line.type].maxFrequency}" step="0.5" data-line="${escapeHtml(line.id)}" data-timetable-frequency="${escapeHtml(period.id)}" aria-label="${escapeHtml(period.label)} — kursy na godzinę"><small data-period-metrics></small></div>`).join('');
+      rows.innerHTML = section.periods.map(period => `<div class="timetable-row" data-timetable-row="${escapeHtml(period.id)}"><div class="timetable-row-heading"><strong>${escapeHtml(period.label)}</strong><span>${formatTimetableTime(period.startMinute)}–${formatTimetableTime(period.endMinute)}</span></div><output data-frequency-value></output><input type="range" min="0" max="${TRANSPORT_TYPES[line.type].maxFrequency}" step="0.5" data-line="${escapeHtml(line.id)}" data-day-type="${dayType}" data-timetable-frequency="${escapeHtml(period.id)}" aria-label="${escapeHtml(period.label)} — kursy na godzinę"><small data-period-metrics></small></div>`).join('');
       rows.dataset.ready = 'true';
     }
+    rows.querySelectorAll('[data-timetable-frequency]').forEach(input => { input.dataset.dayType = dayType; });
     const active = periodAt(section, minuteOfDay);
     root.querySelector('[data-current-period]').textContent = active
-      ? `Teraz: ${active.label} · ${active.frequency ? `co ${decimal(60 / active.frequency)} min` : 'kursy wyłączone'}` : 'Brak aktywnego przedziału.';
+      ? `${dayType === clock.dayType ? 'Teraz' : SERVICE_DAY_LABELS[dayType]}: ${active.label} · ${active.frequency ? `co ${decimal(60 / active.frequency)} min` : 'kursy wyłączone'}` : 'Brak aktywnego przedziału.';
     for (const period of section.periods) {
       const row = rows.querySelector(`[data-timetable-row="${CSS.escape(period.id)}"]`);
       const input = row.querySelector('input');
       input.disabled = disabled;
-      if (document.activeElement !== input) input.value = period.frequency;
+      input.value = period.frequency;
       row.querySelector('[data-frequency-value]').textContent = period.frequency ? `${decimal(period.frequency)} kursów/h` : 'Kursy wyłączone';
       row.classList.toggle('is-current', active?.id === period.id);
-      const periodLine = { ...line, timetable: setPeriodFrequency(section, period.id, period.frequency, TRANSPORT_TYPES[line.type].maxFrequency) };
+      const periodLine = { ...line, timetable: { ...timetable, profiles: { ...timetable.profiles, [dayType]: section } } };
       const periodMetrics = lineMetrics(periodLine, this.game.city, period.startMinute,
-        { events: this.game.state.cityEvents || [], elapsedMinutes: this.game.state.elapsedMinutes });
+        { events: this.game.state.cityEvents || [], elapsedMinutes: this.game.state.elapsedMinutes, serviceDayType: dayType });
       const deficit = Math.max(0, periodMetrics.requiredVehicles - line.vehicles);
       const capacityState = line.stats?.waiting > 0 || line.stats?.load >= 0.9 ? ' · możliwy niedobór przepustowości' : '';
       row.querySelector('[data-period-metrics]').textContent = `${money(periodMetrics.costPerHour)}/h · ${periodMetrics.requiredVehicles} poj. wymagane${deficit ? ` · brakuje ${deficit}` : ''}${capacityState}`;
@@ -592,7 +654,7 @@ export class UI {
     this.setHtml('summaryStats', [
       ['Przewiezieni pasażerowie', formatNumber(state.carried)], ['Zrealizowane cele', `${goals.filter(goal => goal.completed).length}/${goals.length}`],
       ['Zadowolenie', `${formatNumber(state.satisfaction)}%`], ['Budżet końcowy', money(state.budget)],
-      ['Aktywne linie', `${state.lines.length}`], ['Czas kampanii', sessionMinutes ? `${decimal(sessionMinutes)} min` : gameClock(state.elapsedMinutes).label]
+      ['Aktywne linie', `${state.lines.length}`], ['Czas kampanii', sessionMinutes ? `${decimal(sessionMinutes)} min` : gameClock(state.elapsedMinutes, state.calendar).label]
     ].map(([label, value]) => `<div><span>${label}</span><strong>${value}</strong></div>`).join(''));
     const dialog = $('#summaryDialog');
     dialog.classList.toggle('won', won);
@@ -601,7 +663,7 @@ export class UI {
 
   event(message) {
     this.setText('eventMessage', message);
-    this.setText('eventTime', gameClock(this.game.state.elapsedMinutes).label.split('·')[1]?.trim() || '06:00');
+    this.setText('eventTime', gameClock(this.game.state.elapsedMinutes, this.game.state.calendar).label.split('·')[1]?.trim() || '06:00');
   }
 
   toast(message, kind = '') {

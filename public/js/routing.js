@@ -1,4 +1,4 @@
-import { haversineKm, lineMetrics } from './transport.js?v=8';
+import { haversineKm, lineMetrics } from './transport.js?v=10';
 
 const SURFACE_TYPES = new Set(['bus', 'tram']);
 const RAIL_TYPES = new Set(['suburban', 'intercity']);

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.0 — Alpha 3
+
+- Added a deterministic weekday calendar starting on Monday, 5 January 2026, with editable special dates and a weekday indicator.
+- Added independent weekday, Saturday, Sunday, and special-day schedules per line, with copy, restore, same-every-day, and preset controls.
+- Weekly service now changes actual passenger demand, scheduled departures, capacity, fleet need, and time-weighted operating costs.
+- Migrated schema 2 and 3 saves to schema 4 without dropping lines or campaign progress.
+- Added Node and Playwright coverage for week transitions, special days, mobile editing, migrations, and weekly schedule persistence.
+- Fixed a focused timetable slider retaining a stale value after switching day profiles.
+
 ## 0.6.0 — Alpha 2
 
 - Dodano indywidualne profile częstotliwości dla pięciu przedziałów doby i cztery gotowe ustawienia.
@@ -7,7 +16,6 @@
 - Rozbudowano panel linii o edytor rozkładu, bieżący przedział, koszty i wskazówkę o możliwym niedoborze przepustowości.
 - Dodano migrację zapisu ze schematu 2 do 3; starsze linie zachowują dawną częstotliwość jako jednolity profil.
 - Dodano testy logiki rozkładu i test edytora Playwright desktop/mobile oraz osobne zadanie przeglądarkowe w GitHub Actions.
-- Profile działają według jednego kalendarza wszystkich dni; podział na dni robocze/weekendy pozostaje przygotowany na późniejszy etap.
 
 ## 0.5.0 — Alpha 1
 

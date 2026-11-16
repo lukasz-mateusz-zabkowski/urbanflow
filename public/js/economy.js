@@ -1,8 +1,8 @@
-import { lineMetrics } from './transport.js?v=9';
-import { SIMULATION, gameClock } from './simulation.js?v=8';
-import { createLineStats } from './passengers.js?v=9';
-import { fleetSnapshot } from './fleet.js?v=8';
-import { TRANSPORT_TYPES } from './transport.js?v=9';
+import { lineMetrics } from './transport.js?v=10';
+import { SIMULATION, calendarTickContext, gameClock } from './simulation.js?v=10';
+import { createLineStats } from './passengers.js?v=10';
+import { fleetSnapshot } from './fleet.js?v=10';
+import { TRANSPORT_TYPES } from './transport.js?v=10';
 
 export const formatMoney = value => new Intl.NumberFormat('pl-PL', {
   style: 'currency', currency: 'PLN', maximumFractionDigits: 0
@@ -11,7 +11,10 @@ export const formatMoney = value => new Intl.NumberFormat('pl-PL', {
 export function applyEconomyTick(state, transported, deltaMinutes = SIMULATION.minutesPerTick) {
   state.economyMinutes = (state.economyMinutes || 0) + deltaMinutes;
   const now = state.economyMinutes;
-  const minuteOfDay = gameClock(state.transportMinutes ?? state.elapsedMinutes ?? now).minuteOfDay;
+  const simulationMinute = state.elapsedMinutes ?? state.transportMinutes ?? now;
+  const clock = gameClock(simulationMinute, state.calendar);
+  const intervalContext = calendarTickContext(simulationMinute, deltaMinutes, state.calendar);
+  const minuteOfDay = clock.minuteOfDay;
   const pending = state._pendingLineRevenue || {};
   const pendingPassengerKm = state._pendingLinePassengerKm || {};
   const fareRevenue = Math.max(0, transported) * SIMULATION.farePerPassenger;
@@ -22,7 +25,8 @@ export function applyEconomyTick(state, transported, deltaMinutes = SIMULATION.m
   for (const line of state.lines) {
     line.stats = { ...createLineStats(), ...line.stats };
     const metrics = lineMetrics(line, state.city, minuteOfDay, { events: state.cityEvents || [], elapsedMinutes: state.elapsedMinutes ?? now,
-      intervalMinutes: deltaMinutes, intervalStartMinuteOfDay: minuteOfDay - deltaMinutes });
+      intervalMinutes: deltaMinutes, intervalStartMinuteOfDay: minuteOfDay - deltaMinutes,
+      serviceDayType: clock.dayType, intervalServiceDayTypes: intervalContext.intervalServiceDayTypes });
     const cost = metrics.averageCostPerHour * deltaMinutes / 60;
     const linePassengerKm = pendingPassengerKm[line.id] || 0;
     const subsidy = linePassengerKm * SIMULATION.subsidyPerPassengerKm;

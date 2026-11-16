@@ -1,15 +1,18 @@
-import { applyEconomyTick } from './economy.js?v=9';
-import { airportUnlocked, haversineKm, lineCost, lineMetrics, unlockedTypes, TRANSPORT_TYPES } from './transport.js?v=9';
-import { createLineStats, createPassengerState, passengerTick, totalWaiting } from './passengers.js?v=9';
-import { SIMULATION, gameClock } from './simulation.js?v=8';
-import { createCampaign, updateCampaign } from './campaign.js?v=8';
-import { pickStopsToReveal } from './stops.js?v=8';
-import { CITY_EVENT_DEFINITIONS, createCityEvent } from './city-events.js?v=8';
-import { ensureDiagnostics } from './analytics.js?v=8';
-import { chooseStartScenario, starterRoutesFor } from './cities.js?v=8';
-import { routeLine, routeLineDetails, routingMode } from './routing.js?v=8';
-import { ensureFleet, fleetStatus, missingFleetCost } from './fleet.js?v=8';
-import { createTimetable, createUniformTimetable, setPeriodFrequency, TIMETABLE_PROFILES } from './timetable.js?v=9';
+import { applyEconomyTick } from './economy.js?v=10';
+import { airportUnlocked, haversineKm, lineCost, lineMetrics, unlockedTypes, TRANSPORT_TYPES } from './transport.js?v=10';
+import { createLineStats, createPassengerState, passengerTick, totalWaiting } from './passengers.js?v=10';
+import { SIMULATION, calendarTickContext, createSimulationCalendar, gameClock, setSpecialDay } from './simulation.js?v=10';
+import { createCampaign, updateCampaign } from './campaign.js?v=10';
+import { pickStopsToReveal } from './stops.js?v=10';
+import { CITY_EVENT_DEFINITIONS, createCityEvent } from './city-events.js?v=10';
+import { ensureDiagnostics } from './analytics.js?v=10';
+import { chooseStartScenario, starterRoutesFor } from './cities.js?v=10';
+import { routeLine, routeLineDetails, routingMode } from './routing.js?v=10';
+import { ensureFleet, fleetStatus, missingFleetCost } from './fleet.js?v=10';
+import {
+  createWeeklyTimetable, createWeeklyUniformTimetable, setDailyFrequency, setDailyProfile,
+  copyTimetableDay as copyScheduleDay, setSameScheduleEveryDay as updateSameSchedule, TIMETABLE_PROFILES
+} from './timetable.js?v=10';
 
 const fail = message => ({ ok: false, message });
 const blankStats = () => createLineStats();
@@ -24,6 +27,7 @@ export class UrbanFlowGame {
     this.state = savedState || {
       budget: city.startingBudget, revenue: 0, expenses: 0, subsidies: 0, passengerKm: 0, fleetPurchases: 0, carried: 0, generated: 0, abandoned: 0, satisfaction: 88,
       lines: [], cohorts: [], passengers: createPassengerState(city.points.filter(p => p.type !== 'stop')), revealedStops: [], stopCapacity: 120,
+      calendar: createSimulationCalendar(),
       elapsedMinutes: 0, paused: false, speed: 1, selectedType: 'bus', selectedNodes: [], editingLineId: null,
       tutorialStep: 0, unlockedPointLevel: 0, airportUnlocked: false, unlocked: ['bus'],
       demandModifier: 1, stressDemandMultiplier: 1, nextEventAt: SIMULATION.eventIntervalMinutes, activeEventUntil: 0,
@@ -32,6 +36,7 @@ export class UrbanFlowGame {
       preferences: { tutorialCollapsed: false, goalsCollapsed: true }, nextLineId: 1, networkVersion: 0
     };
     this.state.revealedStops ||= [];
+    this.state.calendar ||= createSimulationCalendar();
     this.state.startScenarioId ||= this.startScenario.id;
     this.startScenario = chooseStartScenario(Math.random, this.state.startScenarioId);
     this.starterRoutes = starterRoutesFor(this.startScenario);
@@ -42,7 +47,7 @@ export class UrbanFlowGame {
     this.state.campaign = { ...createCampaign(), ...(this.state.campaign || {}), stress: { ...createCampaign().stress, ...(this.state.campaign?.stress || {}) } };
     this.state.lines.forEach(line => {
       line.stats = { ...blankStats(), ...(line.stats || {}), segmentLoad: { ...(line.stats?.segmentLoad || {}) } };
-      line.timetable ||= createUniformTimetable(line.frequency ?? 3, TRANSPORT_TYPES[line.type]?.maxFrequency);
+      line.timetable ||= createWeeklyUniformTimetable(line.frequency ?? 3, TRANSPORT_TYPES[line.type]?.maxFrequency);
     });
     this.state.lines.forEach(line => {
       line.routeGeometry ||= routeLine(line.stops, line.type, this.city);
@@ -110,7 +115,10 @@ export class UrbanFlowGame {
     const fleetPurchase = old ? { missing: 0, cost: 0 } : missingFleetCost(this.state, type, 2);
     const cost = rebuildCost + fleetPurchase.cost;
     const metrics = lineMetrics({ type, stops, distanceKm, vehicles: old?.vehicles ?? 2, frequency: old?.frequency ?? 3 }, this.city,
-      gameClock(this.state.elapsedMinutes).minuteOfDay, { events: this.state.cityEvents, elapsedMinutes: this.state.elapsedMinutes });
+      gameClock(this.state.elapsedMinutes, this.state.calendar).minuteOfDay, {
+        events: this.state.cityEvents, elapsedMinutes: this.state.elapsedMinutes,
+        serviceDayType: gameClock(this.state.elapsedMinutes, this.state.calendar).dayType
+      });
     return { ok: true, cost, infrastructureCost, fleetCost: fleetPurchase.cost, vehiclesToBuy: fleetPurchase.missing,
       distanceKm, routeGeometry, routeDetails, routingMode: routingMode(type), metrics, affordable: this.state.budget >= cost };
   }
@@ -123,7 +131,7 @@ export class UrbanFlowGame {
     const line = { id: `line-${id}`, type, stops: [...stops], distanceKm: preview.distanceKm, cost: preview.cost,
       routeGeometry: preview.routeGeometry, routingMode: preview.routingMode, infrastructureCost: preview.infrastructureCost,
       name: name || `${TRANSPORT_TYPES[type].short}${id}`, color: TRANSPORT_TYPES[type].color,
-      vehicles: 2, frequency: 3, timetable: createTimetable('balanced', TRANSPORT_TYPES[type].maxFrequency),
+      vehicles: 2, frequency: 3, timetable: createWeeklyTimetable('balanced', TRANSPORT_TYPES[type].maxFrequency),
       ageMinutes: 0, stats: blankStats() };
     this.state.lines.push(line); this.state.budget -= preview.cost; this.state.networkVersion++;
     this.state.unlockedPointLevel = Math.min(2, Math.max(this.state.unlockedPointLevel, this.state.lines.length));
@@ -200,24 +208,47 @@ export class UrbanFlowGame {
     const line = this.state.lines.find(l => l.id === id), frequency = Number(value);
     if (!line || this.state.status !== 'playing' || !Number.isFinite(frequency) || frequency < 1 || frequency > TRANSPORT_TYPES[line.type].maxFrequency) return fail('Nieprawidłowa częstotliwość.');
     line.previousTimetable = structuredClone(line.timetable);
-    line.frequency = frequency; line.timetable = createUniformTimetable(frequency, TRANSPORT_TYPES[line.type].maxFrequency);
+    line.frequency = frequency; line.timetable = createWeeklyUniformTimetable(frequency, TRANSPORT_TYPES[line.type].maxFrequency);
     this.state.networkVersion++; this.changed(); return { ok: true };
   }
-  setTimetableFrequency(id, periodId, value) {
+  setTimetableFrequency(id, periodId, value, dayType = 'weekday') {
     const line = this.state.lines.find(item => item.id === id), frequency = Number(value);
     if (!line || this.state.status !== 'playing' || !Number.isFinite(frequency) || frequency < 0
       || frequency > TRANSPORT_TYPES[line.type].maxFrequency) return fail('Nieprawidłowa częstotliwość rozkładu.');
-    const timetable = setPeriodFrequency(line.timetable, periodId, frequency, TRANSPORT_TYPES[line.type].maxFrequency);
+    const timetable = setDailyFrequency(line.timetable, dayType, periodId, frequency, TRANSPORT_TYPES[line.type].maxFrequency);
     if (!timetable) return fail('Nieznany przedział rozkładu.');
     line.previousTimetable = structuredClone(line.timetable); line.timetable = timetable;
     this.state.networkVersion++; this.changed(); return { ok: true };
   }
-  setTimetableProfile(id, profileId) {
+  setTimetableProfile(id, profileId, dayType = 'weekday') {
     const line = this.state.lines.find(item => item.id === id);
     if (!line || this.state.status !== 'playing' || !TIMETABLE_PROFILES[profileId]) return fail('Nieznany profil rozkładu.');
     line.previousTimetable = structuredClone(line.timetable);
-    line.timetable = createTimetable(profileId, TRANSPORT_TYPES[line.type].maxFrequency);
+    line.timetable = setDailyProfile(line.timetable, dayType, profileId, TRANSPORT_TYPES[line.type].maxFrequency);
+    if (!line.timetable) return fail('Nieprawidłowy profil dla typu dnia.');
     this.state.networkVersion++; this.changed(); return { ok: true };
+  }
+  copyTimetableDay(id, sourceDayType, targetDayType) {
+    const line = this.state.lines.find(item => item.id === id);
+    if (!line || this.state.status !== 'playing') return fail('Nie można skopiować tego rozkładu.');
+    const timetable = copyScheduleDay(line.timetable, sourceDayType, targetDayType, TRANSPORT_TYPES[line.type].maxFrequency);
+    if (!timetable) return fail('Nieznany typ dnia.');
+    line.previousTimetable = structuredClone(line.timetable); line.timetable = timetable;
+    this.state.networkVersion++; this.changed(); return { ok: true };
+  }
+  setSameTimetableEveryDay(id, sameEveryDay, sourceDayType = 'weekday') {
+    const line = this.state.lines.find(item => item.id === id);
+    if (!line || this.state.status !== 'playing') return fail('Nie można zmienić wspólnego rozkładu.');
+    const timetable = updateSameSchedule(line.timetable, Boolean(sameEveryDay), sourceDayType);
+    if (!timetable) return fail('Nieprawidłowy typ dnia.');
+    line.previousTimetable = structuredClone(line.timetable); line.timetable = timetable;
+    this.state.networkVersion++; this.changed(); return { ok: true };
+  }
+  setSpecialDay(date, special = true) {
+    if (this.state.status !== 'playing') return fail('Kalendarz można zmienić podczas rozgrywki.');
+    try { this.state.calendar = setSpecialDay(this.state.calendar, date, Boolean(special)); }
+    catch { return fail('Nieprawidłowa data kalendarza.'); }
+    this.changed(); return { ok: true };
   }
   restoreTimetable(id) {
     const line = this.state.lines.find(item => item.id === id);
@@ -255,7 +286,9 @@ export class UrbanFlowGame {
     for (let i = 0; i < s.speed && s.status === 'playing'; i++) {
       s.elapsedMinutes += SIMULATION.minutesPerTick;
       s.cityEvents = (s.cityEvents || []).filter(event => event.endMinute > s.elapsedMinutes);
-      const result = passengerTick(s, this.visiblePoints(), gameClock(s.elapsedMinutes).minuteOfDay, random);
+      const clock = gameClock(s.elapsedMinutes, s.calendar);
+      const result = passengerTick(s, this.visiblePoints(), clock.minuteOfDay, random,
+        calendarTickContext(s.elapsedMinutes, SIMULATION.minutesPerTick, s.calendar));
       for (const k of ['generated', 'transported', 'abandoned']) total[k] += result[k] || 0;
       total.overcrowded = result.overcrowded;
       s.carried += result.transported; s.generated += result.generated; s.abandoned += result.abandoned || 0;

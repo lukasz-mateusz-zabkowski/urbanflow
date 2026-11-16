@@ -1,8 +1,9 @@
-import { TRANSPORT_TYPES } from './transport.js?v=9';
-import { createUniformTimetable, validateTimetable } from './timetable.js?v=9';
+import { TRANSPORT_TYPES } from './transport.js?v=10';
+import { createUniformTimetable, createWeeklyTimetable, migrateDailyTimetable, validateWeeklyTimetable } from './timetable.js?v=10';
+import { createSimulationCalendar, validateSimulationCalendar } from './simulation.js?v=10';
 
 export const SAVE_KEY = 'urbanflow.krakow.v2';
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 const goals = new Set(['wieliczka', 'gateway', 'center', 'passengers', 'quality', 'buses', 'tram', 'huta', 'airport', 'profit', 'stress']);
 const finite = value => typeof value === 'number' && Number.isFinite(value);
 const nonnegative = value => finite(value) && value >= 0;
@@ -25,6 +26,7 @@ function safeData(value, seen = new WeakSet(), depth = 0) {
 export function validateState(s, city) {
   if (!safeData(s)) return false;
   if (!plain(s) || !finite(s.budget) || !['playing', 'won', 'lost'].includes(s.status)) return false;
+  if (!validateSimulationCalendar(s.calendar)) return false;
   if (!['revenue', 'expenses', 'carried', 'generated', 'abandoned', 'elapsedMinutes', 'lowQualityMinutes', 'networkVersion'].every(k => nonnegative(s[k]))) return false;
   if (['subsidies', 'passengerKm', 'fleetPurchases'].some(key => s[key] !== undefined && !nonnegative(s[key]))) return false;
   if (s.fleetReserveCostPerHour !== undefined && !nonnegative(s.fleetReserveCostPerHour)) return false;
@@ -38,9 +40,9 @@ export function validateState(s, city) {
   for (const l of s.lines) {
     if (!plain(l) || !lineId(l.id) || !transportType(l.type) || !validStops(l.stops) || l.stops.length < 2) return false;
     if (!Number.isInteger(l.vehicles) || l.vehicles < 1 || l.vehicles > 16 || !finite(l.frequency) || l.frequency < 1 || l.frequency > TRANSPORT_TYPES[l.type].maxFrequency) return false;
-    if (!validateTimetable(l.timetable, TRANSPORT_TYPES[l.type].maxFrequency)) return false;
+    if (!validateWeeklyTimetable(l.timetable, TRANSPORT_TYPES[l.type].maxFrequency)) return false;
     if (l.previousTimetable !== undefined && l.previousTimetable !== null
-      && !validateTimetable(l.previousTimetable, TRANSPORT_TYPES[l.type].maxFrequency)) return false;
+      && !validateWeeklyTimetable(l.previousTimetable, TRANSPORT_TYPES[l.type].maxFrequency)) return false;
     if (!nonnegative(l.distanceKm) || !nonnegative(l.cost) || !nonnegative(l.ageMinutes) || !plain(l.stats) || !['carried', 'revenue', 'expenses'].every(k => nonnegative(l.stats[k]))) return false;
     if (typeof l.name !== 'string' || l.name.length > 100 || !/^#[0-9a-f]{6}$/i.test(l.color)) return false;
     if (l.infrastructureCost !== undefined && !nonnegative(l.infrastructureCost)) return false;
@@ -144,11 +146,24 @@ export function loadGame(storage, city) {
     let data = JSON.parse(raw);
     if (data.cityId !== city.id) throw new Error('format');
     let migrated = false;
-    if (data.version === 2 && plain(data.state) && Array.isArray(data.state.lines)) {
-      data = { ...data, version: SAVE_VERSION,
-        state: { ...data.state, lines: data.state.lines.map(line => ({
-          ...line, timetable: createUniformTimetable(line.frequency, TRANSPORT_TYPES[line.type]?.maxFrequency)
-        })) } };
+    if ([2, 3].includes(data.version) && plain(data.state) && Array.isArray(data.state.lines)) {
+      const oldVersion = data.version;
+      data = { ...data, version: SAVE_VERSION, state: {
+        ...data.state,
+        calendar: data.state.calendar || createSimulationCalendar(),
+        lines: data.state.lines.map(line => {
+          const maxFrequency = TRANSPORT_TYPES[line.type]?.maxFrequency;
+          const sourceTimetable = oldVersion === 2
+            ? createUniformTimetable(line.frequency, maxFrequency)
+            : line.timetable;
+          return {
+            ...line,
+            timetable: migrateDailyTimetable(sourceTimetable, maxFrequency),
+            previousTimetable: line.previousTimetable
+              ? migrateDailyTimetable(line.previousTimetable, maxFrequency) : undefined
+          };
+        })
+      } };
       migrated = true;
     }
     if (data.version !== SAVE_VERSION || !validateState(data.state, city)) throw new Error('format');
