@@ -1,60 +1,76 @@
 # URBANFLOW ALPHA 0.5.0: RAPORT WDROŻENIOWY
 
-## Status: NO GO do zatwierdzenia wizualnego; kod gotowy do lokalnej akceptacji
+## Status: GO do akceptacji
 
 - **Gałąź:** `feature/alpha-0.5.0`
-- **Commit SHA:** `9c5e9ae` (`feat: prepare UrbanFlow alpha 0.5.0`)
-- **Gałąź zdalna:** wypchnięta na GitHub.
-- **Pull Request:** nieutworzony — GitHub API zwróciło 403 `Resource not accessible by integration`; lokalnie nie ma `gh` CLI. [Otwórz formularz PR](https://github.com/lukasz-mateusz-zabkowski/urbanflow/pull/new/feature/alpha-0.5.0).
-- **Baza:** `main` / `76654dc` (`Release UrbanFlow 0.4.0`)
-- **Produkcja:** bez zmian; nic nie wdrożono ani nie zrestartowano.
+- **Stan bazowy kontroli:** `b05db64` (`docs: record alpha review readiness`); zmiany kontroli QA są przygotowane do osobnego commita na tej gałęzi.
+- **Baza:** `main` / `76654dc` (`Release UrbanFlow 0.4.0`).
+- **Pull Request:** przygotowany jako Draft po wypchnięciu zmian QA; link zostanie wpisany po utworzeniu przez GitHub.
+- **Produkcja:** bez zmian; nic nie wdrożono, nie restartowano i nie modyfikowano danych.
 
-## Zaimplementowane funkcje
+## Wyniki końcowej kontroli
 
-- Desktopowy panel ma domyślnie 462 px (około 25% więcej niż 370 px w poprzednim desktopowym layoucie), granice szerokości zostawiające miejsce na mapę, regulację myszą i klawiaturą, zapis osobnej preferencji oraz zwijanie. Na telefonach pozostaje wysuwanym arkuszem.
-- Kliknięcie miejsca pokazuje typ, opis, znaczenie dla rozgrywki, indeks popytu z istniejącego modelu oznaczony jako szacunkowy oraz znane połączenia. Punkty mają tooltipy Leaflet; karta działa po dotyku.
-- Podgląd trasy przedstawia jej długość, szacowany czas z modelu gry, źródło, algorytm i opis wybranego wariantu. Nierozłączny graf jest jawnie oznaczany jako bezpośredni fallback.
-- Formularz „Zgłoś uwagę” waliduje pięć kategorii, ocenę 1–5 i opis. Użytkownik kopiuje lub pobiera JSON. Dane diagnostyczne są dołączane tylko po zaznaczeniu zgody; aplikacja niczego nie wysyła.
-- Dodano tokeny Atlas City oraz granicę `theme.js` przygotowaną pod pięć nazw widoków. Aktywna jest tylko bieżąca paleta City; logika i zapis gry są od niej niezależne.
-- Dodano testy CI GitHub Actions na Node 18, 20 i 22. Schemat zapisu nadal ma wersję 2.
+- `node --test`: **96/96 zaliczonych**, w tym testy pełnych kampanii, routingu, profili, formularza, UI i kompatybilności zapisów.
+- `npm run test:browser`: **5/5 zaliczonych** w Chromium: desktop 1920×1080, 1366×768, 1280×720 oraz mobile 390×844 i 360×800. W trakcie testu aplikacja uruchamiała się lokalnie, a mapa pobierała kafelki OpenStreetMap.
+- Testy E2E weryfikują zmianę szerokości panelu i zapis preferencji, zwijanie/rozwijanie, wywołanie `invalidateSize` Leaflet, dostęp do nazw punktów klawiaturą, dotykowe profile, arkusz mobilny, szczegóły routingu, eksport pobieranego JSON, poziome przepełnienie oraz błędy JavaScript.
+- Testy schematu zapisu 2 przechodzą: starszy zapis bez pól 0.3 jest ładowany i uzupełniany w pamięci, a zagnieżdżone uszkodzone dane są odrzucane bez przyjęcia ich do stanu gry.
+- W testowanych przebiegach nie wykryto poziomego przepełnienia widoku ani błędów konsoli/JavaScript.
+- GitHub Actions: workflow `.github/workflows/test.yml` uruchamia `npm test` na Node 18, 20 i 22. Integracja nie zwróciła wyników runów dla bazowego SHA `b05db64`; Draft PR uruchomi kontrole `pull_request`, których status należy odczytać po zakończeniu.
 
-## Testy
+## Dowody wizualne
 
-- Stan wyjściowy 0.4.0: `node --test` — 82/82.
-- Stan po zmianach: `node --test` — 96/96, w tym pełne kampanie, migracja zapisów, nowe testy routingu, profili, preferencji panelu, formularza i kontraktów UI.
-- Uruchomienie aplikacji: lokalny serwer startuje na porcie 3000; `GET /health` zwraca `{"status":"ok","app":"UrbanFlow","version":"0.5.0"}`, a strona i moduł startowy odpowiadają HTTP 200.
-- Brak Playwright/DOM harnessu w bazowym repo. Dodano testy modułów i kontraktów UI; Playwright jest możliwy do wprowadzenia w następnym kroku, ale wymaga nowej zależności i instalacji przeglądarki.
-- Próba otwarcia Edge przez automatyzację GUI została odrzucona przez automatyczną kontrolę uprawnień. Dlatego nie potwierdzono jeszcze layoutu i interakcji na rzeczywistym ekranie. To blokuje rekomendację GO.
+Zrzuty z rzeczywistymi kafelkami OSM zapisano poza repozytorium, aby nie dodawać binarnych artefaktów do Git:
+
+`%TEMP%\urbanflow-alpha-0.5.0-visual-qa\`
+
+- `desktop-1920x1080.png`
+- `desktop-1366x768.png`
+- `desktop-1280x720.png`
+- `mobile-390x844.png`, `mobile-390x844-place-profile.png`, `mobile-390x844-feedback-json.png`
+- `mobile-360x800.png`, `mobile-360x800-place-profile.png`, `mobile-360x800-feedback-json.png`
+
+Oceniono układ mapy i panelu, profil miejsca na obu szerokościach telefonu oraz formularz eksportu. Etykiety nieaktywnych punktów są schowane, aby nie zlewały się w skupiskach; nazwa pokazuje się po najechaniu, fokusie lub zaznaczeniu punktu. Zrzuty i raporty błędów Playwright pozostają w katalogu tymczasowym.
+
+## Wykryte i naprawione podczas QA
+
+- Przycisk „Pokaż panel” był potomkiem paska mobilnego ukrywanego na desktopie. Przeniesiono go na warstwę mapy; test potwierdza zwijanie i ponowne rozwijanie panelu.
+- Stałe nazwy pobliskich punktów nakładały się na siebie. Etykiety są teraz ujawniane kontekstowo po hoverze, fokusie klawiatury lub zaznaczeniu.
+- Test mobilny miał niejednoznaczny selektor `name="description"` (konkurował z metadanymi strony); ograniczono go do formularza opinii.
+
+## Funkcje ALPHA 0.5.0
+
+- Panel desktopowy ma domyślnie 462 px (około 25% więcej niż wcześniejsze 370 px), ograniczenia zostawiają przestrzeń mapie, szerokość można zmieniać myszą i klawiaturą oraz zapamiętać. Na telefonie panel jest wysuwanym arkuszem.
+- Karta miejsca pokazuje nazwę, typ, opis, rolę w grze, indeks popytu pochodzący z istniejącego modelu (oznaczony jako szacunkowy) i dostępne połączenia.
+- Diagnostyka podglądu przedstawia długość, szacowany czas, źródło danych, algorytm, wariant i odległość przyciągania do grafu. Brak ścieżki jest jawnie oznaczany jako bezpośredni fallback.
+- Formularz opinii lokalnie tworzy, kopiuje lub pobiera JSON. Dane diagnostyczne są opcjonalne i domyślnie wyłączone; aplikacja ich nie wysyła.
+- Fundament Atlas udostępnia tokeny City i granicę motywów bez zmiany mechaniki gry; pozostałe widoki są opisane, ale niezaimplementowane.
 
 ## Diagnostyka routingu
 
-- Routing jest lokalny i deterministyczny. Autobusy i tramwaje korzystają z ręcznie przygotowanego `roadGeometry`; kolej z `railGeometry`; metro łączy punkty bezpośrednio. Grafy są nieskierowane, krawędzie mają wagę w kilometrach haversine, a ścieżkę wyznacza algorytm Dijkstry.
-- Rzeczywiste dane geograficzne są wbudowane. OSRM, Valhalla, GraphHopper i Overpass nie są wymagane ani wywoływane. Kafelki mapy pochodzą z OpenStreetMap i wymagają internetu; brak kafelków nie wyłącza symulacji.
-- W zapisanym grafie Bronowice–Krowodrza Górka to bezpośrednia krawędź między dwoma wierzchołkami korytarza drogowego (2,16 km). O 08:00 model szacuje ok. 7,8 min autobusem i 4,7 min tramwajem. Warianty kolejowe dobierają najbliższe wierzchołki lokalnego grafu kolejowego, a metro idzie bezpośrednio (ok. 2,5 min). Zgłoszenie nie określa wariantu transportu ani dokładnego punktu startowego/końcowego, więc nietypowego wariantu nie można jednoznacznie odtworzyć.
-- Potwierdzony problem: brak ścieżki wcześniej powodował cichy rysunek prostej linii. Teraz podgląd jawnie prezentuje fallback. Najbliższy wierzchołek grafu jest dobierany bez limitu odległości przyciągania; podgląd pokazuje łączną odległość snapowania. Gęstość drogowa i osobne ograniczenia autobus/tramwaj pozostają poza zakresem danych 0.4.
+- Routing gry jest lokalny i deterministyczny. Autobusy i tramwaje korzystają z ręcznie przygotowanego `roadGeometry`, kolej z `railGeometry`, metro łączy punkty bezpośrednio. Krawędzie lokalnego grafu są ważone odległością haversine i trasowane algorytmem Dijkstry.
+- OSRM, Valhalla, GraphHopper i Overpass nie są wymagane ani wywoływane. Kafelki mapy korzystają z OpenStreetMap i wymagają internetu; brak kafelków nie wyłącza lokalnej symulacji.
+- Test regresyjny Bronowice–Krowodrza Górka potwierdza bezpośrednią krawędź zapisanego korytarza drogowego (2,16 km). Dla 08:00 model szacuje około 7,8 min autobusem i 4,7 min tramwajem. Dokładnego zgłoszonego wariantu nie można było odtworzyć bez wskazania środka transportu i konkretnych punktów.
+- Graf jest uproszczonym zbiorem korytarzy, a nie pełną siecią ulic. Nie modeluje ograniczeń kierunkowych ani odrębnej infrastruktury tramwajowej. Najbliższy wierzchołek nie ma limitu odległości przyciągania; diagnostyka pokazuje odległość snapowania.
 
-## Zmiany wizualne
-
-- Panel zwiększa się do 462 px na szerokich desktopach, można go zwęzić lub zwinąć. Przy 761–1100 px szerokość jest automatycznie ograniczana do 48% viewportu. Poniżej 760 px panel działa jako wysuwany arkusz.
-- Istniejąca paleta pozostaje domyślną Atlas City. Pozostałe Atlas Network, Regional, Midnight i Studio są opisane, ale niewłączone.
-
-## Znane problemy i ryzyka
-
-- Brakuje przeglądarkowego testu e2e i wzrokowej akceptacji desktop/mobile z powodu blokady automatyzacji Edge w środowisku.
-- Dane drogowe są ręcznymi korytarzami, a nie pełnym grafem ulic Krakowa; routing nie uwzględnia ograniczeń kierunkowych ani odrębnej infrastruktury tramwajowej.
-- W przypadku punktów dalekich od wierzchołków obecny dobór najbliższego wierzchołka nie ma maksymalnego limitu snapowania. Wartość jest ujawniana w strukturze segmentu routingu do dalszego rozwoju diagnostyki.
-- Nowe tokeny nie zawierają pełnych wariantów pięciu motywów.
-
-## Instrukcja uruchomienia
+## Instrukcja lokalnego uruchomienia i testów
 
 ```bash
 npm ci
+npx playwright install chromium
 npm test
+npm run test:browser
 npm start
 ```
 
-Otwórz `http://localhost:3000`; kontrola serwera: `http://localhost:3000/health`. Szczegóły i granice produkcyjne: [URBANFLOW-OPERATIONS.md](URBANFLOW-OPERATIONS.md).
+Gra jest dostępna pod `http://localhost:3000`, a kontrola serwera pod `http://localhost:3000/health`. Playwright jest zależnością wyłącznie developerską; przeglądarka jest instalowana osobnym poleceniem.
+
+## Znane ograniczenia i ryzyka
+
+- Kafelki mapy i wykonanie pełnej kontroli wizualnej wymagają dostępu do OpenStreetMap; routing symulacji działa offline na lokalnych danych.
+- Uproszczony graf drogowy i nielimitowany snap wprowadzają niepewność dla tras daleko od przygotowanych korytarzy.
+- Uruchomienie workflow GitHub Actions dla Draft PR pozostaje do potwierdzenia po zakończeniu runów; wyniki lokalnych testów są powyżej.
+- Pozostałe motywy Atlas nie są częścią 0.5.0.
 
 ## Rekomendowany następny krok
 
-Otworzyć lokalną wersję 0.5.0 na desktopie i telefonie, zatwierdzić zmianę panelu, kartę miejsca oraz eksport JSON; następnie uruchomić testy CI i dopiero po akceptacji przygotować wdrożenie oparte na zatwierdzonym SHA.
+Przejrzeć Draft PR i ukończone kontrole GitHub Actions. Po akceptacji można wybrać konkretny zatwierdzony SHA do osobnego procesu wydania; ten raport nie autoryzuje wdrożenia.

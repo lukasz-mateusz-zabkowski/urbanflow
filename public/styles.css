@@ -27,3 +27,4 @@ button,input,select,textarea{font:inherit}select:focus-visible,textarea:focus-vi
 @media(max-width:760px){.playfield{display:block}.panel-resizer,.panel-collapse,.panel-expand-button{display:none!important}.build-panel{position:fixed}.panel-foot{align-items:flex-start;gap:8px}.panel-foot-actions{flex-wrap:wrap;justify-content:flex-end}.feedback-dialog{max-height:88dvh;padding:24px}}
 @media(prefers-reduced-motion:reduce){.playfield{transition:none}}
 #panelResizer{right:calc(var(--panel-width,462px) - 11px);left:auto}.playfield.panel-collapsed #panelResizer{display:none}.playfield.panel-collapsed .panel-expand-button{display:block}
+.node-name,.map-node>span{opacity:0;transition:opacity .12s ease}.node-icon:hover .map-node>span,.node-icon:focus .map-node>span,.map-node.selected>span{opacity:1}
