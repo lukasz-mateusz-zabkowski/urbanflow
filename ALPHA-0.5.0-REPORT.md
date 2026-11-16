@@ -1,11 +1,11 @@
 # URBANFLOW ALPHA 0.5.0: RAPORT WDROŻENIOWY
 
-## Status: GO do akceptacji
+## Status: GO do akceptacji lokalnej
 
 - **Gałąź:** `feature/alpha-0.5.0`
-- **Stan bazowy kontroli:** `b05db64` (`docs: record alpha review readiness`); zmiany kontroli QA są przygotowane do osobnego commita na tej gałęzi.
+- **Commit QA:** `25f8aae1d492db993967986a1d2f8c3537877877` (`fix: complete alpha 0.5 visual QA`).
 - **Baza:** `main` / `76654dc` (`Release UrbanFlow 0.4.0`).
-- **Pull Request:** przygotowany jako Draft po wypchnięciu zmian QA; link zostanie wpisany po utworzeniu przez GitHub.
+- **Pull Request:** nieutworzony. GitHub API zwróciło 403 `Resource not accessible by integration`; [otwórz formularz Draft PR do main](https://github.com/lukasz-mateusz-zabkowski/urbanflow/compare/main...feature/alpha-0.5.0?expand=1).
 - **Produkcja:** bez zmian; nic nie wdrożono, nie restartowano i nie modyfikowano danych.
 
 ## Wyniki końcowej kontroli
@@ -15,7 +15,7 @@
 - Testy E2E weryfikują zmianę szerokości panelu i zapis preferencji, zwijanie/rozwijanie, wywołanie `invalidateSize` Leaflet, dostęp do nazw punktów klawiaturą, dotykowe profile, arkusz mobilny, szczegóły routingu, eksport pobieranego JSON, poziome przepełnienie oraz błędy JavaScript.
 - Testy schematu zapisu 2 przechodzą: starszy zapis bez pól 0.3 jest ładowany i uzupełniany w pamięci, a zagnieżdżone uszkodzone dane są odrzucane bez przyjęcia ich do stanu gry.
 - W testowanych przebiegach nie wykryto poziomego przepełnienia widoku ani błędów konsoli/JavaScript.
-- GitHub Actions: workflow `.github/workflows/test.yml` uruchamia `npm test` na Node 18, 20 i 22. Integracja nie zwróciła wyników runów dla bazowego SHA `b05db64`; Draft PR uruchomi kontrole `pull_request`, których status należy odczytać po zakończeniu.
+- GitHub Actions: workflow `.github/workflows/test.yml` uruchamia `npm test` na Node 18, 20 i 22. Integracja nie zwróciła żadnych runów dla QA SHA `25f8aae`; nie ma zatem potwierdzonego wyniku CI GitHub.
 
 ## Dowody wizualne
 
@@ -68,7 +68,7 @@ Gra jest dostępna pod `http://localhost:3000`, a kontrola serwera pod `http://l
 
 - Kafelki mapy i wykonanie pełnej kontroli wizualnej wymagają dostępu do OpenStreetMap; routing symulacji działa offline na lokalnych danych.
 - Uproszczony graf drogowy i nielimitowany snap wprowadzają niepewność dla tras daleko od przygotowanych korytarzy.
-- Uruchomienie workflow GitHub Actions dla Draft PR pozostaje do potwierdzenia po zakończeniu runów; wyniki lokalnych testów są powyżej.
+- Workflow GitHub Actions nie został potwierdzony. Konektor blokuje utworzenie Draft PR (403); po ręcznym otwarciu PR sprawdzić macierz Node 18/20/22 przed merge.
 - Pozostałe motywy Atlas nie są częścią 0.5.0.
 
 ## Rekomendowany następny krok
