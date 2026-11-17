@@ -4,7 +4,7 @@ import { createSimulationCalendar, validateSimulationCalendar } from './simulati
 import { createMobilityState } from './mobility.js?v=11';
 
 export const SAVE_KEY = 'urbanflow.krakow.v2';
-export const SAVE_VERSION = 6;
+export const SAVE_VERSION = 7;
 const goals = new Set(['wieliczka', 'gateway', 'center', 'passengers', 'quality', 'buses', 'tram', 'huta', 'airport', 'profit', 'stress']);
 const finite = value => typeof value === 'number' && Number.isFinite(value);
 const nonnegative = value => finite(value) && value >= 0;
@@ -64,8 +64,15 @@ export function validateState(s, city) {
   if (!plain(s.preferences) || ['tutorialCollapsed', 'goalsCollapsed'].some(key => typeof s.preferences[key] !== 'boolean')) return false;
   if (s.analyticsMode !== undefined && !['off', 'demand', 'queues', 'load', 'profit', 'travel', 'access', 'flow', 'overload', 'unmet'].includes(s.analyticsMode)) return false;
   if (s.networkHistory !== undefined && (!Array.isArray(s.networkHistory) || s.networkHistory.length > 96 || s.networkHistory.some(item =>
-    !plain(item) || !['at', 'networkVersion', 'transported', 'averageWaitMinutes', 'availability', 'utilization', 'revenue', 'cost'].every(key => nonnegative(item[key])) || !integer(item.networkVersion) ||
-    !finite(item.balance) || item.availability > 1 || item.utilization > 1.5))) return false;
+    !plain(item) || !['at', 'networkVersion', 'transported', 'generated', 'abandoned', 'denied', 'averageWaitMinutes', 'coverage', 'utilization', 'revenue', 'cost'].every(key => nonnegative(item[key])) || !integer(item.networkVersion) ||
+    (item.tripAvailability !== null && (!nonnegative(item.tripAvailability) || item.tripAvailability > 1)) || !finite(item.balance) || item.coverage > 1 || item.utilization > 1.5))) return false;
+  const validHistory = (history, limit, weekly) => Array.isArray(history) && history.length <= limit && history.every(item => plain(item)
+    && integer(item.samples) && item.samples > 0 && (weekly ? integer(item.week) && item.week > 0 : typeof item.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(item.date))
+    && ['transported', 'generated', 'abandoned', 'denied', 'revenue', 'cost', 'waitMinutesWeighted', 'waitingPassengers', 'coverageSamples',
+      'utilizationSamples', 'accessReachable', 'accessOpportunities', 'averageWaitMinutes', 'coverage', 'utilization'].every(key => nonnegative(item[key]))
+    && (item.tripAvailability === null || nonnegative(item.tripAvailability) && item.tripAvailability <= 1)
+    && finite(item.balance) && item.coverage <= 1 && item.utilization <= 1.5 && item.accessReachable <= item.accessOpportunities);
+  if (!validHistory(s.networkDailyHistory, 84, false) || !validHistory(s.networkWeeklyHistory, 12, true)) return false;
   if (s.startScenarioId !== undefined && !city.points.some(point => point.startScenario === s.startScenarioId)) return false;
   if (s.fleet !== undefined) {
     if (!plain(s.fleet)) return false;
@@ -172,7 +179,7 @@ export function loadGame(storage, city) {
         ...data.state,
         calendar: data.state.calendar || createSimulationCalendar(),
         mobility: data.state.mobility || createMobilityState(),
-        networkHistory: [],
+        networkHistory: [], networkDailyHistory: [], networkWeeklyHistory: [],
         lines: data.state.lines.map(line => {
           const maxFrequency = TRANSPORT_TYPES[line.type]?.maxFrequency;
           const sourceTimetable = oldVersion === 2
@@ -189,11 +196,20 @@ export function loadGame(storage, city) {
       migrated = true;
     }
     if (data.version === 4 && plain(data.state)) {
-      data = { ...data, version: SAVE_VERSION, state: { ...data.state, mobility: createMobilityState(), networkHistory: [] } };
+      data = { ...data, version: SAVE_VERSION, state: { ...data.state, mobility: createMobilityState(), networkHistory: [], networkDailyHistory: [], networkWeeklyHistory: [] } };
       migrated = true;
     }
     if (data.version === 5 && plain(data.state)) {
-      data = { ...data, version: SAVE_VERSION, state: { ...data.state, networkHistory: [] } };
+      data = { ...data, version: SAVE_VERSION, state: { ...data.state, networkHistory: [], networkDailyHistory: [], networkWeeklyHistory: [] } };
+      migrated = true;
+    }
+    if (data.version === 6 && plain(data.state)) {
+      const networkHistory = (data.state.networkHistory || []).map(item => ({
+        at: item.at, networkVersion: item.networkVersion, transported: item.transported, generated: 0, abandoned: 0, denied: 0,
+        averageWaitMinutes: item.averageWaitMinutes, coverage: item.coverage ?? item.availability ?? 0,
+        tripAvailability: null, utilization: item.utilization, revenue: item.revenue, cost: item.cost, balance: item.balance
+      }));
+      data = { ...data, version: SAVE_VERSION, state: { ...data.state, networkHistory, networkDailyHistory: [], networkWeeklyHistory: [] } };
       migrated = true;
     }
     if (data.version !== SAVE_VERSION || !validateState(data.state, city)) throw new Error('format');

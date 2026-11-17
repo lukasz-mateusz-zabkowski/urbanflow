@@ -1,6 +1,6 @@
 import { pointDemandScore } from './demand.js?v=10';
 import { lineMetrics } from './transport.js?v=10';
-import { gameClock } from './simulation.js?v=10';
+import { gameClock, SIMULATION } from './simulation.js?v=10';
 
 export const FAILURE_LABELS = {
   noService: 'Brak kursow w tym czasie',
@@ -14,6 +14,30 @@ export const FAILURE_LABELS = {
 };
 
 export const NETWORK_HISTORY_LIMIT = 96;
+export const NETWORK_DAILY_HISTORY_LIMIT = 84;
+export const NETWORK_WEEKLY_HISTORY_LIMIT = 12;
+
+function createPeriod(clock) {
+  return { date: clock.date, week: clock.week, samples: 0, transported: 0, generated: 0, abandoned: 0, denied: 0,
+    revenue: 0, cost: 0, balance: 0, waitMinutesWeighted: 0, waitingPassengers: 0,
+    coverageSamples: 0, utilizationSamples: 0, accessReachable: 0, accessOpportunities: 0,
+    averageWaitMinutes: 0, coverage: 0, utilization: 0, tripAvailability: null };
+}
+
+function addPeriodSample(period, sample, waitingPassengers, accessibility) {
+  period.samples += 1;
+  for (const key of ['transported', 'generated', 'abandoned', 'denied', 'revenue', 'cost', 'balance']) period[key] += sample[key];
+  period.waitMinutesWeighted += sample.averageWaitMinutes * waitingPassengers;
+  period.waitingPassengers += waitingPassengers;
+  period.coverageSamples += sample.coverage;
+  period.utilizationSamples += sample.utilization;
+  period.accessReachable += accessibility.reachable;
+  period.accessOpportunities += accessibility.opportunities;
+  period.averageWaitMinutes = period.waitingPassengers ? period.waitMinutesWeighted / period.waitingPassengers : 0;
+  period.coverage = period.coverageSamples / period.samples;
+  period.utilization = period.utilizationSamples / period.samples;
+  period.tripAvailability = period.accessOpportunities ? period.accessReachable / period.accessOpportunities : null;
+}
 
 export function recordNetworkHistory(state, economy = {}) {
   const waiting = Object.values(state.passengers || {}).reduce((sum, item) => sum + Math.max(0, item.waiting || 0), 0);
@@ -23,16 +47,31 @@ export function recordNetworkHistory(state, economy = {}) {
   const segmentLoads = lines.flatMap(line => Object.values(line.stats?.segmentLoad || {}));
   const served = new Set(lines.flatMap(line => line.stops || []));
   const points = state.city?.points || [];
+  const accessibility = { opportunities: Math.max(0, economy.accessibility?.opportunities || 0),
+    reachable: Math.max(0, economy.accessibility?.reachable || 0), denied: Math.max(0, economy.accessibility?.denied || 0) };
   const window = {
     at: Math.max(0, state.elapsedMinutes || 0),
     networkVersion: Math.max(0, state.networkVersion || 0),
     transported: Math.max(0, economy.transported || 0),
+    generated: Math.max(0, economy.generated || 0), abandoned: Math.max(0, economy.abandoned || 0), denied: accessibility.denied,
     averageWaitMinutes: waiting ? currentWait / waiting : 0,
-    availability: points.length ? points.filter(point => served.has(point.id)).length / points.length : 0,
+    coverage: points.length ? points.filter(point => served.has(point.id)).length / points.length : 0,
+    tripAvailability: accessibility.opportunities ? accessibility.reachable / accessibility.opportunities : null,
     utilization: segmentLoads.length ? segmentLoads.reduce((sum, value) => sum + Math.max(0, value || 0), 0) / segmentLoads.length : 0,
     revenue: Math.max(0, economy.revenue || 0), cost: Math.max(0, economy.cost || 0), balance: (economy.revenue || 0) - (economy.cost || 0)
   };
   state.networkHistory = [...(state.networkHistory || []), window].slice(-NETWORK_HISTORY_LIMIT);
+  const clock = gameClock(Math.max(0, window.at - Math.max(0, economy.deltaMinutes ?? SIMULATION.minutesPerTick)), state.calendar);
+  const daily = state.networkDailyHistory || (state.networkDailyHistory = []);
+  let day = daily.at(-1);
+  if (!day || day.date !== clock.date) { day = createPeriod(clock); daily.push(day); }
+  addPeriodSample(day, window, waiting, accessibility);
+  if (daily.length > NETWORK_DAILY_HISTORY_LIMIT) daily.splice(0, daily.length - NETWORK_DAILY_HISTORY_LIMIT);
+  const weekly = state.networkWeeklyHistory || (state.networkWeeklyHistory = []);
+  let week = weekly.at(-1);
+  if (!week || week.week !== clock.week) { week = createPeriod(clock); week.date = undefined; weekly.push(week); }
+  addPeriodSample(week, window, waiting, accessibility);
+  if (weekly.length > NETWORK_WEEKLY_HISTORY_LIMIT) weekly.splice(0, weekly.length - NETWORK_WEEKLY_HISTORY_LIMIT);
   return window;
 }
 

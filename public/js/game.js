@@ -33,7 +33,7 @@ export class UrbanFlowGame {
       elapsedMinutes: 0, paused: false, speed: 1, selectedType: 'bus', selectedNodes: [], editingLineId: null,
       tutorialStep: 0, unlockedPointLevel: 0, airportUnlocked: false, unlocked: ['bus'],
       demandModifier: 1, stressDemandMultiplier: 1, nextEventAt: SIMULATION.eventIntervalMinutes, activeEventUntil: 0,
-      cityEvents: [], nextEventId: 1, analyticsMode: 'off', networkHistory: [], startScenarioId: this.startScenario.id,
+      cityEvents: [], nextEventId: 1, analyticsMode: 'off', networkHistory: [], networkDailyHistory: [], networkWeeklyHistory: [], startScenarioId: this.startScenario.id,
       campaign: createCampaign(), status: 'playing', lossReason: '', lowQualityMinutes: 0,
       preferences: { tutorialCollapsed: false, goalsCollapsed: true }, nextLineId: 1, networkVersion: 0
     };
@@ -45,6 +45,7 @@ export class UrbanFlowGame {
     this.state.subsidies ||= 0; this.state.passengerKm ||= 0; this.state.stressDemandMultiplier ||= 1;
     this.state.fleetPurchases ||= 0;
     this.state.cityEvents ||= []; this.state.nextEventId ||= 1; this.state.analyticsMode ||= 'off';
+    this.state.networkHistory ||= []; this.state.networkDailyHistory ||= []; this.state.networkWeeklyHistory ||= [];
     this.state.preferences = { tutorialCollapsed: false, goalsCollapsed: true, ...(this.state.preferences || {}) };
     this.state.campaign = { ...createCampaign(), ...(this.state.campaign || {}), stress: { ...createCampaign().stress, ...(this.state.campaign?.stress || {}) } };
     this.state.lines.forEach(line => {
@@ -290,13 +291,18 @@ export class UrbanFlowGame {
       s.elapsedMinutes += SIMULATION.minutesPerTick;
       s.cityEvents = (s.cityEvents || []).filter(event => event.endMinute > s.elapsedMinutes);
       const clock = gameClock(s.elapsedMinutes, s.calendar);
+      const accessibilityBefore = { ...s.mobility.accessibility };
       const result = passengerTick(s, this.visiblePoints(), clock.minuteOfDay, random,
         calendarTickContext(s.elapsedMinutes, SIMULATION.minutesPerTick, s.calendar));
       for (const k of ['generated', 'transported', 'abandoned']) total[k] += result[k] || 0;
       total.overcrowded = result.overcrowded;
       s.carried += result.transported; s.generated += result.generated; s.abandoned += result.abandoned || 0;
       const economy = applyEconomyTick(s, result.transported, SIMULATION.minutesPerTick);
-      recordNetworkHistory(s, { transported: result.transported, revenue: economy.fareRevenue + economy.subsidyRevenue, cost: economy.maintenance });
+      recordNetworkHistory(s, { transported: result.transported, generated: result.generated, abandoned: result.abandoned,
+        accessibility: { opportunities: s.mobility.accessibility.opportunities - accessibilityBefore.opportunities,
+          reachable: s.mobility.accessibility.reachable - accessibilityBefore.reachable,
+          denied: s.mobility.accessibility.denied - accessibilityBefore.denied },
+        revenue: economy.fareRevenue + economy.subsidyRevenue, cost: economy.maintenance, deltaMinutes: SIMULATION.minutesPerTick });
       const missingNetworkPressure = s.elapsedMinutes > 0 && !s.lines.length ? 100 : 0;
       const pressure = missingNetworkPressure + Math.min(60, totalWaiting(s.passengers) / 24) + Math.min(30, (result.abandoned || 0) * .4);
       s.satisfaction = Math.max(0, Math.min(100, s.satisfaction + (Math.max(5, 95 - pressure) - s.satisfaction) * .09));

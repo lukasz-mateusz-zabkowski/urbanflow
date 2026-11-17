@@ -195,8 +195,25 @@ test('schema 5 migrates to bounded network history without losing campaign, flee
   assert.deepEqual(loaded.state.mobility, oldState.mobility);
   assert.deepEqual(loaded.state.unlocked, oldState.unlocked);
   assert.deepEqual(loaded.state.networkHistory, []);
-  assert.equal(JSON.parse(storage.getItem(SAVE_KEY)).version, 6);
+  assert.equal(JSON.parse(storage.getItem(SAVE_KEY)).version, 7);
   const invalid = snapshot(loaded.state); invalid.networkHistory = Array(97).fill({ at: 0, networkVersion: 0, transported: 0, averageWaitMinutes: 0,
     availability: 0, utilization: 0, revenue: 0, cost: 0, balance: 0 });
   assert.equal(validateState(invalid, city), false);
+});
+
+test('schema 6 migrates observed coverage while preserving state and starting longer history empty', () => {
+  const game = activeGame();
+  game.state.networkHistory = [{ at: 6, networkVersion: 0, transported: 2, averageWaitMinutes: 3,
+    availability: 0.75, utilization: 0.4, revenue: 14, cost: 5, balance: 9 }];
+  const storage = memoryStorage();
+  storage.setItem(SAVE_KEY, JSON.stringify({ version: 6, cityId: city.id, state: snapshot(game.state) }));
+  const loaded = loadGame(storage, city);
+  assert.equal(loaded.error, null);
+  assert.equal(loaded.state.networkHistory[0].coverage, 0.75);
+  assert.equal(loaded.state.networkHistory[0].tripAvailability, null);
+  assert.deepEqual(loaded.state.networkDailyHistory, []);
+  assert.deepEqual(loaded.state.networkWeeklyHistory, []);
+  assert.equal(loaded.state.lines.length, game.state.lines.length);
+  assert.deepEqual(loaded.state.campaign, game.state.campaign);
+  assert.equal(JSON.parse(storage.getItem(SAVE_KEY)).version, 7);
 });

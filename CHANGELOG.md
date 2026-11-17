@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.0 — Alpha 6
+
+- Audited fare, subsidy, fleet, frequency, distance and time-weighted operating-cost rules; retained the existing rates because deterministic scenarios show both profitable and loss-making outcomes.
+- Corrected Atlas Network history so point coverage is not mislabeled as real trip availability; recorded completed passengers, denied trip opportunities and later passenger abandonments separately.
+- Added bounded daily and weekly analytics with weighted averages, correct midnight attribution, and four-week-plus retention.
+- Migrated save schemas 2–6 to schema 7 while preserving gameplay state and normalizing schema 6 point coverage.
+- Added eight deterministic economic scenarios and accelerated 1-day, 1-week, 4-week and 12-week stability/save-resume checks.
+- Expanded repeatable performance diagnostics with per-tick median/p95, heap delta, cohort counts and analytics overhead.
+- See `docs/URBANFLOW-NETWORK-INTELLIGENCE.md` and `ALPHA-1.0.0-REPORT.md` for metric definitions and verification.
+
 ## 0.9.0 — Alpha 5
 
 - Added Atlas Network map layers for measured segment occupancy, overload, queues, unmet trips, and line profitability.

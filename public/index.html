@@ -89,7 +89,7 @@
           <div class="analytics-modes" id="analyticsModes" role="group" aria-label="Warstwa analityczna mapy"></div>
           <div id="networkLegend" class="network-legend" aria-live="polite"></div>
           <div class="network-problems"><div class="diagnostic-title"><strong>Problemy sieci</strong><span id="networkProblemCount">obserwacje symulacji</span></div><ul id="networkProblems" class="diagnostic-list"></ul></div>
-          <div class="network-history"><div class="diagnostic-title"><strong>Ostatnie okno symulacji</strong><span id="networkComparisonNote">porównanie kolejnych ticków</span></div><div id="networkHistorySummary" class="network-history-summary"></div></div>
+          <div class="network-history"><div class="diagnostic-title"><strong>Wyniki sieci</strong><span id="networkComparisonNote">obserwacje, nie prognoza</span></div><div id="networkHistorySummary" class="network-history-summary"></div><div id="networkDailySummary" class="network-history-summary"></div><div id="networkWeeklySummary" class="network-history-summary"></div></div>
           <div class="diagnostic-grid">
             <div><div class="diagnostic-title"><strong>Najważniejsze relacje</strong><span id="latentDemandSummary">potencjalny popyt</span></div><ol id="topRelations" class="diagnostic-list"></ol></div>
             <div><div class="diagnostic-title"><strong>Dlaczego nie dotarli</strong><span id="failureTotal">brak rezygnacji</span></div><ul id="failureReasons" class="diagnostic-list"></ul></div>
@@ -180,7 +180,7 @@
       <p class="feedback-error" id="feedbackError" role="alert"></p>
       <button class="primary-button" type="submit">Przygotuj zgłoszenie</button>
     </form>
-    <section class="feedback-export" id="feedbackExport" hidden><label for="feedbackJson">Gotowe zgłoszenie JSON · wersja gry 0.9.0</label><textarea id="feedbackJson" rows="8" readonly></textarea><div class="feedback-actions"><button class="secondary-button" type="button" id="feedbackCopy">Kopiuj JSON</button><button class="secondary-button" type="button" id="feedbackDownload">Pobierz JSON</button></div><p role="status" id="feedbackStatus"></p></section>
+    <section class="feedback-export" id="feedbackExport" hidden><label for="feedbackJson">Gotowe zgłoszenie JSON · wersja gry 1.0.0</label><textarea id="feedbackJson" rows="8" readonly></textarea><div class="feedback-actions"><button class="secondary-button" type="button" id="feedbackCopy">Kopiuj JSON</button><button class="secondary-button" type="button" id="feedbackDownload">Pobierz JSON</button></div><p role="status" id="feedbackStatus"></p></section>
   </dialog>
   <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="false"></div>
   <script src="vendor/leaflet/leaflet.js?v=1.9.4"></script>
