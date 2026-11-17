@@ -24,3 +24,5 @@ The game is served at `http://localhost:3000`; `GET /health` reports the app ver
 ## Rollback record
 
 For every approved production release, record the full commit SHA, release artifact/image identifier, deployment time, and previous known-good SHA/artifact. Roll back by restoring the previous immutable artifact and verifying `/health`. Never use a moving branch name as a rollback target.
+
+For the 1.0.1-alpha candidate, use the gated [Raspberry Pi 5 deployment runbook](docs/URBANFLOW-1.0.1-RASPBERRY-PI-DEPLOYMENT.md). It requires host inventory first and does not assume Docker uses the Samsung T5.

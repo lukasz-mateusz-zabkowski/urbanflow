@@ -13,6 +13,14 @@ try { storage = window.localStorage; } catch { /* Private mode can refuse storag
 const city = getCity('krakow');
 applyAtlasView();
 await loadStops(city);
+let appVersion = 'unknown';
+try {
+  const healthResponse = await fetch('/health', { cache: 'no-store' });
+  if (healthResponse.ok) {
+    const health = await healthResponse.json();
+    if (typeof health.version === 'string') appVersion = health.version;
+  }
+} catch { /* A static preview may not provide the optional server health route. */ }
 const cityScreen = document.getElementById('cityScreen');
 const gameElement = document.getElementById('game');
 const initial = loadGame(storage, city);
@@ -74,7 +82,7 @@ function startCity(savedState = null) {
     document.getElementById('lineDetail').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   });
   gameMap.loadCity(city);
-  ui = new UI(game, gameMap, { onNewGame: async () => {
+  ui = new UI(game, gameMap, { appVersion, onNewGame: async () => {
     if (!await confirmAction('Rozpocząć nową grę? Obecny zapis kampanii Krakowa zostanie zastąpiony.', 'Rozpocznij nową grę')) return;
     const result = clearSave(storage);
     if (!result.ok && storage) { ui.toast(result.message, 'warn'); return; }

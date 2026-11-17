@@ -1,25 +1,38 @@
 import express from 'express';
-import path from 'node:path';
+import { readFileSync } from 'node:fs';
+import path, { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const app = express();
-const port = Number(process.env.PORT || 3000);
-const host = process.env.HOST || '0.0.0.0';
 const root = path.dirname(fileURLToPath(import.meta.url));
+const { version } = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
+const commitShaPattern = /^[a-f0-9]{7,40}$/i;
 
-app.disable('x-powered-by');
-app.get('/health', (_req, res) => res.json({ status: 'ok', app: 'UrbanFlow', version: '0.8.0' }));
-app.use('/vendor/leaflet', express.static(path.join(root, 'node_modules', 'leaflet', 'dist'), {
-  etag: true,
-  maxAge: '30d'
-}));
-app.use(express.static(path.join(root, 'public'), {
-  etag: true,
-  // Revalidate module files as well as HTML so a rollout never mixes game schemas.
-  maxAge: 0
-}));
-app.get('*path', (_req, res) => res.sendFile(path.join(root, 'public', 'index.html')));
+export function createApp({ commitSha = process.env.URBANFLOW_COMMIT_SHA } = {}) {
+  const app = express();
+  const health = { status: 'ok', app: 'UrbanFlow', version };
+  if (typeof commitSha === 'string' && commitShaPattern.test(commitSha)) {
+    health.commit = commitSha;
+  }
 
-app.listen(port, host, () => {
-  console.log(`UrbanFlow działa na http://${host}:${port}`);
-});
+  app.disable('x-powered-by');
+  app.get('/health', (_req, res) => res.json(health));
+  app.use('/vendor/leaflet', express.static(path.join(root, 'node_modules', 'leaflet', 'dist'), {
+    etag: true,
+    maxAge: '30d'
+  }));
+  app.use(express.static(path.join(root, 'public'), {
+    etag: true,
+    // Revalidate module files as well as HTML so a rollout never mixes game schemas.
+    maxAge: 0
+  }));
+  app.get('*path', (_req, res) => res.sendFile(path.join(root, 'public', 'index.html')));
+  return app;
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  const port = Number(process.env.PORT || 3000);
+  const host = process.env.HOST || '0.0.0.0';
+  createApp().listen(port, host, () => {
+    console.log(`UrbanFlow działa na http://${host}:${port}`);
+  });
+}

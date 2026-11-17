@@ -3,7 +3,8 @@ import { mkdir, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const artifactDir = process.env.UF_VISUAL_QA_DIR || join(tmpdir(), 'urbanflow-alpha-1.0.0-visual-qa');
+const artifactDir = process.env.UF_VISUAL_QA_DIR || join(tmpdir(), 'urbanflow-alpha-1.0.1-visual-qa');
+const appVersion = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')).version;
 const CI_TEST_TILE = '<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect width="256" height="256" fill="#e9eee4"/><path d="M-20 210 90 120 180 80 280 10M-20 40 100 110 270 200M40 -20 120 80 140 270" fill="none" stroke="#fffefa" stroke-width="12"/><path d="M-20 210 90 120 180 80 280 10M-20 40 100 110 270 200M40 -20 120 80 140 270" fill="none" stroke="#c8d3c4" stroke-width="2"/><path d="M10 30h30v20H10zM190 210h35v18h-35z" fill="#d5e2cc"/></svg>';
 const DESKTOPS = [
   { name: 'desktop-1920x1080', width: 1920, height: 1080 },
@@ -192,7 +193,8 @@ for (const viewport of MOBILES) {
     await page.locator('#feedbackForm button[type="submit"]').click();
     await expect(page.locator('#feedbackExport')).toBeVisible();
     const report = JSON.parse(await page.locator('#feedbackJson').inputValue());
-    expect(report.gameVersion).toBe('1.0.0');
+    expect(report.gameVersion).toBe(appVersion);
+    await expect(page.locator('#feedbackExport label[for="feedbackJson"]')).toContainText(appVersion);
     expect(report).not.toHaveProperty('diagnostics');
     const downloadPromise = page.waitForEvent('download');
     await page.locator('#feedbackDownload').click();
@@ -260,10 +262,10 @@ async function exerciseTimetable(page, viewport, mobile) {
   await expect(periodRow.locator('[data-period-metrics]')).toContainText('/h');
   await page.locator('[data-action="restore-timetable"]').click();
   await expect(page.locator('[data-timetable-row="morning-peak"] [data-frequency-value]')).toHaveText('2 kursów/h');
-  await page.locator('[data-timetable-copy-source]').selectOption('weekday');
-  await expect(page.locator('[data-timetable-copy-source]')).toHaveValue('weekday');
   await page.locator('[data-service-day]').selectOption('sunday');
   await expect(page.locator('[data-service-day]')).toHaveValue('sunday');
+  await page.locator('[data-timetable-copy-source]').selectOption('weekday');
+  await expect(page.locator('[data-timetable-copy-source]')).toHaveValue('weekday');
   await page.locator('[data-action="copy-timetable-day"]').click();
   await expect(page.locator('[data-timetable-row="morning-peak"] [data-frequency-value]')).toHaveText('2 kursów/h');
   await page.locator('[data-action="toggle-special-next"]').click();

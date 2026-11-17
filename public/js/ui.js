@@ -39,10 +39,11 @@ export function confirmAction(message, label = 'Potwierdź') {
 }
 
 export class UI {
-  constructor(game, map, { onNewGame = () => {} } = {}) {
+  constructor(game, map, { onNewGame = () => {}, appVersion = 'unknown' } = {}) {
     this.game = game;
     this.map = map;
     this.onNewGame = onNewGame;
+    this.appVersion = appVersion;
     this.selectedLineId = null;
     this.selectedServiceDayType = null;
     this.abortController = new AbortController();
@@ -304,7 +305,7 @@ export class UI {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const input = Object.fromEntries(form.entries()); input.includeDiagnostics = form.has('includeDiagnostics');
-    const result = createFeedbackReport(input, { city: this.game.city.id, lines: this.game.state.lines.length, elapsedMinutes: this.game.state.elapsedMinutes });
+    const result = createFeedbackReport(input, { city: this.game.city.id, lines: this.game.state.lines.length, elapsedMinutes: this.game.state.elapsedMinutes }, { version: this.appVersion });
     $('#feedbackError').textContent = result.ok ? '' : result.errors.join(' ');
     if (!result.ok) return;
     $('#feedbackJson').value = feedbackJson(result.report); $('#feedbackExport').hidden = false;

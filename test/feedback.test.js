@@ -1,11 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { createFeedbackReport, FEEDBACK_CATEGORIES, FEEDBACK_VERSION } from '../public/js/feedback.js';
+
+const packageVersion = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')).version;
 
 test('feedback report validates inputs, records the game version, and excludes diagnostics by default', () => {
   const report = createFeedbackReport({ category: FEEDBACK_CATEGORIES[0], description: 'Mapa zgubiła rozmiar.', rating: '4', testerId: '' }, null);
   assert.equal(report.ok, true);
-  assert.equal(report.report.gameVersion, FEEDBACK_VERSION);
+  assert.equal(FEEDBACK_VERSION, packageVersion);
+  assert.equal(report.report.gameVersion, packageVersion);
   assert.equal(report.report.diagnostics, undefined);
   assert.equal(report.report.testerId, undefined);
 });
