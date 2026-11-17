@@ -2,13 +2,13 @@
 
 ## Status
 
-**NO GO do czasu potwierdzenia GitHub Actions dla końcowego SHA.** Lokalny kod i testy są przygotowane; wynik CI zostanie uzupełniony po wypchnięciu gałęzi.
+**GO do akceptacji kandydata 1.1.0.** Testy lokalne i GitHub Actions zakończyły się sukcesem dla implementacji `ed213bd07f04f4de08b5f0b373928b5bd4cab584`.
 
 - Gałąź: `feature/alpha-1.1.0`
 - Baza: `main` / `f3345937a14e65546a7c15e5f0887ea19df23541` (`1.0.1-alpha`)
-- Commit implementacji: oczekuje na commit
-- Końcowy HEAD: oczekuje na commit raportu i wynik CI
-- PR: nie utworzono; gałąź zostanie wypchnięta do przeglądu
+- Commit implementacji: `ed213bd07f04f4de08b5f0b373928b5bd4cab584`
+- Końcowy SHA kodu zweryfikowany lokalnie i przez CI: `ed213bd07f04f4de08b5f0b373928b5bd4cab584`
+- PR: nie utworzono; gałąź jest wypchnięta i gotowa do przeglądu
 - Merge, tag, GitHub Release i wdrożenie: niewykonane
 
 ## Zaimplementowane mechaniki
@@ -52,14 +52,14 @@ Oddzielny benchmark tygodniowego przeliczenia 22 obszarów i 20 linii (60 próbe
 
 ## QA i bezpieczeństwo
 
-Końcowe lokalne wyniki zostaną uzupełnione po ostatnim przebiegu przed commitem.
+Końcowe lokalne wyniki dla wypchniętego SHA:
 
 - `npm ci`: zakończone powodzeniem; 0 podatności podczas instalacji.
 - `npm test`: 147/147.
 - `npm run test:browser`: 7/7, w tym desktop 1920×1080, 1366×768, 1280×720 oraz mobile 390×844 i 360×800.
 - `npm run audit:all`: 0 podatności.
 - `npm run audit:production`: 0 podatności.
-- GitHub Actions dla końcowego SHA: oczekuje na push.
+- GitHub Actions `Tests`, run [#30](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44129608936), push dla SHA `ed213bd07f04f4de08b5f0b373928b5bd4cab584`: **success**.
 
 Zrzuty z Playwright są zapisane poza repozytorium w:
 
@@ -77,4 +77,4 @@ Zawierają widoki całej gry, panel Atlas City Evolution, Atlas Network i dotych
 
 ## Rekomendacja
 
-Po potwierdzeniu zielonego GitHub Actions na końcowym SHA rekomendacja to **GO do akceptacji kandydata 1.1.0**. Nie scalać automatycznie z `main`; następny sprint powinien zebrać opinie testerów o tempie zmian i kalibracji parametrów obszarów.
+Rekomendacja: **GO do akceptacji kandydata 1.1.0**. Gałąź pozostaje niescalona; nie utworzono tagu ani wydania. Następny sprint powinien zebrać opinie testerów o tempie zmian i kalibracji parametrów obszarów.
