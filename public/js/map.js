@@ -292,15 +292,27 @@ export class GameMap {
       });
       return;
     }
-    if (mode === 'load') for (const line of gameState.lines) {
+    if (['load', 'flow', 'overload'].includes(mode)) for (const line of gameState.lines) {
       const pointsOnLine = line.stops.map(id => this.pointById.get(id)).filter(Boolean);
       pointsOnLine.slice(1).forEach((point, index) => {
         const load = Math.max(0, Math.min(1.5, line.stats?.segmentLoad?.[index] || 0));
-        const color = load >= 0.95 ? '#c43f38' : load >= 0.65 ? '#e48632' : '#43a36f';
+        const color = mode === 'overload' ? (load >= 0.95 ? '#c43f38' : '#aeb9ad')
+          : load >= 0.95 ? '#c43f38' : load >= 0.65 ? '#e48632' : '#43a36f';
         L.polyline([[pointsOnLine[index].lat, pointsOnLine[index].lng], [point.lat, point.lng]], {
-          renderer: this.routeRenderer, interactive: false, color, opacity: 0.88, weight: 10, lineCap: 'round'
+          renderer: this.routeRenderer, interactive: false, color, opacity: mode === 'overload' && load < 0.95 ? 0.24 : 0.88,
+          weight: mode === 'flow' ? 4 + Math.min(10, load * 8) : 10, lineCap: 'round'
         }).addTo(this.analysisLayer);
       });
+    }
+    if (mode === 'unmet') {
+      const failures = gameState.diagnostics?.failureByPoint || {};
+      const values = this.city.points.map(point => ({ point, value: Object.values(failures[point.id] || {}).reduce((sum, count) => sum + count, 0) }));
+      const maximum = Math.max(1, ...values.map(item => item.value));
+      for (const { point, value } of values) if (value > 0) {
+        const ratio = value / maximum;
+        L.circleMarker([point.lat, point.lng], { renderer: this.analysisRenderer, interactive: false, radius: 7 + ratio * 13,
+          color: '#a83232', fillColor: '#e25245', fillOpacity: 0.24 + ratio * 0.45, weight: 2 }).addTo(this.analysisLayer);
+      }
     }
   }
 

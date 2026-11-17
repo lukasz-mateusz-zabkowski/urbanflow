@@ -4,7 +4,7 @@ import { createSimulationCalendar, validateSimulationCalendar } from './simulati
 import { createMobilityState } from './mobility.js?v=11';
 
 export const SAVE_KEY = 'urbanflow.krakow.v2';
-export const SAVE_VERSION = 5;
+export const SAVE_VERSION = 6;
 const goals = new Set(['wieliczka', 'gateway', 'center', 'passengers', 'quality', 'buses', 'tram', 'huta', 'airport', 'profit', 'stress']);
 const finite = value => typeof value === 'number' && Number.isFinite(value);
 const nonnegative = value => finite(value) && value >= 0;
@@ -62,7 +62,10 @@ export function validateState(s, city) {
   if (!validStops(s.selectedNodes) || !transportType(s.selectedType) || !Array.isArray(s.unlocked) || !s.unlocked.includes('bus') || s.unlocked.some(t => !transportType(t)) || new Set(s.unlocked).size !== s.unlocked.length) return false;
   if (s.editingLineId !== null && !s.lines.some(l => l.id === s.editingLineId)) return false;
   if (!plain(s.preferences) || ['tutorialCollapsed', 'goalsCollapsed'].some(key => typeof s.preferences[key] !== 'boolean')) return false;
-  if (s.analyticsMode !== undefined && !['off', 'demand', 'queues', 'load', 'profit', 'travel', 'access'].includes(s.analyticsMode)) return false;
+  if (s.analyticsMode !== undefined && !['off', 'demand', 'queues', 'load', 'profit', 'travel', 'access', 'flow', 'overload', 'unmet'].includes(s.analyticsMode)) return false;
+  if (s.networkHistory !== undefined && (!Array.isArray(s.networkHistory) || s.networkHistory.length > 96 || s.networkHistory.some(item =>
+    !plain(item) || !['at', 'networkVersion', 'transported', 'averageWaitMinutes', 'availability', 'utilization', 'revenue', 'cost'].every(key => nonnegative(item[key])) || !integer(item.networkVersion) ||
+    !finite(item.balance) || item.availability > 1 || item.utilization > 1.5))) return false;
   if (s.startScenarioId !== undefined && !city.points.some(point => point.startScenario === s.startScenarioId)) return false;
   if (s.fleet !== undefined) {
     if (!plain(s.fleet)) return false;
@@ -169,6 +172,7 @@ export function loadGame(storage, city) {
         ...data.state,
         calendar: data.state.calendar || createSimulationCalendar(),
         mobility: data.state.mobility || createMobilityState(),
+        networkHistory: [],
         lines: data.state.lines.map(line => {
           const maxFrequency = TRANSPORT_TYPES[line.type]?.maxFrequency;
           const sourceTimetable = oldVersion === 2
@@ -185,7 +189,11 @@ export function loadGame(storage, city) {
       migrated = true;
     }
     if (data.version === 4 && plain(data.state)) {
-      data = { ...data, version: SAVE_VERSION, state: { ...data.state, mobility: createMobilityState() } };
+      data = { ...data, version: SAVE_VERSION, state: { ...data.state, mobility: createMobilityState(), networkHistory: [] } };
+      migrated = true;
+    }
+    if (data.version === 5 && plain(data.state)) {
+      data = { ...data, version: SAVE_VERSION, state: { ...data.state, networkHistory: [] } };
       migrated = true;
     }
     if (data.version !== SAVE_VERSION || !validateState(data.state, city)) throw new Error('format');

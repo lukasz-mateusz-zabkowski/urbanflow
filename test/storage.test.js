@@ -170,7 +170,7 @@ test('validator rejects nonfinite, cyclic and deeply nested data without travers
   assert.equal(validateState(state, city), false);
 });
 
-test('schema 5 mobility templates and journey counters are validated as untrusted save data', () => {
+test('schema 6 mobility templates and journey counters are validated as untrusted save data', () => {
   const game = activeGame();
   assert.ok(game.state.mobility.patterns.length > 0);
   const invalidMinute = snapshot(game.state);
@@ -183,4 +183,20 @@ test('schema 5 mobility templates and journey counters are validated as untruste
   invalidJourney.cohorts = [{ origin: 'wieliczka', destination: 'centrum', currentStop: 'wieliczka', count: 1,
     phase: 'waiting', waitMinutes: 0, totalWaitMinutes: 0, rideMinutes: -1, route: null, legIndex: 0, completedLegs: [] }];
   assert.equal(validateState(invalidJourney, city), false);
+});
+
+test('schema 5 migrates to bounded network history without losing campaign, fleet, lines or mobility', () => {
+  const game = activeGame(); const oldState = snapshot(game.state); delete oldState.networkHistory;
+  const storage = memoryStorage();
+  storage.setItem(SAVE_KEY, JSON.stringify({ version: 5, cityId: city.id, state: oldState }));
+  const loaded = loadGame(storage, city);
+  assert.equal(loaded.error, null);
+  assert.equal(loaded.state.lines.length, oldState.lines.length);
+  assert.deepEqual(loaded.state.mobility, oldState.mobility);
+  assert.deepEqual(loaded.state.unlocked, oldState.unlocked);
+  assert.deepEqual(loaded.state.networkHistory, []);
+  assert.equal(JSON.parse(storage.getItem(SAVE_KEY)).version, 6);
+  const invalid = snapshot(loaded.state); invalid.networkHistory = Array(97).fill({ at: 0, networkVersion: 0, transported: 0, averageWaitMinutes: 0,
+    availability: 0, utilization: 0, revenue: 0, cost: 0, balance: 0 });
+  assert.equal(validateState(invalid, city), false);
 });

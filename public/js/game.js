@@ -1,4 +1,5 @@
 import { applyEconomyTick } from './economy.js?v=10';
+import { recordNetworkHistory } from './analytics.js?v=12';
 import { airportUnlocked, haversineKm, lineCost, lineMetrics, unlockedTypes, TRANSPORT_TYPES } from './transport.js?v=10';
 import { createLineStats, createPassengerState, passengerTick, totalWaiting } from './passengers.js?v=11';
 import { SIMULATION, calendarTickContext, createSimulationCalendar, gameClock, setSpecialDay } from './simulation.js?v=10';
@@ -32,7 +33,7 @@ export class UrbanFlowGame {
       elapsedMinutes: 0, paused: false, speed: 1, selectedType: 'bus', selectedNodes: [], editingLineId: null,
       tutorialStep: 0, unlockedPointLevel: 0, airportUnlocked: false, unlocked: ['bus'],
       demandModifier: 1, stressDemandMultiplier: 1, nextEventAt: SIMULATION.eventIntervalMinutes, activeEventUntil: 0,
-      cityEvents: [], nextEventId: 1, analyticsMode: 'off', startScenarioId: this.startScenario.id,
+      cityEvents: [], nextEventId: 1, analyticsMode: 'off', networkHistory: [], startScenarioId: this.startScenario.id,
       campaign: createCampaign(), status: 'playing', lossReason: '', lowQualityMinutes: 0,
       preferences: { tutorialCollapsed: false, goalsCollapsed: true }, nextLineId: 1, networkVersion: 0
     };
@@ -278,7 +279,7 @@ export class UrbanFlowGame {
   setSpeed(value) { if ([1, 2, 4].includes(value)) { this.state.speed = value; this.changed(); } }
   setPreference(key, value) { if (['tutorialCollapsed', 'goalsCollapsed'].includes(key)) { this.state.preferences[key] = Boolean(value); this.changed(); } }
   setAnalyticsMode(mode) {
-    if (!['off', 'demand', 'queues', 'load', 'profit', 'travel', 'access'].includes(mode)) return fail('Nieznany widok diagnostyczny.');
+    if (!['off', 'demand', 'queues', 'load', 'profit', 'travel', 'access', 'flow', 'overload', 'unmet'].includes(mode)) return fail('Nieznany widok diagnostyczny.');
     this.state.analyticsMode = mode; this.changed(); return { ok: true };
   }
   tick(random = Math.random) {
@@ -294,7 +295,8 @@ export class UrbanFlowGame {
       for (const k of ['generated', 'transported', 'abandoned']) total[k] += result[k] || 0;
       total.overcrowded = result.overcrowded;
       s.carried += result.transported; s.generated += result.generated; s.abandoned += result.abandoned || 0;
-      applyEconomyTick(s, result.transported, SIMULATION.minutesPerTick);
+      const economy = applyEconomyTick(s, result.transported, SIMULATION.minutesPerTick);
+      recordNetworkHistory(s, { transported: result.transported, revenue: economy.fareRevenue + economy.subsidyRevenue, cost: economy.maintenance });
       const missingNetworkPressure = s.elapsedMinutes > 0 && !s.lines.length ? 100 : 0;
       const pressure = missingNetworkPressure + Math.min(60, totalWaiting(s.passengers) / 24) + Math.min(30, (result.abandoned || 0) * .4);
       s.satisfaction = Math.max(0, Math.min(100, s.satisfaction + (Math.max(5, 95 - pressure) - s.satisfaction) * .09));

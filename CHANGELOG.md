@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.0 — Alpha 5
+
+- Added Atlas Network map layers for measured segment occupancy, overload, queues, unmet trips, and line profitability.
+- Added actionable network problem diagnostics and bounded 96-window aggregate history with descriptive adjacent-tick comparisons.
+- Migrated saves from schemas 2–5 to schema 6 while preserving existing game progress.
+- Added repeated warmed performance measurements and browser coverage at desktop and mobile viewports.
+- See `docs/URBANFLOW-NETWORK-INTELLIGENCE.md` and `ALPHA-0.9.0-REPORT.md` for data definitions and verification.
+
 ## 0.8.0 — Alpha 4
 
 - Added deterministic aggregate commute, school, shopping, recreation, and occasional travel patterns derived from place profiles and demand.

@@ -24,7 +24,7 @@ Network accessibility is reported separately as reachable scheduled demand divid
 
 ## Persistence and compatibility
 
-Save schema 5 persists aggregate pattern definitions and completed/accessibility counters. Waiting and riding cohorts persist their journey, ride, wait, crowding, and transfer state for deterministic continuation. Schemas 2 and 3 still migrate their line timetables and campaign fields as before, then initialize mobility state. Schema 4 receives an empty mobility history and retains all other data unchanged. Patterns for currently visible places are populated by the game after loading, avoiding storing static city data in saves.
+Save schema 5 persisted aggregate pattern definitions and completed/accessibility counters. Schema 6 adds a bounded network analytics history. Waiting and riding cohorts persist their journey, ride, wait, crowding, and transfer state for deterministic continuation. Schemas 2 and 3 still migrate their line timetables and campaign fields as before, then initialize mobility state. Schema 4 initializes mobility state; schema 5 receives an empty network history. Older saves retain lines, schedules, campaign progress, finances, fleet and passenger cohorts. Patterns for currently visible places are populated by the game after loading, avoiding storing static city data in saves.
 
 Input validation bounds pattern count by the existing city's place count, rejects invalid IDs/day types/minutes/counts, rejects unsafe nested keys, and retains the existing 2 MB recovery behavior.
 
