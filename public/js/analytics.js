@@ -42,6 +42,7 @@ export function networkProblems(state, points = []) {
   const clock = gameClock(state.elapsedMinutes || 0, state.calendar);
   for (const line of state.lines || []) {
     const stats = line.stats || {};
+    const observedMinutes = (stats.history || []).reduce((sum, item) => sum + Math.max(0, item.minutes || 0), 0);
     const metrics = lineMetrics(line, state.city, clock.minuteOfDay, { events: state.cityEvents || [], elapsedMinutes: state.elapsedMinutes || 0, serviceDayType: clock.dayType });
     if (metrics.requiredVehicles > metrics.vehicles) problems.push({ kind: 'fleet', label: line.name || `Linia ${line.id}`,
       cause: 'Flota nie wystarcza do realizacji zaplanowanej częstotliwości', observed: `${metrics.vehicles} pojazdów; potrzeba ${metrics.requiredVehicles}`,
@@ -49,7 +50,7 @@ export function networkProblems(state, points = []) {
     if ((stats.load || 0) >= 0.95 || (stats.waiting || 0) > 48) problems.push({ kind: 'overload', label: line.name || `Linia ${line.id}`,
       cause: 'Wysokie obciążenie lub oczekująca kolejka', observed: `${Math.round((stats.load || 0) * 100)}% zajętości; ${Math.round(stats.waiting || 0)} oczekuje`,
       impact: 'Pasażerowie mogą czekać dłużej lub nie zmieścić się w pojeździe.', actions: 'Rozważ częstsze kursy lub większą liczbę pojazdów.' });
-    if ((stats.balancePerHour || 0) < -100 && (stats.load || 0) < 0.25) problems.push({ kind: 'lowUse', label: line.name || `Linia ${line.id}`,
+    if (observedMinutes >= 30 && (stats.balancePerHour || 0) < -100 && (stats.load || 0) < 0.25) problems.push({ kind: 'lowUse', label: line.name || `Linia ${line.id}`,
       cause: 'Wysokie koszty przy niskim wykorzystaniu', observed: `${Math.round(stats.load * 100)}% zajętości; ${Math.round(stats.balancePerHour)} zł/h`,
       impact: 'Linia obciąża budżet przy małej liczbie przewożonych pasażerów.', actions: 'Sprawdź trasę, rozkład i zapotrzebowanie na obsługiwanych przystankach.' });
     Object.entries(stats.segmentLoad || {}).forEach(([index, load]) => { if (load >= 0.95) problems.push({ kind: 'segment', label: `${line.name || `Linia ${line.id}`} · odcinek ${Number(index) + 1}`,

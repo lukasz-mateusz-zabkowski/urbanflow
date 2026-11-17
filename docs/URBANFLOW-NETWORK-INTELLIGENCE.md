@@ -14,7 +14,7 @@ Potential demand remains separately labeled as an estimate. Segment occupancy is
 
 ## Problems panel
 
-The panel reports measured overload/waiting, long point queues, accumulated failed starts, and low use combined with negative rolling balance. Each item includes an observed value, passenger impact, and player actions. It does not make service changes automatically. A missing or zero statistic is not promoted to a measured incident.
+The panel reports measured overload/waiting, long point queues, accumulated failed starts, and low use combined with negative rolling balance after at least 30 observed minutes of line operation. Each item includes an observed value, passenger impact, and player actions. It does not make service changes automatically. A missing or zero statistic is not promoted to a measured incident.
 
 ## History and comparisons
 

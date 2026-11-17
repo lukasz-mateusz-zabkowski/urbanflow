@@ -25,7 +25,8 @@ test('network diagnostics expose observed overload, queues, low use and unmet de
   assert.ok(problems.some(item => item.kind === 'queue' && item.label === 'Rynek'));
   assert.ok(problems.some(item => item.kind === 'connection' && item.observed.includes('3')));
   assert.ok(problems.every(item => item.cause && item.impact && item.actions && item.observed));
-  const underused = networkProblems({ lines: [{ id: 'L2', stats: { load: 0.1, waiting: 0, balancePerHour: -200 }, stops: [] }] });
+  const underused = networkProblems({ lines: [{ id: 'L2', stats: { load: 0.1, waiting: 0, balancePerHour: -200,
+    history: Array(5).fill({ minutes: 6 }) }, stops: [] }] });
   assert.equal(underused[0].kind, 'lowUse');
   const fleetAndTransfer = networkProblems({ lines: [{ id: 'L3', type: 'bus', frequency: 8, vehicles: 1, distanceKm: 6, stops: ['a', 'b'], stats: {} }],
     diagnostics: { failures: { inefficientTransfer: 2 } } });
