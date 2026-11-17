@@ -2,20 +2,20 @@
 
 ## Status
 
-**GO do akceptacji kandydata 1.1.0.** Testy lokalne i GitHub Actions zakończyły się sukcesem dla implementacji `ed213bd07f04f4de08b5f0b373928b5bd4cab584`.
+**GO do akceptacji kandydata 1.1.0.** Końcowa poprawka dostępności nocnej oraz testy lokalne i GitHub Actions zakończyły się sukcesem dla kodu `8bff4cbe0a3e5de140b1877f2009b40df594910f`.
 
 - Gałąź: `feature/alpha-1.1.0`
 - Baza: `main` / `f3345937a14e65546a7c15e5f0887ea19df23541` (`1.0.1-alpha`)
-- Commit implementacji: `ed213bd07f04f4de08b5f0b373928b5bd4cab584`
-- Końcowy SHA kodu zweryfikowany lokalnie i przez CI: `ed213bd07f04f4de08b5f0b373928b5bd4cab584`
-- PR: nie utworzono; gałąź jest wypchnięta i gotowa do przeglądu
+- Commit implementacji: `8bff4cbe0a3e5de140b1877f2009b40df594910f`
+- Końcowy SHA kodu zweryfikowany lokalnie i przez CI: `8bff4cbe0a3e5de140b1877f2009b40df594910f`
+- PR: próba utworzenia przez GitHub API zakończyła się 403; ręczne UI nie było dostępne
 - Merge, tag, GitHub Release i wdrożenie: niewykonane
 
 ## Zaimplementowane mechaniki
 
 - Dodano deterministyczne, tygodniowe profile 22 istotnych obszarów miasta zbudowane na istniejących punktach i profilach miejsca. Przystanki lokalne nie tworzą osobnych dzielnic ani obiektów mieszkańców.
 - Wartości mieszkańców i miejsc pracy są jawnie opisane jako parametry symulacyjne, a nie rzeczywiste statystyki Krakowa. Każdy obszar ma bazę, ograniczenia wzrostu i pojemność.
-- Dostępność jest wyliczana z grafu istniejących linii. Rozkłady próbkowane są dla kilku pór oraz dni roboczych, sobót i niedziel; brak kursowania usuwa dostępność. Kolejki/oczekiwanie i wykorzystanie pojemności zmniejszają ocenę transportową i atrakcyjność.
+- Dostępność jest wyliczana z grafu istniejących linii. Rozkłady próbkowane są dla kilku pór, w tym nocy, oraz dni roboczych, sobót i niedziel; brak kursowania usuwa dostępność. Kolejki/oczekiwanie i wykorzystanie pojemności zmniejszają ocenę transportową i atrakcyjność.
 - Atrakcyjność jest wygładzana co tydzień. Zmiana ludności i miejsc pracy jest ograniczona do ±0,45% tygodniowo, a poziomy obszarów do 75–120% baz. Mnożnik popytu mieszkańców jest ograniczony do 0,8–1,25.
 - Zmiana populacji wpływa na liczbę pasażerów w istniejących regularnych wzorcach i na prognozę popytu. Symulacja nadal wykorzystuje kohorty i istniejący silnik trasowania.
 - Dodano warstwę Atlas City Evolution, legendę, wybór obszaru, wartości aktualne i tygodniowe zmiany oraz listę wynikających z danych obserwacji transportowych.
@@ -55,11 +55,13 @@ Oddzielny benchmark tygodniowego przeliczenia 22 obszarów i 20 linii (60 próbe
 Końcowe lokalne wyniki dla wypchniętego SHA:
 
 - `npm ci`: zakończone powodzeniem; 0 podatności podczas instalacji.
-- `npm test`: 147/147.
+- `npm test`: 148/148.
 - `npm run test:browser`: 7/7, w tym desktop 1920×1080, 1366×768, 1280×720 oraz mobile 390×844 i 360×800.
 - `npm run audit:all`: 0 podatności.
 - `npm run audit:production`: 0 podatności.
-- GitHub Actions `Tests`, run [#30](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44129608936), push dla SHA `ed213bd07f04f4de08b5f0b373928b5bd4cab584`: **success**.
+- Test regresyjny najpierw odtworzył brak dostępności przy kursowaniu wyłącznie 23:00–06:00; po dodaniu próbek 01:00 i 23:30 test przechodzi.
+- Raport tygodnia 2 wskazuje wynik finansowy zamkniętego tygodnia 1 (`networkWeek: 1`).
+- GitHub Actions `Tests`, run [#32](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44143807257), push dla SHA `8bff4cbe0a3e5de140b1877f2009b40df594910f`: **success**.
 
 Zrzuty z Playwright są zapisane poza repozytorium w:
 
