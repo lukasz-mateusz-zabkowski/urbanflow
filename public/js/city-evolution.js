@@ -48,7 +48,7 @@ function networkAccess(state, city, zones) {
   const graph = new Map();
   const serviceShares = new Map();
   const samples = [
-    ...['weekday', 'weekday', 'weekday', 'saturday', 'sunday'].flatMap(dayType => [450, 720, 990, 1200].map(minuteOfDay => ({ dayType, minuteOfDay })))
+    ...['weekday', 'weekday', 'weekday', 'saturday', 'sunday'].flatMap(dayType => [60, 450, 720, 990, 1200, 1410].map(minuteOfDay => ({ dayType, minuteOfDay })))
   ];
   for (const line of state.lines || []) {
     const modelLine = { ...line, type: line.type || 'bus', frequency: line.frequency || 3, vehicles: line.vehicles || 1 };

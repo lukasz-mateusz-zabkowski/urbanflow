@@ -39,6 +39,7 @@ test('weekly evolution rewards connected residential areas, grows gradually and 
   assert.equal(report.week, 2);
   assert.equal(state.cityEvolution.weeklyReports.length, 1);
   assert.equal(state.cityEvolution.weeklyReports[0].networkBalance, 100);
+  assert.equal(state.cityEvolution.weeklyReports[0].networkWeek, 1, 'week 2 report summarizes the completed week 1 network');
 });
 
 test('an isolated district receives no invented access and its demand effect remains bounded', () => {
@@ -152,4 +153,17 @@ test('district accessibility follows actual weekly service, including a timetabl
   const stopped = makeState([{ ...line, timetable: noService }]); stopped.cityEvolution = createCityEvolutionState(city); evolveCityWeek(stopped, city);
   assert.ok(active.cityEvolution.districts.bronowice.transportAccess > 0);
   assert.equal(stopped.cityEvolution.districts.bronowice.transportAccess, 0);
+});
+
+test('night-only timetables count as real district access', () => {
+  let nightOnly = createWeeklyTimetable('balanced', 8);
+  for (const dayType of SERVICE_DAY_TYPES) for (const period of DEFAULT_SERVICE_PERIODS) {
+    nightOnly = setDailyFrequency(nightOnly, dayType, period.id, period.id === 'night' ? 2 : 0, 8);
+  }
+  const line = { id: 'line-1', type: 'bus', frequency: 4, vehicles: 2, timetable: nightOnly,
+    stops: ['bronowice', 'centrum', 'dworzec'], stats: { load: 0.3, avgWaitMinutes: 8 } };
+  const state = makeState([line]);
+  state.cityEvolution = createCityEvolutionState(city);
+  evolveCityWeek(state, city);
+  assert.ok(state.cityEvolution.districts.bronowice.transportAccess > 0);
 });
