@@ -195,7 +195,7 @@ test('schema 5 migrates to bounded network history without losing campaign, flee
   assert.deepEqual(loaded.state.mobility, oldState.mobility);
   assert.deepEqual(loaded.state.unlocked, oldState.unlocked);
   assert.deepEqual(loaded.state.networkHistory, []);
-  assert.equal(JSON.parse(storage.getItem(SAVE_KEY)).version, 7);
+  assert.equal(JSON.parse(storage.getItem(SAVE_KEY)).version, 8);
   const invalid = snapshot(loaded.state); invalid.networkHistory = Array(97).fill({ at: 0, networkVersion: 0, transported: 0, averageWaitMinutes: 0,
     availability: 0, utilization: 0, revenue: 0, cost: 0, balance: 0 });
   assert.equal(validateState(invalid, city), false);
@@ -215,5 +215,28 @@ test('schema 6 migrates observed coverage while preserving state and starting lo
   assert.deepEqual(loaded.state.networkWeeklyHistory, []);
   assert.equal(loaded.state.lines.length, game.state.lines.length);
   assert.deepEqual(loaded.state.campaign, game.state.campaign);
-  assert.equal(JSON.parse(storage.getItem(SAVE_KEY)).version, 7);
+  assert.equal(JSON.parse(storage.getItem(SAVE_KEY)).version, 8);
+});
+
+test('schema 7 migrates deterministic city profiles without losing campaign, budget, lines, fleet or mobility', () => {
+  const game = activeGame();
+  const oldState = snapshot(game.state);
+  delete oldState.cityEvolution;
+  oldState.budget = 123456;
+  const storage = memoryStorage();
+  storage.setItem(SAVE_KEY, JSON.stringify({ version: 7, cityId: city.id, state: oldState }));
+  const first = loadGame(storage, city);
+  assert.equal(first.error, null);
+  assert.equal(first.state.budget, 123456);
+  assert.equal(first.state.lines.length, oldState.lines.length);
+  assert.deepEqual(first.state.fleet, oldState.fleet);
+  assert.deepEqual(first.state.mobility, oldState.mobility);
+  assert.deepEqual(first.state.campaign, oldState.campaign);
+  assert.equal(first.state.cityEvolution.source, 'simulation-parameters');
+  assert.equal(JSON.parse(storage.getItem(SAVE_KEY)).version, 8);
+  const district = first.state.cityEvolution.districts.ruczaj;
+  assert.ok(district && district.residents === district.base.residents);
+  const saved = snapshot(first.state);
+  saved.cityEvolution.districts.ruczaj.residents = -1;
+  assert.equal(validateState(saved, city), false);
 });

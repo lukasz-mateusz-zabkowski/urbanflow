@@ -12,6 +12,7 @@ import { clampPanelWidth, DEFAULT_PANEL_WIDTH, loadPanelWidth, savePanelWidth } 
 import { createFeedbackReport, feedbackJson } from './feedback.js?v=11';
 import { TIMETABLE_PROFILES, SERVICE_DAY_TYPES, SERVICE_DAY_LABELS, formatTimetableTime, periodAt, timetableForDay } from './timetable.js?v=10';
 import { mobilitySnapshot } from './mobility.js?v=11';
+import { cityEvolutionSnapshot } from './city-evolution.js?v=1';
 
 const $ = selector => document.querySelector(selector);
 const formatNumber = value => new Intl.NumberFormat('pl-PL').format(Math.round(Number(value) || 0));
@@ -52,6 +53,7 @@ export class UI {
     this.summaryShown = false;
     this.detailLineId = null;
     this.selectedPlaceId = null;
+    this.selectedEvolutionDistrict = null;
     this.panelStorage = null;
     try { this.panelStorage = window.localStorage; } catch { /* Panel width is an optional preference. */ }
     this.setupPanelWidth();
@@ -184,6 +186,9 @@ export class UI {
       } else if (event.target.matches('[data-timetable-copy-source]')) {
         const button = $('#lineDetail [data-action="copy-timetable-day"]');
         button.disabled = event.target.value === this.selectedServiceDayType || this.game.state.status !== 'playing';
+      } else if (event.target.matches('#cityEvolutionDistrict')) {
+        this.selectedEvolutionDistrict = event.target.value;
+        this.renderCityEvolutionPanel(this.game.visiblePoints());
       }
     }, { signal });
     document.addEventListener('input', event => {
@@ -299,6 +304,7 @@ export class UI {
   }
   openFeedback() {
     $('#feedbackForm').reset(); $('#feedbackError').textContent = ''; $('#feedbackExport').hidden = true;
+    this.setText('feedbackExportLabel', `Gotowe zgłoszenie JSON · wersja gry ${this.appVersion}`);
     $('#feedbackDialog').showModal();
   }
   prepareFeedback(event) {
@@ -364,6 +370,7 @@ export class UI {
     this.renderCampaign();
     this.renderTutorial(unlocked);
     this.renderAnalytics(clock.minuteOfDay);
+    this.renderCityEvolutionPanel(this.game.visiblePoints());
     this.renderDraft(unlocked, counts);
     this.renderNetwork();
     this.renderFleet();
@@ -472,10 +479,10 @@ export class UI {
     this.setHtml('mobilityRelations', mobility.busiestRelations.length ? mobility.busiestRelations.map(item => `<li><span>${escapeHtml(item.label)}</span><b>${formatNumber(item.passengers || item.generated)}</b></li>`).join('') : '<li class="empty-mini">Relacje pojawią się po rozpoczęciu podróży.</li>');
     const mobilityFailures = mobility.failures.filter(item => item.passengers > 0);
     this.setHtml('mobilityFailures', mobilityFailures.length ? mobilityFailures.map(item => `<li><span>${escapeHtml(FAILURE_LABELS[item.reason] || item.reason)}</span><b>${formatNumber(item.passengers)}</b></li>`).join('') : '<li class="empty-mini">Brak zarejestrowanych niepowodzeń.</li>');
-    const modes = [['off', 'Zwykła'], ['demand', 'Popyt'], ['flow', 'Przewozy'], ['overload', 'Przeciążenia'], ['queues', 'Kolejki'], ['unmet', 'Braki popytu'], ['profit', 'Rentowność'], ['load', 'Odcinki'], ['travel', 'Czas'], ['access', 'Dostępność']];
-    const modeTitles = { off: 'Wyłącz warstwę analityczną', demand: 'Potencjał szacunkowy i wygenerowane podróże', flow: 'Zaobserwowane obciążenie segmentów', overload: 'Podświetl odcinki o wysokim obciążeniu', queues: 'Liczba oczekujących na punktach', unmet: 'Zgromadzone niezrealizowane próby', profit: 'Obserwowany bilans linii', load: 'Wykorzystanie pojemności odcinków', travel: 'Czas oczekiwania', access: 'Dostępność punktów' };
+    const modes = [['off', 'Zwykła'], ['demand', 'Popyt'], ['flow', 'Przewozy'], ['overload', 'Przeciążenia'], ['queues', 'Kolejki'], ['unmet', 'Braki popytu'], ['profit', 'Rentowność'], ['load', 'Odcinki'], ['travel', 'Czas'], ['access', 'Dostępność'], ['cityEvolution', 'Rozwój miasta']];
+    const modeTitles = { off: 'Wyłącz warstwę analityczną', demand: 'Potencjał szacunkowy i wygenerowane podróże', flow: 'Zaobserwowane obciążenie segmentów', overload: 'Podświetl odcinki o wysokim obciążeniu', queues: 'Liczba oczekujących na punktach', unmet: 'Zgromadzone niezrealizowane próby', profit: 'Obserwowany bilans linii', load: 'Wykorzystanie pojemności odcinków', travel: 'Czas oczekiwania', access: 'Dostępność punktów', cityEvolution: 'Modelowane zmiany obszarów miasta i ich dostępności' };
     this.setHtml('analyticsModes', modes.map(([id, label]) => `<button type="button" data-action="analytics-mode" data-mode="${id}" class="${state.analyticsMode === id ? 'active' : ''}" aria-pressed="${state.analyticsMode === id}" title="${modeTitles[id]}">${label}</button>`).join(''));
-    const legends = { demand: 'Popyt potencjalny jest estymacją modelu; obserwowane wygenerowane podróże pochodzą z symulacji.', flow: 'Grubość pokazuje zaobserwowane obciążenie pojazdów; zielony <65%, pomarańczowy 65–94%, czerwony ≥95%. To wykorzystanie miejsc, nie licznik przejazdów na segmencie.', overload: 'Czerwony odcinek osiągnął co najmniej 95% zaobserwowanego obciążenia.', queues: 'Rozmiar punktu pokazuje liczbę pasażerów aktualnie oczekujących.', unmet: 'Punkty pokazują zgromadzone, zaobserwowane niezrealizowane próby podróży.', profit: 'Kolor linii pokazuje obserwowany bilans operacyjny na godzinę.', load: 'Kolor odcinka pokazuje zaobserwowane wykorzystanie pojemności.' };
+    const legends = { demand: 'Popyt potencjalny jest estymacją modelu; obserwowane wygenerowane podróże pochodzą z symulacji.', flow: 'Grubość pokazuje zaobserwowane obciążenie pojazdów; zielony <65%, pomarańczowy 65–94%, czerwony ≥95%. To wykorzystanie miejsc, nie licznik przejazdów na segmencie.', overload: 'Czerwony odcinek osiągnął co najmniej 95% zaobserwowanego obciążenia.', queues: 'Rozmiar punktu pokazuje liczbę pasażerów aktualnie oczekujących.', unmet: 'Punkty pokazują zgromadzone, zaobserwowane niezrealizowane próby podróży.', profit: 'Kolor linii pokazuje obserwowany bilans operacyjny na godzinę.', load: 'Kolor odcinka pokazuje zaobserwowane wykorzystanie pojemności.', cityEvolution: 'Kolor oznacza atrakcyjność obszaru: czerwony niższą, żółty pośrednią, zielony wyższą. Rozmiar oznacza potencjał rozwoju. Wartości to parametry gry, nie dane demograficzne.' };
     this.setText('networkLegend', legends[state.analyticsMode] || 'Warstwa mapy korzysta z danych bieżącej symulacji. Potencjalny popyt w podsumowaniu jest estymacją.');
     const problems = networkProblems(state, points);
     this.setText('networkProblemCount', `${problems.length} obserwacji`);
@@ -505,10 +512,40 @@ export class UI {
       const hours = Math.max(1, Math.ceil(((planned ? event.startMinute : event.endMinute) - state.elapsedMinutes) / 60));
       return `<li class="${planned ? 'planned' : 'active'}"><b>${planned ? '◷ ' : '● '}${escapeHtml(event.title)}</b><span>${escapeHtml(location || 'Miasto')} · ${planned ? `za ${hours} h` : `jeszcze ${hours} h`}</span><small>${escapeHtml(describeEventImpact(event))}. ${escapeHtml(event.message)}</small></li>`;
     }).join('') : '<li class="empty-mini">Brak aktywnych i zapowiedzianych wydarzeń.</li>');
-    const potential = latentDemand(this.game.city.points, state.lines, minuteOfDay, state.cityEvents, state.elapsedMinutes, clock.dayType);
+    const potential = latentDemand(this.game.city.points, state.lines, minuteOfDay, state.cityEvents, state.elapsedMinutes, clock.dayType, state.cityEvolution);
     const servedPotential = potential.filter(item => item.served).reduce((sum, item) => sum + item.potential, 0);
     const allPotential = potential.reduce((sum, item) => sum + item.potential, 0) || 1;
     this.setText('latentDemandSummary', `${Math.round(servedPotential / allPotential * 100)}% potencjalnego popytu w zasięgu`);
+  }
+
+  renderCityEvolutionPanel(points = this.game.visiblePoints()) {
+    const panel = $('#cityEvolutionPanel');
+    if (!panel) return;
+    const { state } = this.game;
+    const show = state.analyticsMode === 'cityEvolution';
+    panel.hidden = !show;
+    if (!show) return;
+    const model = cityEvolutionSnapshot(state.cityEvolution);
+    const visibleIds = new Set(points.filter(point => point.type !== 'stop').map(point => point.id));
+    const zones = model.districts.filter(zone => visibleIds.has(zone.id));
+    const select = $('#cityEvolutionDistrict');
+    if (!zones.some(zone => zone.id === this.selectedEvolutionDistrict)) this.selectedEvolutionDistrict = zones[0]?.id || null;
+    this.setHtml('cityEvolutionDistrict', zones.map(zone => `<option value="${escapeHtml(zone.id)}">${escapeHtml(zone.name)}</option>`).join(''));
+    if (this.selectedEvolutionDistrict) select.value = this.selectedEvolutionDistrict;
+    const zone = model.districts.find(item => item.id === this.selectedEvolutionDistrict);
+    if (!zone) { this.setHtml('cityEvolutionProfile', '<p class="empty-mini">Brak dostępnych obszarów do pokazania.</p>'); return; }
+    const change = value => `${value > 0 ? '+' : ''}${formatNumber(value)}`;
+    this.setHtml('cityEvolutionProfile', `<dl class="detail-stats city-evolution-stats"><div><dt>Mieszkańcy · model</dt><dd>${formatNumber(zone.residents)} <small>(${change(zone.lastChange.residents)} w tym tygodniu)</small></dd></div><div><dt>Miejsca pracy · model</dt><dd>${formatNumber(zone.jobs)} <small>(${change(zone.lastChange.jobs)} w tym tygodniu)</small></dd></div><div><dt>Atrakcyjność mieszkaniowa</dt><dd>${Math.round(zone.residentialAttractiveness)}/100</dd></div><div><dt>Atrakcyjność gospodarcza</dt><dd>${Math.round(zone.economicAttractiveness)}/100</dd></div><div><dt>Dostępność pracy / mieszkań</dt><dd>${zone.jobAccess}% / ${zone.residentialAccess}%</dd></div><div><dt>Zadowolenie transportowe</dt><dd>${zone.transportSatisfaction}/100</dd></div><div><dt>Potencjał rozwoju</dt><dd>${zone.growthPotential}/100</dd></div><div><dt>Limit modelu · mieszkańcy / praca</dt><dd>${formatNumber(zone.capacity.residents)} / ${formatNumber(zone.capacity.jobs)}</dd></div></dl><p class="city-evolution-factor">Profil miejsca: ${escapeHtml(zone.profile)}. Zmiany są wygładzane tygodniowo, ograniczane pojemnością i zależą od dostępnych połączeń oraz obserwowanego oczekiwania i obciążenia.</p>`);
+    const latest = model.weeklyReports.at(-1);
+    this.setText('cityEvolutionWeeklySummary', latest
+      ? `Tydzień ${latest.week}: mieszkańcy ${change(latest.residentsDelta)}, miejsca pracy ${change(latest.jobsDelta)}, popyt modelowany ${latest.demandChangePercent > 0 ? '+' : ''}${decimal(latest.demandChangePercent)}%${latest.networkBalance === null ? '' : `, wynik sieci w tygodniu ${latest.networkWeek}: ${money(latest.networkBalance)}`}.`
+      : 'Zmiany pojawią się po upływie pierwszego tygodnia symulacji.');
+    const details = latest ? [
+      ...latest.fastestGrowing.map(item => `Szybki wzrost: ${item.name} (${change(item.change)} mieszkańców).`),
+      ...latest.declining.map(item => `Spadek: ${item.name} (${change(item.change)} mieszkańców).`),
+      ...latest.transportIssues.map(item => `Problem transportowy: ${item.name} · dostępność ${item.access}% · zadowolenie ${item.satisfaction}/100.`)
+    ] : [];
+    this.setHtml('cityEvolutionWeeklyDetails', details.length ? details.map(item => `<li><span>${escapeHtml(item)}</span></li>`).join('') : '<li class="empty-mini">Brak tygodniowych obserwacji.</li>');
   }
 
   renderMobilityRelation() {

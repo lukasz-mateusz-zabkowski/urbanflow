@@ -4,6 +4,7 @@ import { destinationWeight, pointDemandScore } from './demand.js?v=10';
 import { eventDemandMultiplier } from './city-events.js?v=10';
 import { ensureDiagnostics, recordDemand, recordDelivery, recordFailure } from './analytics.js?v=11';
 import { buildRegularTravelPatterns, createMobilityState, departuresForTick, ensureMobilityState, recordAccessibilityOpportunity, recordCompletedJourney } from './mobility.js?v=11';
+import { cityDemandFactor } from './city-evolution.js?v=1';
 
 const MAX_WAIT_MINUTES = 120;
 // Matches the existing save validator bound. Cohorts represent many people and
@@ -215,6 +216,12 @@ function creditJourney(state, cohort) {
 
 export function passengerTick(state, visiblePoints, minuteOfDay = 720, random = Math.random, calendarContext = null) {
   const delta = SIMULATION.minutesPerTick;
+  const demandFactorCache = new Map();
+  const cityFactor = point => {
+    if (!point) return 1;
+    if (!demandFactorCache.has(point.id)) demandFactorCache.set(point.id, cityDemandFactor(state.cityEvolution, point));
+    return demandFactorCache.get(point.id);
+  };
   hydrateCohorts(state);
   state.passengers ||= createPassengerState(visiblePoints);
   ensureDiagnostics(state);
@@ -238,12 +245,12 @@ export function passengerTick(state, visiblePoints, minuteOfDay = 720, random = 
   };
   const dayTypes = context.intervalServiceDayTypes;
   const demandAt = (origin, destination, role) => {
-    if (role === 'origin') return intervalDemandScore(origin, minuteOfDay, delta, dayTypes);
+    if (role === 'origin') return intervalDemandScore(origin, minuteOfDay, delta, dayTypes) * cityFactor(origin);
     let total = 0;
     for (let offset = 0; offset < delta; offset += 1) {
       const minute = ((context.intervalStartMinuteOfDay + offset) % 1440 + 1440) % 1440;
       const dayType = dayTypes[offset] || serviceDayType;
-      total += pointDemandScore(origin, minute, role, dayType) * demandMultiplier(minute)
+      total += pointDemandScore(origin, minute, role, dayType) * cityFactor(origin) * demandMultiplier(minute)
         * (role === 'destination' && destination ? destinationWeight(origin, destination, minute, dayType) : 1);
     }
     return total / Math.max(1, delta);
@@ -320,7 +327,7 @@ export function passengerTick(state, visiblePoints, minuteOfDay = 720, random = 
     const origin = visiblePoints.find(point => point.id === pattern.origin);
     const destination = visiblePoints.find(point => point.id === pattern.destination);
     if (!origin || !destination) continue;
-    const count = pattern.passengers;
+    const count = Math.max(1, Math.round(pattern.passengers * cityFactor(origin)));
     const plan = planTransitJourney(state.lines, visiblePoints, pattern.origin, pattern.destination, departure.minute, context);
     recordDemand(state, pattern.origin, pattern.destination, count);
     recordAccessibilityOpportunity(mobility, plan.ok ? 'available' : plan.reason, count);
@@ -341,7 +348,7 @@ export function passengerTick(state, visiblePoints, minuteOfDay = 720, random = 
       let weight = 0;
       for (let offset = 0; offset < delta; offset += 1) {
         const minute = ((context.intervalStartMinuteOfDay + offset) % 1440 + 1440) % 1440;
-        weight += destinationWeight(origin, destination, minute, dayTypes[offset] || serviceDayType);
+        weight += destinationWeight(origin, destination, minute, dayTypes[offset] || serviceDayType) * cityFactor(destination);
       }
       return weight / Math.max(1, delta);
     });

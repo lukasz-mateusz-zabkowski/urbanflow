@@ -95,11 +95,16 @@ export function chooseDestination(origin, candidates, minuteOfDay, random = Math
 
 // This forecast is derived without creating passenger cohorts. It lets the
 // player inspect opportunity before deciding which points to serve.
-export function latentDemand(points, lines, minuteOfDay, events = [], elapsedMinutes = 0, dayType = 'weekday') {
+export function latentDemand(points, lines, minuteOfDay, events = [], elapsedMinutes = 0, dayType = 'weekday', cityEvolution = null) {
   const served = new Set((lines || []).flatMap(line => line.stops || []));
+  const districtFactor = point => {
+    const zone = cityEvolution?.districts?.[point.id];
+    if (!zone?.base?.residents || !Number.isFinite(zone.residents)) return 1;
+    return Math.max(0.8, Math.min(1.25, zone.residents / zone.base.residents));
+  };
   return (points || []).map(point => {
-    const base = pointDemandScore(point, minuteOfDay, 'origin', dayType)
-      + pointDemandScore(point, minuteOfDay, 'destination', dayType) * 0.72;
+    const base = pointDemandScore(point, minuteOfDay, 'origin', dayType) * districtFactor(point)
+      + pointDemandScore(point, minuteOfDay, 'destination', dayType) * 0.72 * districtFactor(point);
     const event = events.reduce((value, item) => item.startMinute <= elapsedMinutes && item.endMinute > elapsedMinutes && (!item.locationId || item.locationId === point.id)
       ? value * (item.demandMultiplier || item.globalDemandMultiplier || 1) : value, 1);
     return { pointId: point.id, potential: base * event, served: served.has(point.id) };

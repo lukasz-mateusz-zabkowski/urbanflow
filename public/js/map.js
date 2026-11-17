@@ -268,10 +268,26 @@ export class GameMap {
     this.analysisLayer.clearLayers();
     const mode = gameState.analyticsMode || 'off';
     if (mode === 'off' || mode === 'profit') return;
+    if (mode === 'cityEvolution') {
+      const zones = gameState.cityEvolution?.districts || {};
+      for (const point of points) {
+        const zone = zones[point.id];
+        if (!zone || point.type === 'stop') continue;
+        const score = Math.max(zone.residentialAttractiveness, zone.economicAttractiveness);
+        const color = score < 40 ? '#bc5144' : score < 68 ? '#d2a43e' : '#378760';
+        const radius = 8 + Math.min(7, (zone.growthPotential || 0) * 0.07);
+        const marker = L.circleMarker([point.lat, point.lng], { renderer: this.analysisRenderer, radius, color, fillColor: color,
+          fillOpacity: 0.25 + Math.min(0.35, (zone.growthPotential || 0) * 0.0035), weight: 2, interactive: true, keyboard: true })
+          .addTo(this.analysisLayer);
+        marker.bindTooltip(`<strong>${escapeHtml(zone.name)}</strong><br>Atrakcyjność ${Math.round(score)}/100 · potencjał ${zone.growthPotential}/100<br>Mieszkańcy ${Math.round(zone.residents)} (${zone.lastChange?.residents > 0 ? '+' : ''}${Math.round(zone.lastChange?.residents || 0)})<br>Miejsca pracy ${Math.round(zone.jobs)} (${zone.lastChange?.jobs > 0 ? '+' : ''}${Math.round(zone.lastChange?.jobs || 0)})`, { direction: 'top', sticky: true, className: 'place-tooltip' });
+        marker.bindPopup(`<strong>${escapeHtml(zone.name)}</strong><br>Atrakcyjność: ${Math.round(score)}/100<br>Populacja modelu: ${Math.round(zone.residents)}<br>Miejsca pracy modelu: ${Math.round(zone.jobs)}<br>Dostępność: ${zone.transportAccess}%`);
+      }
+      return;
+    }
     if (mode === 'demand' || mode === 'queues' || mode === 'access' || mode === 'travel') {
       const analysisPoints = mode === 'demand' ? this.city.points : points;
       const dayType = gameClock(gameState.elapsedMinutes, gameState.calendar).dayType;
-      const forecast = new Map(latentDemand(analysisPoints, gameState.lines, minuteOfDay, gameState.cityEvents, gameState.elapsedMinutes, dayType).map(item => [item.pointId, item]));
+      const forecast = new Map(latentDemand(analysisPoints, gameState.lines, minuteOfDay, gameState.cityEvents, gameState.elapsedMinutes, dayType, gameState.cityEvolution).map(item => [item.pointId, item]));
       const served = new Set(gameState.lines.flatMap(line => line.stops));
       const values = analysisPoints.map(point => mode === 'demand'
         ? Math.max(gameState.diagnostics?.generatedByPoint?.[point.id] || 0, forecast.get(point.id)?.potential * 10 || 0)

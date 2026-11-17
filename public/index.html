@@ -88,6 +88,13 @@
           <div class="section-title"><h3 id="analyticsTitle">Diagnostyka sieci</h3><span id="capacityComparison">0 oczekuje · 0 miejsc/h</span></div>
           <div class="analytics-modes" id="analyticsModes" role="group" aria-label="Warstwa analityczna mapy"></div>
           <div id="networkLegend" class="network-legend" aria-live="polite"></div>
+          <section class="city-evolution-panel" id="cityEvolutionPanel" aria-labelledby="cityEvolutionTitle" hidden>
+            <div class="diagnostic-title"><strong id="cityEvolutionTitle">Atlas City Evolution</strong><span>wartości modelu symulacji</span></div>
+            <label class="city-evolution-select">Obszar<select id="cityEvolutionDistrict" aria-label="Wybierz obszar miasta"></select></label>
+            <div id="cityEvolutionProfile" class="city-evolution-profile" aria-live="polite"></div>
+            <div class="city-evolution-week"><strong>Podsumowanie tygodniowe</strong><p id="cityEvolutionWeeklySummary">Zmiany pojawią się po upływie pierwszego tygodnia symulacji.</p><ul id="cityEvolutionWeeklyDetails" class="diagnostic-list"></ul></div>
+            <small class="city-evolution-note">Liczba mieszkańców i miejsc pracy to deterministyczne parametry gry, a nie dane demograficzne Krakowa. Dostępność wynika z bieżącego grafu linii; wskaźniki pokazują modelowane zależności.</small>
+          </section>
           <div class="network-problems"><div class="diagnostic-title"><strong>Problemy sieci</strong><span id="networkProblemCount">obserwacje symulacji</span></div><ul id="networkProblems" class="diagnostic-list"></ul></div>
           <div class="network-history"><div class="diagnostic-title"><strong>Wyniki sieci</strong><span id="networkComparisonNote">obserwacje, nie prognoza</span></div><div id="networkHistorySummary" class="network-history-summary"></div><div id="networkDailySummary" class="network-history-summary"></div><div id="networkWeeklySummary" class="network-history-summary"></div></div>
           <div class="diagnostic-grid">
@@ -180,7 +187,7 @@
       <p class="feedback-error" id="feedbackError" role="alert"></p>
       <button class="primary-button" type="submit">Przygotuj zgłoszenie</button>
     </form>
-    <section class="feedback-export" id="feedbackExport" hidden><label for="feedbackJson">Gotowe zgłoszenie JSON · wersja gry 1.0.1-alpha</label><textarea id="feedbackJson" rows="8" readonly></textarea><div class="feedback-actions"><button class="secondary-button" type="button" id="feedbackCopy">Kopiuj JSON</button><button class="secondary-button" type="button" id="feedbackDownload">Pobierz JSON</button></div><p role="status" id="feedbackStatus"></p></section>
+    <section class="feedback-export" id="feedbackExport" hidden><label id="feedbackExportLabel" for="feedbackJson">Gotowe zgłoszenie JSON</label><textarea id="feedbackJson" rows="8" readonly></textarea><div class="feedback-actions"><button class="secondary-button" type="button" id="feedbackCopy">Kopiuj JSON</button><button class="secondary-button" type="button" id="feedbackDownload">Pobierz JSON</button></div><p role="status" id="feedbackStatus"></p></section>
   </dialog>
   <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="false"></div>
   <script src="vendor/leaflet/leaflet.js?v=1.9.4"></script>

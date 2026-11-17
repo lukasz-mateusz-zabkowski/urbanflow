@@ -11,6 +11,7 @@ import { ensureMobilityState } from './mobility.js?v=11';
 import { chooseStartScenario, starterRoutesFor } from './cities.js?v=10';
 import { routeLine, routeLineDetails, routingMode } from './routing.js?v=10';
 import { ensureFleet, fleetStatus, missingFleetCost } from './fleet.js?v=10';
+import { ensureCityEvolution, evolveCityWeek } from './city-evolution.js?v=1';
 import {
   createWeeklyTimetable, createWeeklyUniformTimetable, setDailyFrequency, setDailyProfile,
   copyTimetableDay as copyScheduleDay, setSameScheduleEveryDay as updateSameSchedule, TIMETABLE_PROFILES
@@ -60,6 +61,7 @@ export class UrbanFlowGame {
     ensureFleet(this.state);
     ensureDiagnostics(this.state);
     ensureMobilityState(this.state, this.visiblePoints());
+    ensureCityEvolution(this.state, this.city);
     Object.defineProperty(this.state, 'city', { value: city, enumerable: false, configurable: true });
   }
   changed() { this.events.onSave?.(this.state); this.events.onChange?.(); }
@@ -280,7 +282,7 @@ export class UrbanFlowGame {
   setSpeed(value) { if ([1, 2, 4].includes(value)) { this.state.speed = value; this.changed(); } }
   setPreference(key, value) { if (['tutorialCollapsed', 'goalsCollapsed'].includes(key)) { this.state.preferences[key] = Boolean(value); this.changed(); } }
   setAnalyticsMode(mode) {
-    if (!['off', 'demand', 'queues', 'load', 'profit', 'travel', 'access', 'flow', 'overload', 'unmet'].includes(mode)) return fail('Nieznany widok diagnostyczny.');
+    if (!['off', 'demand', 'queues', 'load', 'profit', 'travel', 'access', 'flow', 'overload', 'unmet', 'cityEvolution'].includes(mode)) return fail('Nieznany widok diagnostyczny.');
     this.state.analyticsMode = mode; this.changed(); return { ok: true };
   }
   tick(random = Math.random) {
@@ -288,6 +290,7 @@ export class UrbanFlowGame {
     if (s.paused || s.status !== 'playing' || (!s.lines.length && s.elapsedMinutes === 0)) return;
     const total = { generated: 0, transported: 0, abandoned: 0, overcrowded: [] };
     for (let i = 0; i < s.speed && s.status === 'playing'; i++) {
+      const previousWeek = gameClock(s.elapsedMinutes, s.calendar).week;
       s.elapsedMinutes += SIMULATION.minutesPerTick;
       s.cityEvents = (s.cityEvents || []).filter(event => event.endMinute > s.elapsedMinutes);
       const clock = gameClock(s.elapsedMinutes, s.calendar);
@@ -298,6 +301,7 @@ export class UrbanFlowGame {
       total.overcrowded = result.overcrowded;
       s.carried += result.transported; s.generated += result.generated; s.abandoned += result.abandoned || 0;
       const economy = applyEconomyTick(s, result.transported, SIMULATION.minutesPerTick);
+      if (clock.week > previousWeek) evolveCityWeek(s, this.city);
       recordNetworkHistory(s, { transported: result.transported, generated: result.generated, abandoned: result.abandoned,
         accessibility: { opportunities: s.mobility.accessibility.opportunities - accessibilityBefore.opportunities,
           reachable: s.mobility.accessibility.reachable - accessibilityBefore.reachable,

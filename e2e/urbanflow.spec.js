@@ -3,7 +3,7 @@ import { mkdir, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const artifactDir = process.env.UF_VISUAL_QA_DIR || join(tmpdir(), 'urbanflow-alpha-1.0.1-visual-qa');
+const artifactDir = process.env.UF_VISUAL_QA_DIR || join(tmpdir(), 'urbanflow-alpha-1.1.0-visual-qa');
 const appVersion = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')).version;
 const CI_TEST_TILE = '<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect width="256" height="256" fill="#e9eee4"/><path d="M-20 210 90 120 180 80 280 10M-20 40 100 110 270 200M40 -20 120 80 140 270" fill="none" stroke="#fffefa" stroke-width="12"/><path d="M-20 210 90 120 180 80 280 10M-20 40 100 110 270 200M40 -20 120 80 140 270" fill="none" stroke="#c8d3c4" stroke-width="2"/><path d="M10 30h30v20H10zM190 210h35v18h-35z" fill="#d5e2cc"/></svg>';
 const DESKTOPS = [
@@ -122,6 +122,14 @@ for (const viewport of DESKTOPS) {
     await expect(page.locator('#networkHistorySummary')).toBeVisible();
     await expect(page.locator('#networkDailySummary')).toBeVisible();
     await expect(page.locator('#networkWeeklySummary')).toBeVisible();
+    await page.locator('[data-mode="cityEvolution"]').click();
+    await expect(page.locator('#cityEvolutionPanel')).toBeVisible();
+    await expect(page.locator('#cityEvolutionDistrict option').first()).toBeAttached();
+    await expect(page.locator('#cityEvolutionProfile')).toContainText('Mieszkańcy');
+    await expect(page.locator('#cityEvolutionProfile')).toContainText('Atrakcyjność');
+    await expect(page.locator('#networkLegend')).toContainText('potencjał rozwoju');
+    await saveElementScreenshot(page.locator('#cityEvolutionPanel'), `${viewport.name}-city-evolution`);
+    await page.locator('[data-mode="unmet"]').click();
     await saveElementScreenshot(page.locator('.analytics-section'), `${viewport.name}-atlas-network`);
     await expect(page.locator('#createLineButton')).toBeEnabled();
     await page.locator('#createLineButton').click();
@@ -182,6 +190,13 @@ for (const viewport of MOBILES) {
     await page.locator('[data-mode="queues"]').tap();
     await expect(page.locator('#networkLegend')).toContainText('Rozmiar punktu');
     await saveElementScreenshot(page.locator('.analytics-section'), `${viewport.name}-atlas-network`);
+    await page.locator('[data-mode="cityEvolution"]').tap();
+    await expect(page.locator('#cityEvolutionPanel')).toBeVisible();
+    await expect(page.locator('#cityEvolutionProfile')).toContainText('Miejsca pracy');
+    await page.locator('#cityEvolutionDistrict').selectOption({ index: 1 });
+    await expect(page.locator('#cityEvolutionProfile')).toContainText('Atrakcyjność gospodarcza');
+    await assertNoViewportOverflow(page, viewport.width);
+    await saveElementScreenshot(page.locator('#cityEvolutionPanel'), `${viewport.name}-city-evolution`);
     await page.locator('[data-mode="off"]').tap();
     await page.locator('#feedbackButton').scrollIntoViewIfNeeded();
     await page.locator('#feedbackButton').click();
@@ -270,7 +285,7 @@ async function exerciseTimetable(page, viewport, mobile) {
   await expect(page.locator('[data-timetable-row="morning-peak"] [data-frequency-value]')).toHaveText('2 kursów/h');
   await page.locator('[data-action="toggle-special-next"]').click();
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('urbanflow.krakow.v2')));
-  expect(saved.version).toBe(7);
+  expect(saved.version).toBe(8);
   expect(saved.state.lines[0].timetable.sameEveryDay).toBe(false);
   expect(saved.state.lines[0].timetable.profiles.saturday.periods[0].frequency).toBe(0);
   expect(saved.state.lines[0].timetable.profiles.weekday.periods[0].frequency).toBe(2);
@@ -283,11 +298,11 @@ async function exerciseTimetable(page, viewport, mobile) {
   expect(errors, `browser errors: ${errors.join('; ')}`).toEqual([]);
 }
 
-test('desktop timetable editor changes weekly service and persists schema 7', async ({ page }) => {
+test('desktop timetable editor changes weekly service and persists schema 8', async ({ page }) => {
   await exerciseTimetable(page, { width: 1280, height: 720 }, false);
 });
 
-test('mobile timetable editor supports touch interaction and persists schema 7', async ({ browser }) => {
+test('mobile timetable editor supports touch interaction and persists schema 8', async ({ browser }) => {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   const page = await context.newPage();
   await exerciseTimetable(page, { width: 390, height: 844 }, true);
