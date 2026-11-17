@@ -37,7 +37,7 @@ Powtarzalne scenariusze obejmują krótką i długą linię autobusową, tramwaj
 | Rozbudowana sieć, 20 linii metra | 119 143 | 781 784 | **−662 641** | 11 243 | 9,55 min | 99,5% | 160/151 | 59 |
 
 
-où* Wartość testowego scenariusza obejmuje niezrealizowany popyt z generatora i przypadki odmowy; nie należy jej interpretować jako wyłącznej liczby osób stojących obecnie w kolejce. Wyniki pokazują, że większa oferta poprawia oczekiwanie lub dostępność kosztem floty i eksploatacji, a rozbudowana, kosztowna sieć może przynosić stratę. Nie narzucono zyskowności każdemu układowi.
+* Wartość testowego scenariusza obejmuje niezrealizowany popyt z generatora i przypadki odmowy; nie należy jej interpretować jako wyłącznej liczby osób stojących obecnie w kolejce. Wyniki pokazują, że większa oferta poprawia oczekiwanie lub dostępność kosztem floty i eksploatacji, a rozbudowana, kosztowna sieć może przynosić stratę. Nie narzucono zyskowności każdemu układowi.
 
 ## Kampanie długoterminowe i stabilność
 
@@ -84,4 +84,5 @@ Nie znaleziono istniejących PR-ów. Utworzenie Draft PR dla każdego kandydata 
 Scenariusze ekonomiczne mierzą koszty operacyjne, a nie koszt jednorazowej budowy i zakupu floty. Wykorzystanie pojemności pozostaje wskaźnikiem zagregowanym, nie śledzeniem pasażerów na każdym segmencie. Wyniki benchmarku zależą od sprzętu i obciążenia procesu. Dostęp integracji GitHub blokuje utworzenie PR.
 
 **Rekomendacja:** utworzyć ręcznie Draft PR 1.0.0 do gałęzi 0.9.0, przejrzeć raport i zmiany, a następnie scalać wersje sekwencyjnie po zatwierdzeniu; bez wdrożenia produkcyjnego.
+
 
