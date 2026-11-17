@@ -8,7 +8,7 @@
   <title>UrbanFlow — Kraków w ruchu</title>
   <link rel="preconnect" href="https://tile.openstreetmap.org">
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css?v=1.9.4">
-  <link rel="stylesheet" href="styles.css?v=12">
+  <link rel="stylesheet" href="styles.css?v=13">
 </head>
 <body>
   <section class="city-screen" id="cityScreen" aria-labelledby="gameTitle">
@@ -94,6 +94,14 @@
             <div id="cityEvolutionProfile" class="city-evolution-profile" aria-live="polite"></div>
             <div class="city-evolution-week"><strong>Podsumowanie tygodniowe</strong><p id="cityEvolutionWeeklySummary">Zmiany pojawią się po upływie pierwszego tygodnia symulacji.</p><ul id="cityEvolutionWeeklyDetails" class="diagnostic-list"></ul></div>
             <small class="city-evolution-note">Liczba mieszkańców i miejsc pracy to deterministyczne parametry gry, a nie dane demograficzne Krakowa. Dostępność wynika z bieżącego grafu linii; wskaźniki pokazują modelowane zależności.</small>
+          </section>
+          <section class="city-evolution-panel land-use-panel" id="landUsePanel" aria-labelledby="landUseTitle" hidden>
+            <div class="diagnostic-title"><strong id="landUseTitle">Atlas Land Use</strong><span>modelowane udziały terenu</span></div>
+            <div class="land-use-legend" aria-label="Legenda zagospodarowania"><span><i style="--land-color:#4b8b62"></i>Mieszkalne</span><span><i style="--land-color:#d18a36"></i>Handel</span><span><i style="--land-color:#7161a8"></i>Biura</span><span><i style="--land-color:#68737c"></i>Przemysł</span><span><i style="--land-color:#318f9d"></i>Publiczne</span><span><i style="--land-color:#75a64b"></i>Zieleń</span><span><i style="--land-color:#a7a99b"></i>Rezerwa</span><small>Marker: mały / średni / duży = niska / średnia / wysoka intensywność</small></div>
+            <label class="city-evolution-select">Obszar<select id="landUseDistrict" aria-label="Wybierz obszar zagospodarowania"></select></label>
+            <div id="landUseProfile" class="city-evolution-profile" aria-live="polite"></div>
+            <div class="city-evolution-week"><strong>Zmiany i potencjał</strong><p id="landUseWeeklySummary">Zmiany pojawią się po upływie pierwszego tygodnia symulacji.</p><ul id="landUseWeeklyDetails" class="diagnostic-list"></ul></div>
+            <small class="city-evolution-note">Markery są symboliczne i wskazują model profilu obszaru, nie granice działek ani rzeczywisty plan zagospodarowania.</small>
           </section>
           <div class="network-problems"><div class="diagnostic-title"><strong>Problemy sieci</strong><span id="networkProblemCount">obserwacje symulacji</span></div><ul id="networkProblems" class="diagnostic-list"></ul></div>
           <div class="network-history"><div class="diagnostic-title"><strong>Wyniki sieci</strong><span id="networkComparisonNote">obserwacje, nie prognoza</span></div><div id="networkHistorySummary" class="network-history-summary"></div><div id="networkDailySummary" class="network-history-summary"></div><div id="networkWeeklySummary" class="network-history-summary"></div></div>
@@ -191,6 +199,6 @@
   </dialog>
   <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="false"></div>
   <script src="vendor/leaflet/leaflet.js?v=1.9.4"></script>
-  <script type="module" src="js/main.js?v=12"></script>
+  <script type="module" src="js/main.js?v=13"></script>
 </body>
 </html>

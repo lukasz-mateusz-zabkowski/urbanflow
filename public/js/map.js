@@ -4,6 +4,7 @@ import { DISTRICT_PROFILES, inferProfile, latentDemand } from './demand.js?v=10'
 import { activeCityEvents, upcomingCityEvents } from './city-events.js?v=10';
 import { routeLine } from './routing.js?v=10';
 import { describePlace } from './place-profiles.js?v=10';
+import { landUseDominantUse, landUseLabel } from './land-use.js?v=1';
 
 const FRAME_MS = 50;
 const MAX_VEHICLES_PER_LINE = 12;
@@ -281,6 +282,24 @@ export class GameMap {
           .addTo(this.analysisLayer);
         marker.bindTooltip(`<strong>${escapeHtml(zone.name)}</strong><br>Atrakcyjność ${Math.round(score)}/100 · potencjał ${zone.growthPotential}/100<br>Mieszkańcy ${Math.round(zone.residents)} (${zone.lastChange?.residents > 0 ? '+' : ''}${Math.round(zone.lastChange?.residents || 0)})<br>Miejsca pracy ${Math.round(zone.jobs)} (${zone.lastChange?.jobs > 0 ? '+' : ''}${Math.round(zone.lastChange?.jobs || 0)})`, { direction: 'top', sticky: true, className: 'place-tooltip' });
         marker.bindPopup(`<strong>${escapeHtml(zone.name)}</strong><br>Atrakcyjność: ${Math.round(score)}/100<br>Populacja modelu: ${Math.round(zone.residents)}<br>Miejsca pracy modelu: ${Math.round(zone.jobs)}<br>Dostępność: ${zone.transportAccess}%`);
+      }
+      return;
+    }
+    if (mode === 'landUse') {
+      const zones = gameState.cityEvolution?.districts || {};
+      const colors = { residential: '#4b8b62', retail: '#d18a36', office: '#7161a8', industrial: '#68737c', public: '#318f9d', green: '#75a64b', reserve: '#a7a99b' };
+      const radii = { low: 9, medium: 13, high: 17 };
+      for (const point of points) {
+        const zone = zones[point.id]; const landUse = zone?.landUse;
+        if (!landUse || point.type === 'stop') continue;
+        const dominant = landUseDominantUse(landUse); const color = colors[dominant] || '#777';
+        const marker = L.circleMarker([point.lat, point.lng], { renderer: this.analysisRenderer,
+          radius: radii[landUse.intensity] || 9, color, fillColor: color, fillOpacity: 0.42,
+          weight: 2, interactive: true, keyboard: true }).addTo(this.analysisLayer);
+        const content = `<strong>${escapeHtml(zone.name)}</strong><br>${escapeHtml(landUseLabel(dominant))} · intensywność ${escapeHtml(landUse.intensity)}<br>Rezerwa ${landUse.shares.reserve}% · rozwój ${Math.round(landUse.developmentProgress)}%<br>Dostęp transportu ${zone.transportAccess}% · zadowolenie ${zone.transportSatisfaction}/100`;
+        marker.bindTooltip(content, { direction: 'top', sticky: true, className: 'place-tooltip' });
+        marker.bindPopup(content);
+        marker.on('click', () => window.dispatchEvent(new CustomEvent('urbanflow:select-land-use', { detail: { id: point.id } })));
       }
       return;
     }

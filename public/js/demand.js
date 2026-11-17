@@ -1,3 +1,5 @@
+import { landUseDemandFactor } from './land-use.js?v=1';
+
 export const DISTRICT_PROFILES = {
   center: { label: 'centrum', origin: [0.55, 0.8, 1.0, 1.15, 1.0, 0.75], destination: [0.45, 1.65, 1.25, 1.45, 1.2, 0.55] },
   residential: { label: 'mieszkalny', origin: [0.35, 1.55, 0.8, 1.25, 0.8, 0.35], destination: [0.45, 0.7, 0.8, 1.45, 1.0, 0.5] },
@@ -103,8 +105,11 @@ export function latentDemand(points, lines, minuteOfDay, events = [], elapsedMin
     return Math.max(0.8, Math.min(1.25, zone.residents / zone.base.residents));
   };
   return (points || []).map(point => {
+    const landUse = cityEvolution?.districts?.[point.id]?.landUse;
     const base = pointDemandScore(point, minuteOfDay, 'origin', dayType) * districtFactor(point)
-      + pointDemandScore(point, minuteOfDay, 'destination', dayType) * 0.72 * districtFactor(point);
+      * landUseDemandFactor(landUse, 'origin', minuteOfDay, dayType)
+      + pointDemandScore(point, minuteOfDay, 'destination', dayType) * 0.72 * districtFactor(point)
+      * landUseDemandFactor(landUse, 'destination', minuteOfDay, dayType);
     const event = events.reduce((value, item) => item.startMinute <= elapsedMinutes && item.endMinute > elapsedMinutes && (!item.locationId || item.locationId === point.id)
       ? value * (item.demandMultiplier || item.globalDemandMultiplier || 1) : value, 1);
     return { pointId: point.id, potential: base * event, served: served.has(point.id) };

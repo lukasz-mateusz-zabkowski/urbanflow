@@ -2,10 +2,11 @@ import { TRANSPORT_TYPES } from './transport.js?v=10';
 import { createUniformTimetable, createWeeklyTimetable, migrateDailyTimetable, validateWeeklyTimetable } from './timetable.js?v=10';
 import { createSimulationCalendar, validateSimulationCalendar } from './simulation.js?v=10';
 import { createMobilityState } from './mobility.js?v=11';
-import { createCityEvolutionState, validateCityEvolutionState } from './city-evolution.js?v=1';
+import { createCityEvolutionState, validateCityEvolutionState } from './city-evolution.js?v=2';
+import { createLandUseProfile } from './land-use.js?v=1';
 
 export const SAVE_KEY = 'urbanflow.krakow.v2';
-export const SAVE_VERSION = 8;
+export const SAVE_VERSION = 9;
 const goals = new Set(['wieliczka', 'gateway', 'center', 'passengers', 'quality', 'buses', 'tram', 'huta', 'airport', 'profit', 'stress']);
 const finite = value => typeof value === 'number' && Number.isFinite(value);
 const nonnegative = value => finite(value) && value >= 0;
@@ -63,7 +64,7 @@ export function validateState(s, city) {
   if (!validStops(s.selectedNodes) || !transportType(s.selectedType) || !Array.isArray(s.unlocked) || !s.unlocked.includes('bus') || s.unlocked.some(t => !transportType(t)) || new Set(s.unlocked).size !== s.unlocked.length) return false;
   if (s.editingLineId !== null && !s.lines.some(l => l.id === s.editingLineId)) return false;
   if (!plain(s.preferences) || ['tutorialCollapsed', 'goalsCollapsed'].some(key => typeof s.preferences[key] !== 'boolean')) return false;
-  if (s.analyticsMode !== undefined && !['off', 'demand', 'queues', 'load', 'profit', 'travel', 'access', 'flow', 'overload', 'unmet', 'cityEvolution'].includes(s.analyticsMode)) return false;
+  if (s.analyticsMode !== undefined && !['off', 'demand', 'queues', 'load', 'profit', 'travel', 'access', 'flow', 'overload', 'unmet', 'cityEvolution', 'landUse'].includes(s.analyticsMode)) return false;
   if (!validateCityEvolutionState(s.cityEvolution, city)) return false;
   if (s.networkHistory !== undefined && (!Array.isArray(s.networkHistory) || s.networkHistory.length > 96 || s.networkHistory.some(item =>
     !plain(item) || !['at', 'networkVersion', 'transported', 'generated', 'abandoned', 'denied', 'averageWaitMinutes', 'coverage', 'utilization', 'revenue', 'cost'].every(key => nonnegative(item[key])) || !integer(item.networkVersion) ||
@@ -218,9 +219,30 @@ export function loadGame(storage, city) {
       data = { ...data, version: SAVE_VERSION, state: { ...data.state, cityEvolution: createCityEvolutionState(city) } };
       migrated = true;
     }
+    if (data.version === 8 && plain(data.state)) {
+      data = { ...data, version: SAVE_VERSION };
+      migrated = true;
+    }
     if (data.version === SAVE_VERSION && plain(data.state) && !data.state.cityEvolution) {
       data = { ...data, state: { ...data.state, cityEvolution: createCityEvolutionState(city) } };
       migrated = true;
+    }
+    if (data.version === SAVE_VERSION && plain(data.state?.cityEvolution)) {
+      const evolution = data.state.cityEvolution;
+      let changed = false;
+      const districts = Object.fromEntries(Object.entries(evolution.districts || {}).map(([id, zone]) => {
+        if (!zone.landUse) { changed = true; return [id, { ...zone, landUse: { ...createLandUseProfile(zone.profile), lastDevelopmentWeek: evolution.lastEvolvedWeek || 1 } }]; }
+        return [id, zone];
+      }));
+      const weeklyReports = (evolution.weeklyReports || []).map(report => {
+        if (report.landUseChanges && report.blockedByTransport && report.developmentPotential) return report;
+        changed = true;
+        return { ...report, landUseChanges: report.landUseChanges || [], blockedByTransport: report.blockedByTransport || [], developmentPotential: report.developmentPotential || [] };
+      });
+      if (changed) {
+        data = { ...data, state: { ...data.state, cityEvolution: { ...evolution, districts, weeklyReports } } };
+        migrated = true;
+      }
     }
     if (data.version !== SAVE_VERSION || !validateState(data.state, city)) throw new Error('format');
     if (migrated) {

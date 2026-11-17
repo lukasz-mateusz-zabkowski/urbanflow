@@ -1,6 +1,7 @@
 import { inferProfile } from './demand.js?v=10';
 import { gameClock } from './simulation.js?v=10';
 import { lineMetrics } from './transport.js?v=10';
+import { capacitiesForLandUse, createLandUseProfile, evolveLandUseProfile, validateLandUseProfile } from './land-use.js?v=1';
 
 export const CITY_EVOLUTION_VERSION = 1;
 export const CITY_EVOLUTION_LIMITS = Object.freeze({ weeklyReports: 12, demandFactorMin: 0.8, demandFactorMax: 1.25, maxWeeklyChange: 0.0045 });
@@ -19,15 +20,18 @@ export function createCityEvolutionState(city) {
     const demand = clamp(Number(point.demand) || 1, 1, 20);
     const residents = round((4500 + demand * 620) * (profile === 'residential' ? 1.2 : 1));
     const jobs = round((employmentProfiles.has(profile) ? 5000 + demand * 780 : 1200 + demand * 180));
+    const landUse = createLandUseProfile(profile);
+    const capacity = capacitiesForLandUse({ residents, jobs }, landUse);
     districts[point.id] = {
       id: point.id, name: point.name, profile,
       base: { residents, jobs }, residents, jobs,
       residentialAttractiveness: 50, economicAttractiveness: 50,
       transportAccess: 0, transportSatisfaction: 50, jobAccess: 0, residentialAccess: 0,
       growthPotential: 50,
-      capacity: { residents: round(residents * 1.2), jobs: round(jobs * 1.2) },
+      capacity,
       constraints: { minimumResidents: round(residents * 0.75), minimumJobs: round(jobs * 0.75) },
-      lastChange: { residents: 0, jobs: 0, residentialAttractiveness: 0, economicAttractiveness: 0 }
+      lastChange: { residents: 0, jobs: 0, residentialAttractiveness: 0, economicAttractiveness: 0 },
+      landUse
     };
   }
   return { version: CITY_EVOLUTION_VERSION, source: 'simulation-parameters', lastEvolvedWeek: 1, districts, weeklyReports: [] };
@@ -133,6 +137,35 @@ export function evolveCityWeek(state, city) {
   const ranked = Object.values(evolution.districts);
   const byChange = key => [...ranked].sort((a, b) => b.lastChange[key] - a.lastChange[key]);
   const network = (state.networkWeeklyHistory || []).at(-1);
+  const landUseChanges = [];
+  const blockedByTransport = [];
+  const developmentPotential = [];
+  for (const zone of ranked) {
+    const advancement = evolveLandUseProfile(zone.landUse, {
+      week, profile: zone.profile, transportAccess: zone.transportAccess,
+      transportSatisfaction: zone.transportSatisfaction,
+      residentialAttractiveness: zone.residentialAttractiveness,
+      economicAttractiveness: zone.economicAttractiveness,
+      growthPotential: zone.growthPotential
+    });
+    zone.landUse = advancement.profile;
+    const expanded = capacitiesForLandUse(zone.base, zone.landUse);
+    zone.capacity.residents = Math.max(zone.capacity.residents, expanded.residents);
+    zone.capacity.jobs = Math.max(zone.capacity.jobs, expanded.jobs);
+    if (advancement.change) landUseChanges.push({ id: zone.id, name: zone.name, ...advancement.change,
+      residentsCapacity: zone.capacity.residents, jobsCapacity: zone.capacity.jobs });
+    if (advancement.blockedByTransport) blockedByTransport.push({ id: zone.id, name: zone.name,
+      access: zone.transportAccess, satisfaction: zone.transportSatisfaction,
+      developmentProgress: zone.landUse.developmentProgress, reserve: zone.landUse.shares.reserve });
+    if (zone.landUse.shares.reserve >= 4 && zone.landUse.intensity !== 'high') developmentPotential.push({
+      id: zone.id, name: zone.name, potential: zone.growthPotential,
+      progress: zone.landUse.developmentProgress, direction: zone.transportAccess < 25 || zone.transportSatisfaction < 35
+        ? 'transport' : zone.residentialAttractiveness >= zone.economicAttractiveness ? 'residential' : 'economic'
+    });
+  }
+  landUseChanges.sort((a, b) => a.id.localeCompare(b.id));
+  blockedByTransport.sort((a, b) => b.developmentProgress - a.developmentProgress || a.id.localeCompare(b.id));
+  developmentPotential.sort((a, b) => b.potential - a.potential || b.progress - a.progress || a.id.localeCompare(b.id));
   const report = {
     week, residentsDelta: after.residents - before.residents, jobsDelta: after.jobs - before.jobs,
     demandChangePercent: before.residents ? round(((after.residents / before.residents) - 1) * 1000) / 10 : 0,
@@ -141,6 +174,9 @@ export function evolveCityWeek(state, city) {
     transportIssues: ranked.filter(zone => zone.transportAccess < 30 || zone.transportSatisfaction < 35)
       .sort((a, b) => a.transportSatisfaction - b.transportSatisfaction).slice(0, 5)
       .map(zone => ({ id: zone.id, name: zone.name, access: zone.transportAccess, satisfaction: zone.transportSatisfaction })),
+    landUseChanges,
+    blockedByTransport: blockedByTransport.slice(0, 5),
+    developmentPotential: developmentPotential.slice(0, 3),
     networkBalance: network ? network.revenue - network.cost : null,
     networkWeek: network?.week ?? null
   };
@@ -167,6 +203,9 @@ export function validateCityEvolutionState(evolution, city) {
   for (const [id, zone] of Object.entries(evolution.districts)) {
     if (!zone || typeof zone !== 'object' || zone.id !== id || typeof zone.name !== 'string' || zone.name.length > 120
       || typeof zone.profile !== 'string' || !['base', 'capacity', 'constraints', 'lastChange'].every(key => zone[key] && typeof zone[key] === 'object')) return false;
+    if (!validateLandUseProfile(zone.landUse) || zone.landUse.profile !== zone.profile) return false;
+    if (zone.landUse.lastDevelopmentWeek > evolution.lastEvolvedWeek
+      || zone.landUse.lastIntensityChangeWeek > zone.landUse.lastDevelopmentWeek) return false;
     if (!['residents', 'jobs'].every(key => finiteNonnegative(zone[key]) && finiteNonnegative(zone.base[key]) && zone.base[key] > 0
       && finiteNonnegative(zone.capacity[key]) && zone.capacity[key] >= zone[key]
       && finiteNonnegative(zone.constraints[`minimum${key[0].toUpperCase()}${key.slice(1)}`])
@@ -181,10 +220,24 @@ export function validateCityEvolutionState(evolution, city) {
       || !(report.networkBalance === null || Number.isFinite(report.networkBalance))
       || !(report.networkWeek === null || Number.isSafeInteger(report.networkWeek) && report.networkWeek >= 1)
       || ((report.networkBalance === null) !== (report.networkWeek === null))
-      || !Array.isArray(report.fastestGrowing) || !Array.isArray(report.declining) || !Array.isArray(report.transportIssues)) return false;
+      || !Array.isArray(report.fastestGrowing) || !Array.isArray(report.declining) || !Array.isArray(report.transportIssues)
+      || !Array.isArray(report.landUseChanges) || report.landUseChanges.length > ids.size
+      || !Array.isArray(report.blockedByTransport) || report.blockedByTransport.length > 5
+      || !Array.isArray(report.developmentPotential) || report.developmentPotential.length > 3) return false;
     for (const item of [...report.fastestGrowing, ...report.declining]) if (!ids.has(item?.id) || typeof item.name !== 'string' || !Number.isFinite(item.change)) return false;
     for (const item of report.transportIssues) if (!ids.has(item?.id) || typeof item.name !== 'string'
       || !finiteNonnegative(item.access) || item.access > 100 || !finiteNonnegative(item.satisfaction) || item.satisfaction > 100) return false;
+    for (const item of report.landUseChanges) if (!ids.has(item?.id) || typeof item.name !== 'string'
+      || !Number.isSafeInteger(item.week) || item.week < 1 || !['low', 'medium'].includes(item.fromIntensity)
+      || !['medium', 'high'].includes(item.toIntensity) || !['residential', 'retail', 'office', 'industrial', 'public', 'green'].includes(item.convertedUse)
+      || item.fromIntensity === item.toIntensity || item.reserveConverted !== 4
+      || !finiteNonnegative(item.residentsCapacity) || !finiteNonnegative(item.jobsCapacity)) return false;
+    for (const item of report.blockedByTransport) if (!ids.has(item?.id) || typeof item.name !== 'string'
+      || !finiteNonnegative(item.access) || item.access > 100 || !finiteNonnegative(item.satisfaction) || item.satisfaction > 100
+      || !finiteNonnegative(item.developmentProgress) || item.developmentProgress > 100 || !integer(item.reserve) || item.reserve < 4 || item.reserve > 100) return false;
+    for (const item of report.developmentPotential) if (!ids.has(item?.id) || typeof item.name !== 'string'
+      || !finiteNonnegative(item.potential) || item.potential > 100 || !finiteNonnegative(item.progress) || item.progress > 100
+      || !['transport', 'residential', 'economic'].includes(item.direction)) return false;
   }
   return true;
 }

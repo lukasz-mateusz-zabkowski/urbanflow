@@ -4,6 +4,8 @@ import { buildRegularTravelPatterns, departuresForTick, createMobilityState, rec
 import { planTransitJourney, diagnoseTransitRelation, createLineStats, passengerTick, createPassengerState, intervalDemandScore } from '../public/js/passengers.js';
 import { calendarAt, calendarTickContext, createSimulationCalendar, setSpecialDay } from '../public/js/simulation.js';
 import { CITIES } from '../public/js/cities.js';
+import { createCityEvolutionState } from '../public/js/city-evolution.js';
+import { landUseDemandFactor } from '../public/js/land-use.js';
 
 const places = [
   { id: 'home', name: 'Osiedle', lat: 50, lng: 19, type: 'district', profile: 'residential', demand: 12 },
@@ -125,6 +127,28 @@ test('a recurring trip with no operating path updates accessibility diagnostics 
   assert.equal(state.cohorts.length, 0);
   assert.ok(state.mobility.accessibility.opportunities > 0);
   assert.ok(state.mobility.accessibility.byReason.noConnection > 0);
+});
+
+test('land use reweights one existing recurring cohort by origin, destination, time and day without adding a second trip', () => {
+  const patterns = buildRegularTravelPatterns(places);
+  const commute = patterns.find(pattern => pattern.purpose === 'work' && pattern.direction === 'outbound');
+  const mobility = createMobilityState([commute]);
+  const evolution = createCityEvolutionState({ points: places });
+  evolution.districts.home.landUse.shares = { residential: 100, retail: 0, office: 0, industrial: 0, public: 0, green: 0, reserve: 0 };
+  evolution.districts.work.landUse.shares = { residential: 0, retail: 0, office: 100, industrial: 0, public: 0, green: 0, reserve: 0 };
+  const expectedCount = Math.max(1, Math.round(commute.passengers
+    * landUseDemandFactor(evolution.districts.home.landUse, 'origin', commute.departureMinute, 'weekday')
+    * landUseDemandFactor(evolution.districts.work.landUse, 'destination', commute.departureMinute, 'weekday')));
+  const state = { elapsedMinutes: commute.departureMinute, city: { points: places }, cityEvolution: evolution,
+    lines: [line('commute', 'bus', ['home', 'work'], { vehicles: 8, frequency: 8 })],
+    passengers: createPassengerState(places), cohorts: [], mobility, stopCapacity: 120 };
+  const context = { serviceDayType: 'weekday', intervalServiceDayTypes: Array(6).fill('weekday'),
+    intervalStartMinuteOfDay: commute.departureMinute };
+  const result = passengerTick(state, places, commute.departureMinute + 6, () => 0.99, context);
+  assert.equal(result.generated, expectedCount);
+  assert.equal(state.cohorts.length, 1, 'land use changes the size of an existing OD cohort, not the number of cohorts');
+  assert.equal(state.cohorts[0].count, expectedCount);
+  assert.equal(state.diagnostics.relations['home>work'], expectedCount);
 });
 
 test('existing Kraków places provide deterministic bounded pattern candidates', () => {

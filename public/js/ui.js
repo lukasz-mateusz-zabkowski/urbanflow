@@ -9,10 +9,11 @@ import { fleetSnapshot } from './fleet.js?v=10';
 import { latentDemand } from './demand.js?v=10';
 import { describePlace } from './place-profiles.js?v=10';
 import { clampPanelWidth, DEFAULT_PANEL_WIDTH, loadPanelWidth, savePanelWidth } from './ui-preferences.js?v=10';
-import { createFeedbackReport, feedbackJson } from './feedback.js?v=11';
+import { createFeedbackReport, feedbackJson } from './feedback.js?v=12';
 import { TIMETABLE_PROFILES, SERVICE_DAY_TYPES, SERVICE_DAY_LABELS, formatTimetableTime, periodAt, timetableForDay } from './timetable.js?v=10';
 import { mobilitySnapshot } from './mobility.js?v=11';
-import { cityEvolutionSnapshot } from './city-evolution.js?v=1';
+import { cityEvolutionSnapshot } from './city-evolution.js?v=2';
+import { LAND_USE_TYPES, landUseDominantUse, landUseDirection, landUseLabel } from './land-use.js?v=1';
 
 const $ = selector => document.querySelector(selector);
 const formatNumber = value => new Intl.NumberFormat('pl-PL').format(Math.round(Number(value) || 0));
@@ -54,6 +55,7 @@ export class UI {
     this.detailLineId = null;
     this.selectedPlaceId = null;
     this.selectedEvolutionDistrict = null;
+    this.selectedLandUseDistrict = null;
     this.panelStorage = null;
     try { this.panelStorage = window.localStorage; } catch { /* Panel width is an optional preference. */ }
     this.setupPanelWidth();
@@ -62,6 +64,10 @@ export class UI {
 
   bind() {
     const signal = this.abortController.signal;
+    window.addEventListener('urbanflow:select-land-use', event => {
+      this.selectedLandUseDistrict = event.detail?.id || null;
+      this.renderLandUsePanel(this.game.visiblePoints());
+    }, { signal });
     document.addEventListener('click', async event => {
       const button = event.target.closest('button');
       if (!button || button.disabled) return;
@@ -189,6 +195,9 @@ export class UI {
       } else if (event.target.matches('#cityEvolutionDistrict')) {
         this.selectedEvolutionDistrict = event.target.value;
         this.renderCityEvolutionPanel(this.game.visiblePoints());
+      } else if (event.target.matches('#landUseDistrict')) {
+        this.selectedLandUseDistrict = event.target.value;
+        this.renderLandUsePanel(this.game.visiblePoints());
       }
     }, { signal });
     document.addEventListener('input', event => {
@@ -371,6 +380,7 @@ export class UI {
     this.renderTutorial(unlocked);
     this.renderAnalytics(clock.minuteOfDay);
     this.renderCityEvolutionPanel(this.game.visiblePoints());
+    this.renderLandUsePanel(this.game.visiblePoints());
     this.renderDraft(unlocked, counts);
     this.renderNetwork();
     this.renderFleet();
@@ -479,10 +489,10 @@ export class UI {
     this.setHtml('mobilityRelations', mobility.busiestRelations.length ? mobility.busiestRelations.map(item => `<li><span>${escapeHtml(item.label)}</span><b>${formatNumber(item.passengers || item.generated)}</b></li>`).join('') : '<li class="empty-mini">Relacje pojawią się po rozpoczęciu podróży.</li>');
     const mobilityFailures = mobility.failures.filter(item => item.passengers > 0);
     this.setHtml('mobilityFailures', mobilityFailures.length ? mobilityFailures.map(item => `<li><span>${escapeHtml(FAILURE_LABELS[item.reason] || item.reason)}</span><b>${formatNumber(item.passengers)}</b></li>`).join('') : '<li class="empty-mini">Brak zarejestrowanych niepowodzeń.</li>');
-    const modes = [['off', 'Zwykła'], ['demand', 'Popyt'], ['flow', 'Przewozy'], ['overload', 'Przeciążenia'], ['queues', 'Kolejki'], ['unmet', 'Braki popytu'], ['profit', 'Rentowność'], ['load', 'Odcinki'], ['travel', 'Czas'], ['access', 'Dostępność'], ['cityEvolution', 'Rozwój miasta']];
-    const modeTitles = { off: 'Wyłącz warstwę analityczną', demand: 'Potencjał szacunkowy i wygenerowane podróże', flow: 'Zaobserwowane obciążenie segmentów', overload: 'Podświetl odcinki o wysokim obciążeniu', queues: 'Liczba oczekujących na punktach', unmet: 'Zgromadzone niezrealizowane próby', profit: 'Obserwowany bilans linii', load: 'Wykorzystanie pojemności odcinków', travel: 'Czas oczekiwania', access: 'Dostępność punktów', cityEvolution: 'Modelowane zmiany obszarów miasta i ich dostępności' };
+    const modes = [['off', 'Zwykła'], ['demand', 'Popyt'], ['flow', 'Przewozy'], ['overload', 'Przeciążenia'], ['queues', 'Kolejki'], ['unmet', 'Braki popytu'], ['profit', 'Rentowność'], ['load', 'Odcinki'], ['travel', 'Czas'], ['access', 'Dostępność'], ['cityEvolution', 'Rozwój miasta'], ['landUse', 'Zagospodarowanie']];
+    const modeTitles = { off: 'Wyłącz warstwę analityczną', demand: 'Potencjał szacunkowy i wygenerowane podróże', flow: 'Zaobserwowane obciążenie segmentów', overload: 'Podświetl odcinki o wysokim obciążeniu', queues: 'Liczba oczekujących na punktach', unmet: 'Zgromadzone niezrealizowane próby', profit: 'Obserwowany bilans linii', load: 'Wykorzystanie pojemności odcinków', travel: 'Czas oczekiwania', access: 'Dostępność punktów', cityEvolution: 'Modelowane zmiany obszarów miasta i ich dostępności', landUse: 'Model zagospodarowania i intensywności obszarów' };
     this.setHtml('analyticsModes', modes.map(([id, label]) => `<button type="button" data-action="analytics-mode" data-mode="${id}" class="${state.analyticsMode === id ? 'active' : ''}" aria-pressed="${state.analyticsMode === id}" title="${modeTitles[id]}">${label}</button>`).join(''));
-    const legends = { demand: 'Popyt potencjalny jest estymacją modelu; obserwowane wygenerowane podróże pochodzą z symulacji.', flow: 'Grubość pokazuje zaobserwowane obciążenie pojazdów; zielony <65%, pomarańczowy 65–94%, czerwony ≥95%. To wykorzystanie miejsc, nie licznik przejazdów na segmencie.', overload: 'Czerwony odcinek osiągnął co najmniej 95% zaobserwowanego obciążenia.', queues: 'Rozmiar punktu pokazuje liczbę pasażerów aktualnie oczekujących.', unmet: 'Punkty pokazują zgromadzone, zaobserwowane niezrealizowane próby podróży.', profit: 'Kolor linii pokazuje obserwowany bilans operacyjny na godzinę.', load: 'Kolor odcinka pokazuje zaobserwowane wykorzystanie pojemności.', cityEvolution: 'Kolor oznacza atrakcyjność obszaru: czerwony niższą, żółty pośrednią, zielony wyższą. Rozmiar oznacza potencjał rozwoju. Wartości to parametry gry, nie dane demograficzne.' };
+    const legends = { demand: 'Popyt potencjalny jest estymacją modelu; obserwowane wygenerowane podróże pochodzą z symulacji.', flow: 'Grubość pokazuje zaobserwowane obciążenie pojazdów; zielony <65%, pomarańczowy 65–94%, czerwony ≥95%. To wykorzystanie miejsc, nie licznik przejazdów na segmencie.', overload: 'Czerwony odcinek osiągnął co najmniej 95% zaobserwowanego obciążenia.', queues: 'Rozmiar punktu pokazuje liczbę pasażerów aktualnie oczekujących.', unmet: 'Punkty pokazują zgromadzone, zaobserwowane niezrealizowane próby podróży.', profit: 'Kolor linii pokazuje obserwowany bilans operacyjny na godzinę.', load: 'Kolor odcinka pokazuje zaobserwowane wykorzystanie pojemności.', cityEvolution: 'Kolor oznacza atrakcyjność obszaru: czerwony niższą, żółty pośrednią, zielony wyższą. Rozmiar oznacza potencjał rozwoju. Wartości to parametry gry, nie dane demograficzne.', landUse: 'Kolor markera oznacza dominującą modelowaną funkcję terenu, rozmiar — intensywność zabudowy. Markery nie są poligonami dzielnic.' };
     this.setText('networkLegend', legends[state.analyticsMode] || 'Warstwa mapy korzysta z danych bieżącej symulacji. Potencjalny popyt w podsumowaniu jest estymacją.');
     const problems = networkProblems(state, points);
     this.setText('networkProblemCount', `${problems.length} obserwacji`);
@@ -546,6 +556,36 @@ export class UI {
       ...latest.transportIssues.map(item => `Problem transportowy: ${item.name} · dostępność ${item.access}% · zadowolenie ${item.satisfaction}/100.`)
     ] : [];
     this.setHtml('cityEvolutionWeeklyDetails', details.length ? details.map(item => `<li><span>${escapeHtml(item)}</span></li>`).join('') : '<li class="empty-mini">Brak tygodniowych obserwacji.</li>');
+  }
+
+  renderLandUsePanel(points = this.game.visiblePoints()) {
+    const panel = $('#landUsePanel');
+    if (!panel) return;
+    const { state } = this.game;
+    const show = state.analyticsMode === 'landUse';
+    panel.hidden = !show;
+    if (!show) return;
+    const zones = Object.values(state.cityEvolution?.districts || {}).filter(zone => points.some(point => point.id === zone.id && point.type !== 'stop'));
+    if (!zones.some(zone => zone.id === this.selectedLandUseDistrict)) this.selectedLandUseDistrict = zones[0]?.id || null;
+    this.setHtml('landUseDistrict', zones.map(zone => `<option value="${escapeHtml(zone.id)}">${escapeHtml(zone.name)}</option>`).join(''));
+    const select = $('#landUseDistrict'); if (this.selectedLandUseDistrict) select.value = this.selectedLandUseDistrict;
+    const zone = zones.find(item => item.id === this.selectedLandUseDistrict);
+    if (!zone?.landUse) { this.setHtml('landUseProfile', '<p class="empty-mini">Brak profilu zagospodarowania.</p>'); return; }
+    const landUse = zone.landUse;
+    const dominant = landUseDominantUse(landUse);
+    const intensityLabel = { low: 'niska', medium: 'średnia', high: 'wysoka' }[landUse.intensity];
+    const mix = LAND_USE_TYPES.map(use => `<div><dt>${escapeHtml(landUseLabel(use))}</dt><dd>${landUse.shares[use]}%</dd></div>`).join('');
+    const direction = landUseDirection(landUse, zone);
+    this.setHtml('landUseProfile', `<p class="city-evolution-factor">Dominująca funkcja: <strong>${escapeHtml(landUseLabel(dominant))}</strong> · intensywność ${intensityLabel}. Rezerwa: ${landUse.shares.reserve}% · postęp rozwoju: ${decimal(landUse.developmentProgress)}%.</p><dl class="detail-stats city-evolution-stats">${mix}<div><dt>Pojemność mieszkańców / pracy</dt><dd>${formatNumber(zone.capacity.residents)} / ${formatNumber(zone.capacity.jobs)}</dd></div><div><dt>Zasiedlenie mieszkańców / praca</dt><dd>${formatNumber(zone.residents)} / ${formatNumber(zone.jobs)}</dd></div><div><dt>Dostęp transportu / zadowolenie</dt><dd>${zone.transportAccess}% / ${zone.transportSatisfaction}/100</dd></div></dl><p class="city-evolution-factor">Kierunek modelu: ${escapeHtml(direction)}. Pojemność nie oznacza automatycznego zasiedlenia.</p>`);
+    const latest = state.cityEvolution.weeklyReports.at(-1);
+    this.setText('landUseWeeklySummary', latest ? `Tydzień ${latest.week}: ${latest.landUseChanges.length} zmian intensywności; ${latest.blockedByTransport.length} obszarów z rozwojem hamowanym przez transport.` : 'Zmiany pojawią się po upływie pierwszego tygodnia symulacji.');
+    const selectedChange = latest?.landUseChanges.find(item => item.id === zone.id);
+    const details = [
+      selectedChange && `Tydzień ${selectedChange.week}: intensywność ${selectedChange.fromIntensity} → ${selectedChange.toIntensity}; +${selectedChange.reserveConverted} pp. ${landUseLabel(selectedChange.convertedUse)} z rezerwy.`,
+      latest?.blockedByTransport.find(item => item.id === zone.id) && 'Rozwój obszaru jest obecnie hamowany przez niedostateczną obsługę transportową.',
+      latest?.developmentPotential.find(item => item.id === zone.id) && 'Obszar należy do grupy z najwyższym bieżącym potencjałem rozwoju.'
+    ].filter(Boolean);
+    this.setHtml('landUseWeeklyDetails', details.length ? details.map(item => `<li><span>${escapeHtml(item)}</span></li>`).join('') : '<li class="empty-mini">W ostatnim tygodniu nie odnotowano zmiany dla tego obszaru.</li>');
   }
 
   renderMobilityRelation() {

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.0 — Alpha 8
+
+- Added deterministic residential, retail, office, industrial, public, green, and reserve land-use mixes for modeled city areas, with constrained low/medium/high development intensity and capacity growth.
+- Integrated time-of-day and service-day land-use demand factors into existing OD demand and mobility cohorts without creating a second passenger generator.
+- Added Atlas Land Use symbolic markers, an accessible legend, district profile details, and weekly development signals.
+- Migrated schema 8 saves to schema 9 while retaining existing occupancy, capacities, network state, mobility, campaign, and weekly network history; schemas 2–7 remain supported.
+- Added deterministic 52-week development, demand/cohort integration, migration, and desktop/mobile browser coverage.
+- See `docs/URBANFLOW-LAND-USE.md` and `ALPHA-1.2.0-REPORT.md` for model definitions and validation results.
+
 ## 1.0.0 — Alpha 6
 
 - Audited fare, subsidy, fleet, frequency, distance and time-weighted operating-cost rules; retained the existing rates because deterministic scenarios show both profitable and loss-making outcomes.

@@ -195,7 +195,7 @@ test('schema 5 migrates to bounded network history without losing campaign, flee
   assert.deepEqual(loaded.state.mobility, oldState.mobility);
   assert.deepEqual(loaded.state.unlocked, oldState.unlocked);
   assert.deepEqual(loaded.state.networkHistory, []);
-  assert.equal(JSON.parse(storage.getItem(SAVE_KEY)).version, 8);
+  assert.equal(JSON.parse(storage.getItem(SAVE_KEY)).version, 9);
   const invalid = snapshot(loaded.state); invalid.networkHistory = Array(97).fill({ at: 0, networkVersion: 0, transported: 0, averageWaitMinutes: 0,
     availability: 0, utilization: 0, revenue: 0, cost: 0, balance: 0 });
   assert.equal(validateState(invalid, city), false);
@@ -215,7 +215,7 @@ test('schema 6 migrates observed coverage while preserving state and starting lo
   assert.deepEqual(loaded.state.networkWeeklyHistory, []);
   assert.equal(loaded.state.lines.length, game.state.lines.length);
   assert.deepEqual(loaded.state.campaign, game.state.campaign);
-  assert.equal(JSON.parse(storage.getItem(SAVE_KEY)).version, 8);
+  assert.equal(JSON.parse(storage.getItem(SAVE_KEY)).version, 9);
 });
 
 test('schema 7 migrates deterministic city profiles without losing campaign, budget, lines, fleet or mobility', () => {
@@ -233,10 +233,46 @@ test('schema 7 migrates deterministic city profiles without losing campaign, bud
   assert.deepEqual(first.state.mobility, oldState.mobility);
   assert.deepEqual(first.state.campaign, oldState.campaign);
   assert.equal(first.state.cityEvolution.source, 'simulation-parameters');
-  assert.equal(JSON.parse(storage.getItem(SAVE_KEY)).version, 8);
+  assert.equal(JSON.parse(storage.getItem(SAVE_KEY)).version, 9);
   const district = first.state.cityEvolution.districts.ruczaj;
   assert.ok(district && district.residents === district.base.residents);
   const saved = snapshot(first.state);
   saved.cityEvolution.districts.ruczaj.residents = -1;
   assert.equal(validateState(saved, city), false);
+});
+
+test('schema 8 adds deterministic land-use profiles while preserving occupied values, lines, history and cohorts', () => {
+  const game = activeGame();
+  const oldState = snapshot(game.state);
+  const beforeZone = oldState.cityEvolution.districts.ruczaj;
+  const beforeLines = snapshot(oldState.lines); const beforeCohorts = snapshot(oldState.cohorts);
+  const beforeMobility = snapshot(oldState.mobility); const beforeCampaign = snapshot(oldState.campaign);
+  for (const zone of Object.values(oldState.cityEvolution.districts)) delete zone.landUse;
+  oldState.cityEvolution.weeklyReports = [{ week: 2, residentsDelta: 3, jobsDelta: 1, demandChangePercent: 0.1,
+    fastestGrowing: [], declining: [], transportIssues: [], networkBalance: 12, networkWeek: 1 }];
+  const storage = memoryStorage();
+  storage.setItem(SAVE_KEY, JSON.stringify({ version: 8, cityId: city.id, state: oldState }));
+  const loaded = loadGame(storage, city);
+  assert.equal(loaded.error, null);
+  assert.equal(JSON.parse(storage.getItem(SAVE_KEY)).version, 9);
+  const afterZone = loaded.state.cityEvolution.districts.ruczaj;
+  assert.equal(afterZone.residents, beforeZone.residents);
+  assert.equal(afterZone.jobs, beforeZone.jobs);
+  assert.deepEqual(afterZone.capacity, beforeZone.capacity);
+  assert.equal(Object.values(afterZone.landUse.shares).reduce((sum, share) => sum + share, 0), 100);
+  assert.equal(afterZone.landUse.lastDevelopmentWeek, loaded.state.cityEvolution.lastEvolvedWeek);
+  assert.deepEqual(loaded.state.lines, beforeLines);
+  assert.deepEqual(loaded.state.cohorts, beforeCohorts);
+  assert.deepEqual(loaded.state.mobility, beforeMobility);
+  assert.deepEqual(loaded.state.campaign, beforeCampaign);
+  assert.deepEqual(loaded.state.cityEvolution.weeklyReports[0].landUseChanges, []);
+  assert.equal(loaded.state.cityEvolution.weeklyReports[0].networkWeek, 1);
+});
+
+test('schema 9 validates Atlas Land Use mode and rejects shares that no longer total 100 percent', () => {
+  const state = snapshot(activeGame().state);
+  state.analyticsMode = 'landUse';
+  assert.equal(validateState(state, city), true);
+  state.cityEvolution.districts.ruczaj.landUse.shares.residential += 1;
+  assert.equal(validateState(state, city), false);
 });

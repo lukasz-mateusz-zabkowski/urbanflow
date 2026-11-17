@@ -5,7 +5,7 @@ import { UrbanFlowGame } from '../public/js/game.js';
 import { latentDemand } from '../public/js/demand.js';
 import { createWeeklyTimetable, DEFAULT_SERVICE_PERIODS, SERVICE_DAY_TYPES, setDailyFrequency } from '../public/js/timetable.js';
 import {
-  createCityEvolutionState, evolveCityWeek, cityDemandFactor, cityEvolutionSnapshot
+  createCityEvolutionState, evolveCityWeek, cityDemandFactor, cityEvolutionSnapshot, validateCityEvolutionState
 } from '../public/js/city-evolution.js';
 
 const city = CITIES.krakow;
@@ -115,6 +115,34 @@ test('eight 12-week balance scenarios are repeatable, bounded and do not mint tr
   assert.ok(served.cityEvolution.districts.bronowice.transportAccess > isolated.cityEvolution.districts.bronowice.transportAccess);
   assert.ok(served.cityEvolution.districts.bronowice.residentialAttractiveness > isolated.cityEvolution.districts.bronowice.residentialAttractiveness);
   assert.ok(served.cityEvolution.districts.bronowice.jobs > isolated.cityEvolution.districts.bronowice.jobs);
+});
+
+test('52-week district evolution stays deterministic with bounded history, land shares, occupancy and weekly finance attribution', () => {
+  const line = { id: 'line-1', type: 'bus', frequency: 4, vehicles: 3,
+    stops: ['ruczaj', 'centrum', 'bronowice', 'dworzec'], stats: { load: 0.55, avgWaitMinutes: 8, segmentLoad: {} } };
+  const simulate = () => {
+    const state = makeState([line]);
+    state.cityEvolution = createCityEvolutionState(city);
+    for (let week = 2; week <= 53; week += 1) {
+      state.elapsedMinutes = (week - 1) * 7 * 1440;
+      state.networkWeeklyHistory.push({ week: week - 1, revenue: 1000 + week, cost: 600, transported: 35, averageWaitMinutes: 8 });
+      evolveCityWeek(state, city);
+    }
+    return state.cityEvolution;
+  };
+  const first = simulate(); const second = simulate();
+  assert.deepEqual(first, second);
+  assert.equal(first.lastEvolvedWeek, 53);
+  assert.equal(first.weeklyReports.length, 12);
+  assert.equal(first.weeklyReports.at(-1).week, 53);
+  assert.equal(first.weeklyReports.at(-1).networkWeek, 52, 'weekly report uses the completed prior service week');
+  assert.equal(first.weeklyReports.at(-1).networkBalance, 453, 'revenue less cost is reported once for that week');
+  assert.equal(validateCityEvolutionState(first, city), true);
+  for (const zone of Object.values(first.districts)) {
+    assert.equal(Object.values(zone.landUse.shares).reduce((sum, share) => sum + share, 0), 100);
+    assert.ok(zone.residents <= zone.capacity.residents && zone.jobs <= zone.capacity.jobs);
+    assert.ok(zone.landUse.lastDevelopmentWeek <= first.lastEvolvedWeek);
+  }
 });
 
 test('population changes flow into bounded passenger demand factors', () => {

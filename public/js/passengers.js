@@ -4,7 +4,8 @@ import { destinationWeight, pointDemandScore } from './demand.js?v=10';
 import { eventDemandMultiplier } from './city-events.js?v=10';
 import { ensureDiagnostics, recordDemand, recordDelivery, recordFailure } from './analytics.js?v=11';
 import { buildRegularTravelPatterns, createMobilityState, departuresForTick, ensureMobilityState, recordAccessibilityOpportunity, recordCompletedJourney } from './mobility.js?v=11';
-import { cityDemandFactor } from './city-evolution.js?v=1';
+import { cityDemandFactor } from './city-evolution.js?v=2';
+import { landUseDemandFactor } from './land-use.js?v=1';
 
 const MAX_WAIT_MINUTES = 120;
 // Matches the existing save validator bound. Cohorts represent many people and
@@ -222,6 +223,8 @@ export function passengerTick(state, visiblePoints, minuteOfDay = 720, random = 
     if (!demandFactorCache.has(point.id)) demandFactorCache.set(point.id, cityDemandFactor(state.cityEvolution, point));
     return demandFactorCache.get(point.id);
   };
+  const landUseFactor = (point, role, minute, dayType) => landUseDemandFactor(
+    state.cityEvolution?.districts?.[point?.id]?.landUse, role, minute, dayType);
   hydrateCohorts(state);
   state.passengers ||= createPassengerState(visiblePoints);
   ensureDiagnostics(state);
@@ -245,13 +248,23 @@ export function passengerTick(state, visiblePoints, minuteOfDay = 720, random = 
   };
   const dayTypes = context.intervalServiceDayTypes;
   const demandAt = (origin, destination, role) => {
-    if (role === 'origin') return intervalDemandScore(origin, minuteOfDay, delta, dayTypes) * cityFactor(origin);
+    if (role === 'origin') {
+      let total = 0;
+      for (let offset = 0; offset < delta; offset += 1) {
+        const minute = ((context.intervalStartMinuteOfDay + offset) % 1440 + 1440) % 1440;
+        total += pointDemandScore(origin, minute, 'origin', dayTypes[offset] || serviceDayType) * demandMultiplier(minute)
+          * landUseFactor(origin, 'origin', minute, dayTypes[offset] || serviceDayType);
+      }
+      return total / Math.max(1, delta) * cityFactor(origin);
+    }
     let total = 0;
     for (let offset = 0; offset < delta; offset += 1) {
       const minute = ((context.intervalStartMinuteOfDay + offset) % 1440 + 1440) % 1440;
       const dayType = dayTypes[offset] || serviceDayType;
       total += pointDemandScore(origin, minute, role, dayType) * cityFactor(origin) * demandMultiplier(minute)
-        * (role === 'destination' && destination ? destinationWeight(origin, destination, minute, dayType) : 1);
+        * landUseFactor(origin, role, minute, dayType)
+        * (role === 'destination' && destination ? destinationWeight(origin, destination, minute, dayType)
+          * landUseFactor(destination, 'destination', minute, dayType) : 1);
     }
     return total / Math.max(1, delta);
   };
@@ -327,7 +340,10 @@ export function passengerTick(state, visiblePoints, minuteOfDay = 720, random = 
     const origin = visiblePoints.find(point => point.id === pattern.origin);
     const destination = visiblePoints.find(point => point.id === pattern.destination);
     if (!origin || !destination) continue;
-    const count = Math.max(1, Math.round(pattern.passengers * cityFactor(origin)));
+    const dayType = departure.dayType || serviceDayType;
+    const count = Math.max(1, Math.round(pattern.passengers * cityFactor(origin)
+      * landUseFactor(origin, 'origin', departure.minute, dayType)
+      * landUseFactor(destination, 'destination', departure.minute, dayType)));
     const plan = planTransitJourney(state.lines, visiblePoints, pattern.origin, pattern.destination, departure.minute, context);
     recordDemand(state, pattern.origin, pattern.destination, count);
     recordAccessibilityOpportunity(mobility, plan.ok ? 'available' : plan.reason, count);
@@ -348,7 +364,9 @@ export function passengerTick(state, visiblePoints, minuteOfDay = 720, random = 
       let weight = 0;
       for (let offset = 0; offset < delta; offset += 1) {
         const minute = ((context.intervalStartMinuteOfDay + offset) % 1440 + 1440) % 1440;
-        weight += destinationWeight(origin, destination, minute, dayTypes[offset] || serviceDayType) * cityFactor(destination);
+        const dayType = dayTypes[offset] || serviceDayType;
+        weight += destinationWeight(origin, destination, minute, dayType) * cityFactor(destination)
+          * landUseFactor(destination, 'destination', minute, dayType);
       }
       return weight / Math.max(1, delta);
     });
