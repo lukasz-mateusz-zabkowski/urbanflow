@@ -11,7 +11,7 @@ This status is for review of the branch. It does not claim that the OSM extract 
 - Base: `79501928a7eea148701c79a4c476e91de5635aa5` (`v1.2.0-alpha`).
 - Branch: `fix/alpha-1.2.1-smart-route-editor`.
 - Starting HEAD for this follow-up: `28ef4b1ad9276d607f7307d30126a8ad9352eb27`.
-- Final implementation SHA and GitHub Actions result: to be recorded after commit and push.
+- Implementation commit: `faaf58b1c2cc246b52ae5833ff1bb44cb36f7450`. GitHub Actions [run 44301904567](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44301904567) passed for this SHA; all six jobs succeeded. A documentation-only commit carries this report, and its branch check is verified separately.
 - No merge, tag, GitHub Release, Raspberry Pi operation, or deployment was performed.
 
 ## OSM source and graph integrity
@@ -65,7 +65,7 @@ The coordinate was not moved. Igołomia now has `availableForNewGame: false`, so
 - `npm run audit:production`: passed, 0 vulnerabilities.
 - Routing benchmark: 15 warmed runs on the local development machine; six-leg route search median **54.67 ms**, p95 **78.40 ms**. Graph decode and spatial-index construction are excluded. This is not a Raspberry Pi performance claim.
 - Screenshots are stored outside the repository under `%LOCALAPPDATA%\Temp\urbanflow-alpha-1.2.1-final-routing-qa\`; key files include `osm-seven-stop-desktop-1280x720.png`, `osm-seven-stop-mobile-390x844.png`, `standard-seven-stop-built-desktop.png`, `standard-seven-stop-desktop-preview.png`, `standard-seven-stop-edit-preview.png`, `standard-seven-stop-mobile-preview.png`, and `mobile-390x844-touch-route-insertion.png`. The desktop OSM map, mobile OSM map, standard built line and touch insertion artifacts were visually reviewed. No screenshot or PBF was added to the repository.
-- GitHub Actions for the final pushed SHA: pending verification; record the run URL and six-job conclusion below.
+- Local validation and Actions both pass for implementation SHA `faaf58b1c2cc246b52ae5833ff1bb44cb36f7450`. The final report commit changes documentation only; its own Actions run is checked on the branch after push.
 
 ## Remaining limitations and recommendation
 
