@@ -123,14 +123,27 @@ test('mobile finger drag inserts a stop into the selected route segment and leav
     ['pointerdown', 'touchstart'].includes(event.type) && String(event.target).includes('route-segment-hit')))).toBe(true);
   await expect(page.locator('#map')).toHaveClass(/is-route-editing/);
   const target = page.locator(`.route-drag-target[data-stop-id="${targetId}"]`);
-  await expect(target).toBeAttached();
+  await expect(target).toBeVisible();
   const targetBox = await target.boundingBox();
   expect(targetBox).not.toBeNull();
+  const stop = stopData.find(item => item.id === targetId);
+  const targetPoint = await page.evaluate(({ lat, lng }) => {
+    const map = window.__urbanflowTestMap, container = map.getContainer(), bounds = container.getBoundingClientRect();
+    const point = map.latLngToContainerPoint([lat, lng]);
+    return { x: bounds.left + point.x, y: bounds.top + point.y, left: bounds.left, right: bounds.right,
+      top: bounds.top, bottom: bounds.bottom };
+  }, { lat: stop.lat, lng: stop.lng });
+  expect(targetPoint.x).toBeGreaterThanOrEqual(targetPoint.left);
+  expect(targetPoint.x).toBeLessThanOrEqual(targetPoint.right);
+  expect(targetPoint.y).toBeGreaterThanOrEqual(targetPoint.top);
+  expect(targetPoint.y).toBeLessThanOrEqual(targetPoint.bottom);
+  expect(Math.hypot(targetPoint.x - (targetBox.x + targetBox.width / 2), targetPoint.y - (targetBox.y + targetBox.height / 2)))
+    .toBeLessThan(3);
   for (let step = 1; step <= 10; step += 1) {
     const ratio = step / 10;
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [touch(
-      routePoint.x + (targetBox.x + targetBox.width / 2 - routePoint.x) * ratio,
-      routePoint.y + (targetBox.y + targetBox.height / 2 - routePoint.y) * ratio)] });
+      routePoint.x + (targetPoint.x - routePoint.x) * ratio,
+      routePoint.y + (targetPoint.y - routePoint.y) * ratio)] });
   }
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await expect(page.locator('#map')).not.toHaveClass(/is-route-editing/);
