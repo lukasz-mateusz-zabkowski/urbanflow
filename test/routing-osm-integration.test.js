@@ -2,13 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { gunzipSync } from 'node:zlib';
-import { attachStops, CITIES } from '../public/js/cities.js';
-import { registerRoutingGraph, routeLineDetails } from '../public/js/routing.js?v=12';
+import { attachStops, CITIES, KRAKOW_STARTS } from '../public/js/cities.js';
+import { decodeRoutingGraphBinary, diagnoseOsmRoute, registerRoutingGraph, routeLineDetails } from '../public/js/routing.js?v=13';
 import { UrbanFlowGame } from '../public/js/game.js';
 
 const manifest = JSON.parse(await readFile(new URL('../public/data/routing/krakow.json', import.meta.url), 'utf8'));
 const compressedGraphBytes = await readFile(new URL('../public/data/routing/krakow-road-graph.bin.gz', import.meta.url));
 const graphBytes = gunzipSync(compressedGraphBytes);
+const roadGraph = decodeRoutingGraphBinary(graphBytes, manifest.bounds);
 const stopsData = JSON.parse(await readFile(new URL('../public/data/krakow-stops.json', import.meta.url), 'utf8')).stops;
 const routeIds = ['s-stradom', 's-kazimierz', 's-plac-wolnica', 's-dietla', 's-podgorze', 's-plac-bohaterow-getta', 's-rynek-podgorski'];
 
@@ -25,6 +26,53 @@ test('Kraków seven-stop route keeps all six adjacent segments on the directed l
   }));
   assert.ok(result.segments.some(segment => segment.detourWarning), 'long water-side or one-way detours must remain visible as warnings');
   assert.ok(result.distanceKm > 0 && result.travelMinutes > 0);
+});
+
+test('three reported downtown detours compare shortest, fastest and bounded balanced routes with snap evidence', t => {
+  const pairs = [
+    ['s-stradom', 's-kazimierz'],
+    ['s-kazimierz', 's-plac-wolnica'],
+    ['s-plac-wolnica', 's-dietla']
+  ];
+  const summaries = pairs.map(([from, to]) => {
+    const a = stopsData.find(stop => stop.id === from), b = stopsData.find(stop => stop.id === to);
+    const diagnosis = diagnoseOsmRoute(a, b, roadGraph);
+    const { shortest, fastest, balanced, shortest12Candidates, shortest48Candidates } = diagnosis.variants;
+    assert.ok(diagnosis.candidates.origin.length && diagnosis.candidates.destination.length);
+    assert.ok(diagnosis.candidates.origin.every(candidate => candidate.offsetMeters <= 120));
+    assert.ok(diagnosis.candidates.destination.every(candidate => candidate.offsetMeters <= 120));
+    assert.equal(shortest.valid, true);
+    assert.equal(fastest.valid, true);
+    assert.equal(balanced.valid, true);
+    assert.ok(shortest.distanceKm <= fastest.distanceKm * 1.15 + 0.001);
+    assert.ok(balanced.distanceKm <= shortest.distanceKm * 1.15 + 0.001);
+    assert.ok(shortest.distanceKm < shortest.directDistanceKm * 2, `${from} → ${to}: balanced snap search must avoid the prior multi-fold road detour`);
+    assert.ok(shortest12Candidates.distanceKm > shortest.distanceKm * 2, 'the previous 12-candidate cutoff should reproduce the long detour');
+    assert.equal(shortest.candidateLimit, 96);
+    assert.ok(shortest.snapMatches.every(match => match.offsetMeters <= 120));
+    assert.ok(shortest.accessWarning, 'longer approach connectors must be disclosed');
+    assert.ok(shortest.roadCoordinates.length >= 2 && fastest.roadCoordinates.length >= 2);
+    return { ids: `${from} → ${to}`, directKm: Number(shortest.directDistanceKm.toFixed(3)),
+      shortestKm: Number(shortest.distanceKm.toFixed(3)), shortestMinutes: Number((shortest.travelSeconds / 60).toFixed(2)),
+      fastestKm: Number(fastest.distanceKm.toFixed(3)), fastestMinutes: Number((fastest.travelSeconds / 60).toFixed(2)),
+      balancedKm: Number(balanced.distanceKm.toFixed(3)), balancedMinutes: Number((balanced.travelSeconds / 60).toFixed(2)),
+      nearest12Km: Number(shortest12Candidates.distanceKm.toFixed(3)), intermediate48Km: Number(shortest48Candidates.distanceKm.toFixed(3)),
+      originCandidates: diagnosis.candidates.origin.length, destinationCandidates: diagnosis.candidates.destination.length,
+      startSnapM: Math.round(balanced.startSnapDistanceKm * 1000), endSnapM: Math.round(balanced.endSnapDistanceKm * 1000),
+      balancedReason: balanced.balancedReason, ways: balanced.matchedWays };
+  });
+  t.diagnostic(JSON.stringify(summaries));
+});
+
+test('every randomizable starter has a connected local bus route to its assigned hub', () => {
+  registerRoutingGraph('krakow', manifest, graphBytes);
+  const city = { ...CITIES.krakow, points: CITIES.krakow.points.map(point => ({ ...point })), stopsAttached: false };
+  attachStops(city, stopsData);
+  const available = KRAKOW_STARTS.filter(scenario => scenario.availableForNewGame !== false);
+  for (const scenario of available) {
+    const detail = routeLineDetails([scenario.id, scenario.localHubId], 'bus', city);
+    assert.equal(detail.valid, true, `${scenario.name}: ${detail.reason}`);
+  }
 });
 
 test('refreshing a saved bus line replaces stale geometry without charging money or changing campaign progress', () => {

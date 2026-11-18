@@ -1,11 +1,41 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { graphFor, roadWay } from '../scripts/build-routing-graph.mjs';
+import { encodeRoutingGraphBinary, graphFor, roadWay } from '../scripts/build-routing-graph.mjs';
+import { decodeRoutingGraphBinary } from '../public/js/routing-osm.js';
 
 test('vehicle filter excludes footways and permits a pedestrian street only when bus access is explicit', () => {
   assert.equal(roadWay({ highway: 'footway', access: 'yes' }), false);
   assert.equal(roadWay({ highway: 'pedestrian', bus: 'designated' }), true);
   assert.equal(roadWay({ highway: 'track', bus: 'no' }), false);
+  assert.equal(roadWay({ highway: 'living_street', motor_vehicle: 'private' }), false);
+  assert.equal(roadWay({ highway: 'living_street', motor_vehicle: 'private', psv: 'yes' }), true);
+});
+
+test('binary graph v2 preserves full 64-bit OSM way IDs and matching turn restrictions', () => {
+  const wideFromWay = 4_322_000_123, wideToWay = 8_616_967_419;
+  const coordinates = new Map([[1, { lat: 50, lng: 19.9 }], [2, { lat: 50.001, lng: 19.901 }], [3, { lat: 50.002, lng: 19.902 }]]);
+  const ways = [
+    { id: wideFromWay, refs: [1, 2], tags: { highway: 'residential', oneway: 'yes' } },
+    { id: wideToWay, refs: [2, 3], tags: { highway: 'secondary' } }
+  ];
+  const restriction = { id: 500, kind: 'no', members: [
+    { type: 'way', ref: wideFromWay, role: 'from' }, { type: 'node', ref: 2, role: 'via' }, { type: 'way', ref: wideToWay, role: 'to' }
+  ] };
+  const built = graphFor(ways, coordinates, [restriction], { south: 49.99, north: 50.01, west: 19.89, east: 19.91 }, 'road');
+  const decoded = decodeRoutingGraphBinary(encodeRoutingGraphBinary(built.graph), { south: 49.99, north: 50.01, west: 19.89, east: 19.91 });
+  assert.equal(decoded.edgesFrom(0).find(edge => edge.wayId === wideFromWay).wayId, wideFromWay);
+  assert.equal(decoded.edgesFrom(1).find(edge => edge.wayId === wideToWay).wayId, wideToWay);
+  assert.equal(decoded.edgesFrom(0).find(edge => edge.wayId === wideFromWay).highway, 'residential');
+  assert.ok([...decoded.turnRules.values()].flat().some(rule => rule.fromWay === wideFromWay && rule.toWay === wideToWay));
+  assert.notEqual(wideFromWay >>> 0, wideFromWay, 'fixture must expose a 32-bit alias');
+});
+
+test('binary graph decoder rejects v1 rather than silently decoding truncated IDs', () => {
+  const legacy = new Uint8Array(20);
+  legacy.set([85, 70, 71, 49]);
+  new DataView(legacy.buffer).setUint16(4, 1, true);
+  new DataView(legacy.buffer).setUint16(6, 20, true);
+  assert.throws(() => decodeRoutingGraphBinary(legacy), /invalid magic header|Unsupported routing graph binary version/);
 });
 
 test('graph builder keeps a one-way bus street directed and attaches node turn restrictions', () => {

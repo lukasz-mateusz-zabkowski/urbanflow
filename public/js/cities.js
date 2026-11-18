@@ -9,14 +9,16 @@ export const KRAKOW_STARTS = [
   { id: 'wieliczka', name: 'Wieliczka', point: point('wieliczka', 'Wieliczka', 49.9871, 20.0648, 'satellite', 8, 0, 'tourist'), localHubId: 'biezanow', centerId: 'centrum', demand: 8 },
   { id: 'liszki', name: 'Liszki', point: point('liszki', 'Liszki', 50.0384, 19.7682, 'satellite', 7, 0, 'residential'), localHubId: 'bronowice', centerId: 'centrum', demand: 7 },
   { id: 'kocmyrzow', name: 'Kocmyrzów', point: point('kocmyrzow', 'Kocmyrzów', 50.1298, 20.1133, 'satellite', 7, 0, 'residential'), localHubId: 'nowa-huta', centerId: 'dworzec', demand: 7 },
-  { id: 'igolomia', name: 'Igołomia', point: point('igolomia', 'Igołomia', 50.0912, 20.2611, 'satellite', 7, 0, 'industrial'), localHubId: 'nowa-huta', centerId: 'dworzec', demand: 7 },
+  { id: 'igolomia', name: 'Igołomia', point: point('igolomia', 'Igołomia', 50.0912, 20.2611, 'satellite', 7, 0, 'industrial'), localHubId: 'nowa-huta', centerId: 'dworzec', demand: 7,
+    availableForNewGame: false, availabilityReason: 'Najbliższa droga dopuszczona dla autobusu jest ok. 143 m od punktu scenariusza; limit dojścia do grafu wynosi 120 m.' },
   { id: 'swiatniki', name: 'Świątniki Górne', point: point('swiatniki', 'Świątniki Górne', 49.9342, 19.9536, 'satellite', 7, 0, 'residential'), localHubId: 'kurdwanow', centerId: 'centrum', demand: 7 },
   { id: 'libertow', name: 'Libertów', point: point('libertow', 'Libertów', 49.9720, 19.8946, 'satellite', 7, 0, 'residential'), localHubId: 'lagiewniki', centerId: 'centrum', demand: 7 }
 ];
 
 export function chooseStartScenario(random = Math.random, id = null) {
   if (id) return KRAKOW_STARTS.find(item => item.id === id) || KRAKOW_STARTS.find(item => item.id === 'wieliczka');
-  return KRAKOW_STARTS[Math.min(KRAKOW_STARTS.length - 1, Math.floor(random() * KRAKOW_STARTS.length))];
+  const available = KRAKOW_STARTS.filter(item => item.availableForNewGame !== false);
+  return available[Math.min(available.length - 1, Math.floor(random() * available.length))];
 }
 
 export function starterRoutesFor(scenario) {

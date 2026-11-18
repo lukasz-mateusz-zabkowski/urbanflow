@@ -17,11 +17,15 @@ const gameAt = id => new UrbanFlowGame(city, { startScenarioId: id });
 
 test('start selection covers every configured Kraków satellite deterministically', () => {
   assert.ok(KRAKOW_STARTS.length >= 11);
-  for (let index = 0; index < KRAKOW_STARTS.length; index += 1) {
-    const random = () => (index + 0.01) / KRAKOW_STARTS.length;
-    assert.equal(chooseStartScenario(random).id, KRAKOW_STARTS[index].id);
+  const available = KRAKOW_STARTS.filter(item => item.availableForNewGame !== false);
+  for (let index = 0; index < available.length; index += 1) {
+    const random = () => (index + 0.01) / available.length;
+    assert.equal(chooseStartScenario(random).id, available[index].id);
   }
   assert.equal(new Set(KRAKOW_STARTS.map(item => item.id)).size, KRAKOW_STARTS.length);
+  assert.equal(chooseStartScenario(() => 0.999).id, available.at(-1).id);
+  assert.equal(chooseStartScenario(() => 0, 'igolomia').id, 'igolomia', 'saved campaigns keep resolving the legacy scenario ID');
+  assert.equal(KRAKOW_STARTS.find(item => item.id === 'igolomia').availableForNewGame, false);
 });
 
 for (const scenario of KRAKOW_STARTS) test(`hierarchical campaign opening works for ${scenario.name}`, () => {

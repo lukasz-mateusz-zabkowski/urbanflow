@@ -1,7 +1,9 @@
-const HIGHWAYS = ['bus_guideway', 'bus_guideway_link', 'living_street', 'living_street_link', 'motorway', 'motorway_link', 'primary', 'primary_link', 'road', 'road_link', 'secondary', 'secondary_link', 'service', 'service_link', 'tertiary', 'tertiary_link', 'tram', 'trunk', 'trunk_link', 'unclassified', 'unclassified_link'];
-const EDGE_BYTES = 20;
+const HIGHWAYS = [...new Set(['bus_guideway', 'living_street', 'motorway', 'primary', 'road', 'secondary', 'service', 'tertiary', 'trunk', 'unclassified', 'residential', 'pedestrian', 'track']
+  .flatMap(value => [value, `${value}_link`]).concat(['tram', 'level_connector']))].sort();
+const EDGE_BYTES = 24;
 const MAX_SNAP_KM = 0.12;
 const MAX_DETOUR = 4;
+const BALANCED_MAX_DISTANCE_RATIO = 1.15;
 const CELL_DEGREES = 0.001;
 const R = 6371.0088;
 
@@ -9,21 +11,21 @@ export function decodeRoutingGraphBinary(input, bounds = null) {
   const buffer = input instanceof ArrayBuffer ? input : input.buffer.slice(input.byteOffset, input.byteOffset + input.byteLength);
   if (buffer.byteLength < 20) throw new Error('Routing graph binary is truncated.');
   const view = new DataView(buffer);
-  if (view.getUint8(0) !== 85 || view.getUint8(1) !== 70 || view.getUint8(2) !== 71 || view.getUint8(3) !== 49) throw new Error('Routing graph binary has an invalid magic header.');
-  if (view.getUint16(4, true) !== 1 || view.getUint16(6, true) !== 20) throw new Error('Unsupported routing graph binary version.');
+  if (view.getUint8(0) !== 85 || view.getUint8(1) !== 70 || view.getUint8(2) !== 71 || view.getUint8(3) !== 50) throw new Error('Routing graph binary has an invalid magic header.');
+  if (view.getUint16(4, true) !== 2 || view.getUint16(6, true) !== 20) throw new Error('Unsupported routing graph binary version.');
   const nodeCount = view.getUint32(8, true), edgeCount = view.getUint32(12, true), ruleCount = view.getUint32(16, true);
   const coordinateOffset = 20, adjacencyOffset = coordinateOffset + nodeCount * 8;
   const edgeOffset = adjacencyOffset + (nodeCount + 1) * 4, rulesOffset = edgeOffset + edgeCount * EDGE_BYTES;
-  if (rulesOffset + ruleCount * 16 !== buffer.byteLength) throw new Error('Routing graph binary has inconsistent section lengths.');
+  if (rulesOffset + ruleCount * 24 !== buffer.byteLength) throw new Error('Routing graph binary has inconsistent section lengths.');
   const coordinates = new Int32Array(nodeCount * 2), offsets = new Uint32Array(nodeCount + 1);
   const targets = new Uint32Array(edgeCount), lengthsMm = new Uint32Array(edgeCount), timesMs = new Uint32Array(edgeCount);
-  const wayIds = new Uint32Array(edgeCount), highwayCodes = new Uint8Array(edgeCount), levels = new Int8Array(edgeCount), flags = new Uint8Array(edgeCount);
+  const wayIds = new Float64Array(edgeCount), highwayCodes = new Uint8Array(edgeCount), levels = new Int8Array(edgeCount), flags = new Uint8Array(edgeCount);
   for (let i = 0; i < nodeCount * 2; i += 1) coordinates[i] = view.getInt32(coordinateOffset + i * 4, true);
   for (let i = 0; i <= nodeCount; i += 1) offsets[i] = view.getUint32(adjacencyOffset + i * 4, true);
   for (let i = 0; i < edgeCount; i += 1) {
     const p = edgeOffset + i * EDGE_BYTES;
     targets[i] = view.getUint32(p, true); lengthsMm[i] = view.getUint32(p + 4, true); timesMs[i] = view.getUint32(p + 8, true);
-    wayIds[i] = view.getUint32(p + 12, true); highwayCodes[i] = view.getUint8(p + 16); levels[i] = view.getInt8(p + 17); flags[i] = view.getUint8(p + 18);
+    wayIds[i] = Number(view.getBigUint64(p + 12, true)); highwayCodes[i] = view.getUint8(p + 20); levels[i] = view.getInt8(p + 21); flags[i] = view.getUint8(p + 22);
   }
   const nodeDegrees = new Uint16Array(nodeCount);
   for (let node = 0; node < nodeCount; node += 1) {
@@ -32,8 +34,8 @@ export function decodeRoutingGraphBinary(input, bounds = null) {
   }
   const turnRules = new Map();
   for (let i = 0; i < ruleCount; i += 1) {
-    const p = rulesOffset + i * 16, node = view.getUint32(p, true);
-    const rule = { fromWay: view.getUint32(p + 4, true), toWay: view.getUint32(p + 8, true), kind: view.getUint32(p + 12, true) ? 'only' : 'no' };
+    const p = rulesOffset + i * 24, node = view.getUint32(p, true);
+    const rule = { fromWay: Number(view.getBigUint64(p + 4, true)), toWay: Number(view.getBigUint64(p + 12, true)), kind: view.getUint32(p + 20, true) ? 'only' : 'no' };
     if (!turnRules.has(node)) turnRules.set(node, []);
     turnRules.get(node).push(rule);
   }
@@ -84,7 +86,7 @@ function project(point, a, b) {
   return { t, coordinate, distanceKm: haversineKm(point, coordinate) };
 }
 
-function snapEdges(graph, point) {
+function snapEdges(graph, point, { limit = 12 } = {}) {
   if (!graph.spatial) buildSpatialIndex(graph);
   const { bounds, width, height, offsets, nodes } = graph.spatial;
   const cellLat = Math.floor((point[0] - bounds.south) / CELL_DEGREES), cellLng = Math.floor((point[1] - bounds.west) / CELL_DEGREES);
@@ -108,7 +110,7 @@ function snapEdges(graph, point) {
     }
     if (found.size) break;
   }
-  return [...found.values()].sort((a, b) => a.distanceKm - b.distanceKm).slice(0, 12);
+  return [...found.values()].sort((a, b) => a.distanceKm - b.distanceKm).slice(0, limit);
 }
 
 class MinHeap {
@@ -140,7 +142,7 @@ function turnAllowed(graph, node, incomingWay, outgoingWay) {
   return !rules.some(rule => rule.kind === 'no' && rule.fromWay === incomingWay && rule.toWay === outgoingWay);
 }
 
-function search(graph, starts, targets) {
+function search(graph, starts, targets, objective = 'time') {
   const restrictions = new Set(graph.turnRules.keys()), stateIds = new Map(), stateNodes = [], stateWays = [], dist = [], previous = [], previousEdges = [], roots = [];
   const stateFor = (node, way) => {
     const key = restrictions.has(node) ? `${node}:${way}` : `${node}:0`;
@@ -150,7 +152,8 @@ function search(graph, starts, targets) {
   };
   const heap = new MinHeap();
   starts.forEach((start, index) => {
-    const id = stateFor(start.to, start.wayId), cost = start.partialMs + start.accessMs;
+    const id = stateFor(start.to, start.wayId), cost = objective === 'distance'
+      ? start.partialKm + start.accessKm : start.partialMs + start.accessMs;
     if (cost < dist[id]) { dist[id] = cost; previous[id] = -1; roots[id] = index; heap.push({ id, cost }); }
   });
   let best = null;
@@ -160,7 +163,8 @@ function search(graph, starts, targets) {
     const node = stateNodes[current.id], incoming = stateWays[current.id];
     for (const target of targets) {
       if (target.from === node && turnAllowed(graph, node, incoming, target.wayId)) {
-        const cost = current.cost + target.partialMs + target.accessMs;
+        const cost = current.cost + (objective === 'distance'
+          ? target.partialKm + target.accessKm : target.partialMs + target.accessMs);
         if (!best || cost < best.cost) best = { cost, state: current.id, target };
       }
     }
@@ -168,7 +172,8 @@ function search(graph, starts, targets) {
       const way = graph.wayIds[edge];
       if (!turnAllowed(graph, node, incoming, way)) continue;
       const next = graph.targets[edge], nextWay = way || incoming;
-      const nextState = stateFor(next, nextWay), nextCost = current.cost + graph.timesMs[edge];
+      const nextState = stateFor(next, nextWay), nextCost = current.cost + (objective === 'distance'
+        ? graph.lengthsMm[edge] / 1e6 : graph.timesMs[edge]);
       if (nextCost < dist[nextState]) { dist[nextState] = nextCost; previous[nextState] = current.id; previousEdges[nextState] = edge; roots[nextState] = roots[current.id]; heap.push({ id: nextState, cost: nextCost }); }
     }
   }
@@ -180,17 +185,23 @@ function search(graph, starts, targets) {
   const coordinates = [start.coordinate, ...pathNodes.map(node => graph.coordinate(node)), best.target.coordinate];
   const pathEdges = [start.edge, ...states.slice(1).map(state => previousEdges[state]), best.target.edge];
   const bridgeEdges = [...new Set(pathEdges.filter(edge => edge >= 0 && graph.flags[edge] & 1))];
+  const edgeDistanceKm = pathEdges.slice(1, -1).reduce((sum, edge) => sum + graph.lengthsMm[edge] / 1e6, 0);
+  const distanceKm = start.accessKm + start.partialKm + edgeDistanceKm + best.target.partialKm + best.target.accessKm;
+  const durationMs = start.accessMs + start.partialMs + pathEdges.slice(1, -1).reduce((sum, edge) => sum + graph.timesMs[edge], 0) + best.target.partialMs + best.target.accessMs;
   return { coordinates, nodeIds: pathNodes, edgeIds: pathEdges,
-    durationMs: best.cost, start, target: best.target, bridgeCount: bridgeEdges.length,
-    bridgeWays: bridgeEdges.map(edge => graph.wayIds[edge]) };
+    durationMs, start, target: best.target, bridgeCount: bridgeEdges.length,
+    bridgeWays: bridgeEdges.map(edge => graph.wayIds[edge]), distanceKm };
 }
 
-function sameEdgePath(starts, targets, graph) {
+function sameEdgePath(starts, targets, graph, objective = 'distance') {
   let best = null;
   for (const start of starts) for (const target of targets) {
     if (start.from === target.from && start.edge === target.edge && target.t >= start.t) {
-      const length = target.t - start.t, cost = start.accessMs + start.partialMs * length / Math.max(0.000001, 1 - start.t) + target.accessMs;
-      if (!best || cost < best.cost) best = { cost, coordinates: [start.coordinate, target.coordinate], nodeIds: [], edgeIds: [start.edge], start, target,
+      const length = target.t - start.t;
+      const distanceKm = start.accessKm + graph.lengthsMm[start.edge] / 1e6 * length + target.accessKm;
+      const durationMs = start.accessMs + start.partialMs * length / Math.max(0.000001, 1 - start.t) + target.accessMs;
+      const cost = objective === 'time' ? durationMs : distanceKm;
+      if (!best || cost < best.cost) best = { cost, durationMs, distanceKm, coordinates: [start.coordinate, target.coordinate], nodeIds: [], edgeIds: [start.edge], start, target,
         bridgeCount: graph.flags[start.edge] & 1 ? 1 : 0,
         bridgeWays: graph.flags[start.edge] & 1 ? [graph.wayIds[start.edge]] : [] };
     }
@@ -227,19 +238,56 @@ function simplifyPath(graph, coordinates, nodeIds, edgeIds) {
   return [...keep].sort((a, b) => a - b).map(index => coordinates[index]);
 }
 
-export function routeOnOsmGraph(a, b, graph) {
+function candidatesFor(graph, point, limit = 96) {
+  return snapEdges(graph, point, { limit }).map(edge => {
+    const lengthKm = graph.lengthsMm[edge.edge] / 1e6;
+    return { ...edge, accessKm: edge.distanceKm, accessMs: edge.distanceKm * 1000 / (4 / 3.6) * 1000,
+      partialKm: lengthKm * (1 - edge.t), partialMs: graph.timesMs[edge.edge] * (1 - edge.t) };
+  });
+}
+
+export function diagnoseOsmRoute(a, b, graph) {
+  const pointA = [Number(a.lat), Number(a.lng)], pointB = [Number(b.lat), Number(b.lng)];
+  const describe = point => snapEdges(graph, point, { limit: 24 }).map(edge => ({ wayId: edge.wayId,
+    highway: HIGHWAYS[graph.highwayCodes[edge.edge]] || 'unknown', level: edge.level,
+    edge: `${edge.from}->${edge.to}`, projection: edge.coordinate, offsetMeters: Math.round(edge.distanceKm * 1000),
+    directionT: Number(edge.t.toFixed(3)), bridge: Boolean(graph.flags[edge.edge] & 1) }));
+  const variants = {};
+  for (const strategy of ['shortest', 'fastest', 'balanced']) variants[strategy] = routeOnOsmGraph(a, b, graph, { strategy });
+  variants.shortest12Candidates = routeOnOsmGraph(a, b, graph, { strategy: 'shortest', candidateLimit: 12 });
+  variants.shortest48Candidates = routeOnOsmGraph(a, b, graph, { strategy: 'shortest', candidateLimit: 48 });
+  return { origin: pointA, destination: pointB, candidates: { origin: describe(pointA), destination: describe(pointB) }, variants };
+}
+
+export function routeOnOsmGraph(a, b, graph, { strategy = 'balanced', candidateLimit = 96 } = {}) {
   if (!a || !b || !graph) return { valid: false, coordinates: [], reason: 'Brak załadowanego lokalnego grafu drogowego.' };
   const pointA = [Number(a.lat), Number(a.lng)], pointB = [Number(b.lat), Number(b.lng)];
-  const starts = snapEdges(graph, pointA).map(edge => ({ ...edge,
-    accessKm: edge.distanceKm, accessMs: edge.distanceKm * 1000 / (4 / 3.6),
-    partialMs: graph.timesMs[edge.edge] * (1 - edge.t) }));
-  const targets = snapEdges(graph, pointB).map(edge => ({ ...edge,
-    accessKm: edge.distanceKm, accessMs: edge.distanceKm * 1000 / (4 / 3.6),
+  const starts = candidatesFor(graph, pointA, candidateLimit);
+  const targets = candidatesFor(graph, pointB, candidateLimit).map(edge => ({ ...edge,
+    partialKm: graph.lengthsMm[edge.edge] / 1e6 * edge.t,
     partialMs: graph.timesMs[edge.edge] * edge.t }));
   if (!starts.length || !targets.length) return { valid: false, coordinates: [], source: 'OpenStreetMap / Geofabrik', algorithm: 'Dijkstra po skierowanym grafie OSM', reason: `Nie znaleziono dopuszczalnej drogi w promieniu ${MAX_SNAP_KM * 1000} m od ${!starts.length ? 'przystanku początkowego' : 'przystanku końcowego'}.`, maxSnapDistanceKm: Infinity };
-  let path = sameEdgePath(starts, targets, graph);
-  const searched = search(graph, starts, targets);
-  if (searched && (!path || searched.durationMs < path.cost)) path = searched;
+  const byObjective = objective => {
+    let candidate = search(graph, starts, targets, objective);
+    const sameEdge = sameEdgePath(starts, targets, graph, objective);
+    if (sameEdge && (!candidate || (objective === 'time'
+      ? sameEdge.durationMs < candidate.durationMs : sameEdge.distanceKm < candidate.distanceKm))) candidate = sameEdge;
+    return candidate;
+  };
+  let path, shortestPath = null, fastestPath = null, balancedReason = '';
+  if (strategy === 'fastest') path = fastestPath = byObjective('time');
+  else if (strategy === 'shortest') path = shortestPath = byObjective('distance');
+  else {
+    shortestPath = byObjective('distance');
+    fastestPath = byObjective('time');
+    const shortestRouteKm = shortestPath?.distanceKm || 0;
+    const fastestRouteKm = fastestPath?.distanceKm || Infinity;
+    const withinDistanceTolerance = shortestRouteKm > 0 && fastestRouteKm <= shortestRouteKm * BALANCED_MAX_DISTANCE_RATIO;
+    path = withinDistanceTolerance ? fastestPath : shortestPath;
+    balancedReason = withinDistanceTolerance
+      ? `Wybrano szybszy wariant, bo jego długość mieści się w tolerancji +${Math.round((BALANCED_MAX_DISTANCE_RATIO - 1) * 100)}% względem najkrótszej drogi.`
+      : `Wybrano najkrótszy wariant; najszybszy przekracza tolerancję długości +${Math.round((BALANCED_MAX_DISTANCE_RATIO - 1) * 100)}%.`;
+  }
   if (!path) return { valid: false, coordinates: [], source: 'OpenStreetMap / Geofabrik', algorithm: 'Dijkstra po skierowanym grafie OSM', reason: 'Brak połączenia w lokalnym grafie z uwzględnieniem kierunku ulic i ograniczeń skrętu.', maxSnapDistanceKm: Math.max(starts[0].distanceKm, targets[0].distanceKm) };
   const startAccess = [pointA, path.start.coordinate], endAccess = [path.target.coordinate, pointB];
   const roadCoordinates = simplifyPath(graph, path.coordinates, path.nodeIds || [], path.edgeIds || []).map(point => [...point]);
@@ -248,20 +296,36 @@ export function routeOnOsmGraph(a, b, graph) {
   }
   const coordinates = [...startAccess, ...roadCoordinates.slice(1, -1), ...endAccess]
     .filter((item, index, list) => !index || item[0] !== list[index - 1][0] || item[1] !== list[index - 1][1]);
-  const roadDistanceKm = roadCoordinates.slice(1).reduce((sum, item, index) => sum + haversineKm(roadCoordinates[index], item), 0);
+  const roadDistanceKm = path.distanceKm - path.start.accessKm - path.target.accessKm;
   const directKm = haversineKm(pointA, pointB), maxSnapDistanceKm = Math.max(path.start.distanceKm, path.target.distanceKm);
-  const detourRatio = roadDistanceKm / Math.max(0.05, directKm);
+  const routeDistanceKm = roadDistanceKm + path.start.accessKm + path.target.accessKm;
+  const detourRatio = routeDistanceKm / Math.max(0.05, directKm);
   const valid = maxSnapDistanceKm <= MAX_SNAP_KM;
+  const accessSeconds = (path.start.accessMs + path.target.accessMs) / 1000;
+  const roadTravelSeconds = Math.max(0, path.durationMs / 1000 - accessSeconds);
+  const accessWarning = maxSnapDistanceKm >= 0.06;
+  const detourWarning = detourRatio > MAX_DETOUR || accessWarning;
+  const routeReason = valid ? (detourRatio > MAX_DETOUR
+    ? `Połączenie jest osiągalne po drogach OSM, lecz objazd ×${detourRatio.toFixed(2)} przekracza próg ostrzegawczy${path.bridgeCount ? `; trasa zawiera ${path.bridgeCount} odcinków mostowych` : ''}. Sprawdź przebieg przed zatwierdzeniem.`
+    : 'Połączenie znaleziono w lokalnym grafie OSM; krótki dostęp do jezdni pokazano osobno.')
+    : `Odrzucono trasę: odsunięcie ${maxSnapDistanceKm.toFixed(3)} km, objazd ×${detourRatio.toFixed(2)}; nie wykryto przeprawy mostowej.`;
   return { valid, coordinates: valid ? coordinates : [], roadCoordinates, roadDistanceKm,
-    distanceKm: roadDistanceKm + path.start.accessKm + path.target.accessKm,
+    distanceKm: routeDistanceKm,
     directDistanceKm: directKm, detourRatio, maxSnapDistanceKm,
     snappedDistanceKm: path.start.distanceKm + path.target.distanceKm,
     accessSegments: [startAccess, endAccess], source: 'Geofabrik OSM regional extract (lokalny graf ODbL)',
-    algorithm: 'Dijkstra z kolejką priorytetową, krawędzie skierowane, ograniczenia skrętu OSM',
-    reason: valid ? (detourRatio > MAX_DETOUR
-      ? `Połączenie jest osiągalne po drogach OSM, lecz objazd ×${detourRatio.toFixed(2)} przekracza próg ostrzegawczy${path.bridgeCount ? `; trasa zawiera ${path.bridgeCount} odcinków mostowych` : ''}. Sprawdź przebieg przed zatwierdzeniem.`
-      : 'Połączenie znaleziono w lokalnym grafie OSM; krótki dostęp do jezdni pokazano osobno.')
-      : `Odrzucono trasę: odsunięcie ${maxSnapDistanceKm.toFixed(3)} km, objazd ×${detourRatio.toFixed(2)}; nie wykryto przeprawy mostowej.`,
-    bridgeCount: path.bridgeCount, bridgeWays: path.bridgeWays || [], detourWarning: detourRatio > MAX_DETOUR,
-    travelSeconds: path.durationMs / 1000, startSnapDistanceKm: path.start.distanceKm, endSnapDistanceKm: path.target.distanceKm };
+    algorithm: strategy === 'fastest' ? 'Dijkstra: minimalny szacowany czas, krawędzie skierowane i ograniczenia skrętu OSM'
+      : strategy === 'shortest' ? 'Dijkstra: minimalna długość, krawędzie skierowane i ograniczenia skrętu OSM'
+        : `Wariant zrównoważony (+${Math.round((BALANCED_MAX_DISTANCE_RATIO - 1) * 100)}% tolerancji długości); Dijkstra po grafie skierowanym z ograniczeniami skrętu OSM`,
+    reason: valid && accessWarning
+      ? `${routeReason} Dojście do jezdni ma ${Math.round(maxSnapDistanceKm * 1000)} m; przerywana linia oznacza dostęp pieszy, nie przebieg autobusu.`
+      : routeReason,
+    bridgeCount: path.bridgeCount, bridgeWays: path.bridgeWays || [], detourWarning, accessWarning,
+    travelSeconds: path.durationMs / 1000, roadTravelSeconds, accessSeconds,
+    startSnapDistanceKm: path.start.distanceKm, endSnapDistanceKm: path.target.distanceKm,
+    strategy, candidateLimit, matchedWays: [...new Set((path.edgeIds || []).filter(edge => edge >= 0).map(edge => graph.wayIds[edge]))],
+    snapMatches: [path.start, path.target].map(match => ({ wayId: match.wayId, from: match.from, to: match.to,
+      coordinate: match.coordinate, offsetMeters: Math.round(match.distanceKm * 1000), fractionAlongDirectedEdge: Number(match.t.toFixed(3)) })),
+    ...(strategy === 'balanced' ? { shortestDistanceKm: shortestPath?.distanceKm, fastestDistanceKm: fastestPath?.distanceKm,
+      fastestTravelSeconds: fastestPath?.durationMs / 1000, balancedReason } : {}) };
 }

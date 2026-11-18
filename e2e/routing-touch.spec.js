@@ -75,7 +75,8 @@ test('mobile finger drag inserts a stop into the selected route segment and leav
   });
   const touch = (x, y) => ({ x: Math.round(x), y: Math.round(y), radiusX: 10, radiusY: 10, force: 1, id: 1 });
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [touch(routePoint.x, routePoint.y)] });
-  await expect.poll(() => page.evaluate(() => window.__routeTouchEvents.some(event => event.type === 'touchstart' && String(event.target).includes('route-segment-hit')))).toBe(true);
+  await expect.poll(() => page.evaluate(() => window.__routeTouchEvents.some(event =>
+    ['pointerdown', 'touchstart'].includes(event.type) && String(event.target).includes('route-segment-hit')))).toBe(true);
   await expect(page.locator('#map')).toHaveClass(/is-route-editing/);
   const target = page.locator(`.route-drag-target[data-stop-id="${targetId}"]`);
   await expect(target).toBeAttached();

@@ -9,7 +9,7 @@ import { CITY_EVENT_DEFINITIONS, createCityEvent } from './city-events.js?v=10';
 import { ensureDiagnostics } from './analytics.js?v=11';
 import { ensureMobilityState } from './mobility.js?v=11';
 import { chooseStartScenario, starterRoutesFor } from './cities.js?v=10';
-import { getRoutingGraphStatus, routeLine, routeLineDetails, routingMode } from './routing.js?v=12';
+import { getRoutingGraphStatus, routeLine, routeLineDetails, routingMode } from './routing.js?v=13';
 import { ensureFleet, fleetStatus, missingFleetCost } from './fleet.js?v=10';
 import { ensureCityEvolution, evolveCityWeek } from './city-evolution.js?v=2';
 import {

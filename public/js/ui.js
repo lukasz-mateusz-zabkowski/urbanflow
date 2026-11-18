@@ -856,4 +856,4 @@ export class UI {
   }
 }
 
-import { loadRoutingGraph } from './routing.js?v=12';
+import { loadRoutingGraph } from './routing.js?v=13';

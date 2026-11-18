@@ -6,7 +6,7 @@ import { TRANSPORT_TYPES } from './transport.js?v=10';
 import { SIMULATION } from './simulation.js?v=10';
 import { applyAtlasView } from './theme.js?v=10';
 import { loadGame, saveGame, clearSave } from './storage.js?v=12';
-import { loadRoutingGraph } from './routing.js?v=12';
+import { loadRoutingGraph } from './routing.js?v=13';
 
 let game, gameMap, ui, timer, removeStarterRoutes;
 let storage, storageWarningShown = false;

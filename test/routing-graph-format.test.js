@@ -5,23 +5,23 @@ import { routeOnOsmGraph } from '../public/js/routing-osm.js';
 import { encodeRoutingGraphBinary, graphFor } from '../scripts/build-routing-graph.mjs';
 
 function fixture() {
-  const bytes = new ArrayBuffer(20 + 3 * 8 + 4 * 4 + 3 * 20 + 16);
+  const bytes = new ArrayBuffer(20 + 3 * 8 + 4 * 4 + 3 * 24 + 24);
   const view = new DataView(bytes);
-  new Uint8Array(bytes, 0, 4).set([85, 70, 71, 49]); // UFG1
-  view.setUint16(4, 1, true); view.setUint16(6, 20, true);
+  new Uint8Array(bytes, 0, 4).set([85, 70, 71, 50]); // UFG2
+  view.setUint16(4, 2, true); view.setUint16(6, 20, true);
   view.setUint32(8, 3, true); view.setUint32(12, 3, true); view.setUint32(16, 1, true);
   const coordinates = 20;
   [[500000000, 199000000], [500010000, 199010000], [500020000, 199020000]].flat().forEach((v, i) => view.setInt32(coordinates + i * 4, v, true));
   const offsets = coordinates + 3 * 8;
   [0, 1, 2, 3].forEach((v, i) => view.setUint32(offsets + i * 4, v, true));
   const edges = offsets + 4 * 4;
-  [[1, 12000, 2000, 41, 6, 0, 0], [2, 14000, 2400, 42, 6, 0, 1], [0, 12000, 2000, 41, 6, 0, 0]].forEach((edge, i) => {
-    const p = edges + i * 20;
+  [[1, 12000, 2000, 41, 9, 0, 0], [2, 14000, 2400, 42, 9, 0, 1], [0, 12000, 2000, 41, 9, 0, 0]].forEach((edge, i) => {
+    const p = edges + i * 24;
     view.setUint32(p, edge[0], true); view.setUint32(p + 4, edge[1], true); view.setUint32(p + 8, edge[2], true);
-    view.setUint32(p + 12, edge[3], true); view.setUint8(p + 16, edge[4]); view.setInt8(p + 17, edge[5]); view.setUint8(p + 18, edge[6]);
+    view.setBigUint64(p + 12, BigInt(edge[3]), true); view.setUint8(p + 20, edge[4]); view.setInt8(p + 21, edge[5]); view.setUint8(p + 22, edge[6]);
   });
-  const rules = edges + 3 * 20;
-  view.setUint32(rules, 1, true); view.setUint32(rules + 4, 41, true); view.setUint32(rules + 8, 42, true); view.setUint32(rules + 12, 0, true);
+  const rules = edges + 3 * 24;
+  view.setUint32(rules, 1, true); view.setBigUint64(rules + 4, 41n, true); view.setBigUint64(rules + 12, 42n, true); view.setUint32(rules + 20, 0, true);
   return bytes;
 }
 

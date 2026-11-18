@@ -2,7 +2,7 @@ import { TRANSPORT_TYPES, haversineKm, lineMetrics } from './transport.js?v=10';
 import { SIMULATION, gameClock } from './simulation.js?v=10';
 import { DISTRICT_PROFILES, inferProfile, latentDemand } from './demand.js?v=10';
 import { activeCityEvents, upcomingCityEvents } from './city-events.js?v=10';
-import { routeLine, routeLineDetails } from './routing.js?v=12';
+import { routeLine, routeLineDetails } from './routing.js?v=13';
 import { describePlace } from './place-profiles.js?v=10';
 import { landUseDominantUse, landUseLabel } from './land-use.js?v=1';
 
@@ -143,7 +143,8 @@ export class GameMap {
     this.effectTimers.forEach(timer => clearTimeout(timer)); this.effectTimers.clear();
     this.markers.clear(); this.pointViews.clear(); this.lines.clear(); this.vehicles.clear(); this.orderMarkers.clear(); this.starterLayers.clear();
     this.analysisLayer.clearLayers(); this.eventLayer.clearLayers(); this.eventSignature = '';
-    this.preview?.remove(); this.preview = null; this.previewSignature = ''; this.selectedLineId = null;
+    this.preview?.remove(); this.previewAccess?.remove(); this.preview = null; this.previewAccess = null;
+    this.previewSignature = ''; this.selectedLineId = null;
   }
 
   setLineClickHandler(callback) { this.onLineClick = callback; }
@@ -164,6 +165,7 @@ export class GameMap {
       this.syncSegmentHandles(record, selected);
       if (selected) {
         record.casing.bringToFront(); record.route.bringToFront();
+        record.access?.bringToFront();
         record.segmentHandles?.forEach(handle => handle.bringToFront());
       }
     });
@@ -289,18 +291,31 @@ export class GameMap {
       const signature = line.stops.join('|'); const color = safeColor(line.color, transport.color);
       const geometry = this.lines.get(line.id)?.signature === signature ? this.lines.get(line.id).geometry
         : coordinateGeometry(line.routeGeometry?.length ? line.routeGeometry : routeLine(line.stops, line.type, this.city));
+      const display = this.lines.get(line.id)?.signature === signature ? this.lines.get(line.id).display : (() => {
+        const details = routeLineDetails(line.stops, line.type, this.city);
+        const roads = details.segments.map(segment => segment.roadCoordinates?.length >= 2 ? segment.roadCoordinates : segment.coordinates)
+          .filter(path => path?.length >= 2);
+        const fallback = roads.length ? roads : [geometry.coordinates];
+        const access = details.segments.flatMap(segment => segment.accessSegments || [])
+          .filter(path => path.length >= 2 && (path[0][0] !== path.at(-1)[0] || path[0][1] !== path.at(-1)[1]));
+        return { roads: fallback, access };
+      })();
       let record = this.lines.get(line.id);
       if (!record) {
-        const casing = L.polyline(geometry.coordinates, { renderer: this.routeRenderer, color: '#10201d', weight: 10, opacity: 0.78, lineCap: 'round', interactive: false });
-        const route = L.polyline(geometry.coordinates, { renderer: this.routeRenderer, color, weight: 6, opacity: 0.96, lineCap: 'round', className: 'transport-line route-born' });
-        const group = L.layerGroup([casing, route]).addTo(this.map);
+        const casing = L.polyline(display.roads, { renderer: this.routeRenderer, color: '#10201d', weight: 10, opacity: 0.78, lineCap: 'round', interactive: false });
+        const route = L.polyline(display.roads, { renderer: this.routeRenderer, color, weight: 6, opacity: 0.96, lineCap: 'round', className: 'transport-line route-road-geometry route-born' });
+        const access = L.polyline(display.access, { renderer: this.routeRenderer, pane: 'routes', color: '#f0a744', weight: 5,
+          opacity: 0.98, dashArray: '4 5', interactive: false, className: 'route-access-link', lineCap: 'round' });
+        const group = L.layerGroup([casing, route, access]).addTo(this.map);
+        route.getElement()?.setAttribute('data-line-id', line.id);
+        access.getElement()?.setAttribute('data-line-id', line.id);
         route.on('click', event => { L.DomEvent.stopPropagation(event); this.onLineClick?.(line.id); });
-        record = { group, casing, route, signature, geometry, color }; this.lines.set(line.id, record);
+        record = { group, casing, route, access, signature, geometry, display, color }; this.lines.set(line.id, record);
         const effect = setTimeout(() => { route.getElement()?.classList.remove('route-born'); this.effectTimers.delete(effect); }, 900);
         this.effectTimers.add(effect);
       } else if (record.signature !== signature) {
-        record.casing.setLatLngs(geometry.coordinates); record.route.setLatLngs(geometry.coordinates);
-        record.geometry = geometry; record.signature = signature;
+        record.casing.setLatLngs(display.roads); record.route.setLatLngs(display.roads); record.access.setLatLngs(display.access);
+        record.geometry = geometry; record.display = display; record.signature = signature;
       }
       const selected = this.selectedLineId === line.id;
       record.line = line;
@@ -348,12 +363,6 @@ export class GameMap {
     const details = routeLineDetails(record.line.stops, record.line.type, this.city);
     details.segments.forEach((segment, index) => {
       if (segment.coordinates.length < 2) return;
-      for (const access of segment.accessSegments || []) {
-        if (access.length < 2) continue;
-        const accessLine = L.polyline(access, { renderer: this.routeRenderer, pane: 'routes', color: '#f0a744', weight: 5,
-          opacity: 0.95, dashArray: '3 5', interactive: false, className: 'route-access-leg', lineCap: 'round' }).addTo(this.map);
-        record.segmentHandles.push(accessLine);
-      }
       this.handleRenderer ||= L.svg({ padding: 0.3, pane: 'ui' });
       const handle = L.polyline(segment.coordinates, { renderer: this.handleRenderer, pane: 'ui', color: '#ffd166', weight: 22,
         opacity: 0.14, interactive: true, bubblingMouseEvents: false, className: 'route-segment-hit', lineCap: 'round' }).addTo(this.map);
@@ -540,11 +549,24 @@ export class GameMap {
     const signature = `${stops.join('|')}:${color}`; if (signature === this.previewSignature) return;
     this.previewSignature = signature;
     const details = routeLineDetails(stops, gameState.selectedType, this.city);
-    const coordinates = details.coordinates;
-    if (coordinates.length < 2) { this.preview?.remove(); this.preview = null; return; }
+    const segments = details.segments || [];
+    const roads = segments.map(segment => segment.roadCoordinates?.length >= 2 ? segment.roadCoordinates : segment.coordinates)
+      .filter(path => path?.length >= 2);
+    const coordinates = roads.length ? roads : details.coordinates.length >= 2 ? [details.coordinates] : [];
+    const access = segments.flatMap(segment => segment.accessSegments || [])
+      .filter(path => path.length >= 2 && (path[0][0] !== path.at(-1)[0] || path[0][1] !== path.at(-1)[1]));
+    if (!coordinates.length) {
+      this.preview?.remove(); this.previewAccess?.remove(); this.preview = null; this.previewAccess = null; return;
+    }
     const displayColor = details.valid ? color : '#c43f38';
-    if (!this.preview) this.preview = L.polyline(coordinates, { renderer: this.routeRenderer, color: displayColor, weight: 8, opacity: 0.9, dashArray: '5 11', interactive: false, className: 'route-preview', lineCap: 'round' }).addTo(this.map);
+    if (!this.preview) this.preview = L.polyline(coordinates, { renderer: this.routeRenderer, color: displayColor, weight: 8,
+      opacity: 0.9, dashArray: '5 11', interactive: false, className: 'route-preview route-preview-road', lineCap: 'round' }).addTo(this.map);
     else this.preview.setLatLngs(coordinates).setStyle({ color: displayColor });
+    if (access.length) {
+      if (!this.previewAccess) this.previewAccess = L.polyline(access, { renderer: this.routeRenderer, pane: 'routes', color: '#f0a744',
+        weight: 5, opacity: 0.98, dashArray: '3 5', interactive: false, className: 'route-preview-access', lineCap: 'round' }).addTo(this.map);
+      else this.previewAccess.setLatLngs(access);
+    } else { this.previewAccess?.remove(); this.previewAccess = null; }
   }
 
   shouldAnimate() {

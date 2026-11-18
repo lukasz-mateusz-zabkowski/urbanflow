@@ -11,6 +11,6 @@ test('compressed OSM graph is served as gzip content and transparently decoded b
   assert.equal(response.headers.get('content-encoding'), 'gzip');
   assert.match(response.headers.get('content-type'), /application\/octet-stream/);
   const bytes = new Uint8Array(await response.arrayBuffer());
-  assert.deepEqual([...bytes.slice(0, 4)], [85, 70, 71, 49]); // UFG1 after Fetch decompression
+  assert.deepEqual([...bytes.slice(0, 4)], [85, 70, 71, 50]); // UFG2 after Fetch decompression
   assert.ok(bytes.byteLength > 20_000_000);
 });

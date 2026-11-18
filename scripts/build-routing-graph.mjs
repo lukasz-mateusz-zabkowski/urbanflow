@@ -18,7 +18,7 @@ const SOURCE = Object.freeze({
   provider: 'Geofabrik regional extract',
   sourcePage: 'https://download.geofabrik.de/europe/poland/malopolskie.html'
 });
-const GENERATOR_VERSION = 'urbanflow-osm-graph-1';
+const GENERATOR_VERSION = 'urbanflow-osm-graph-2';
 const ROAD_SPEED_KMH = Object.freeze({ motorway: 90, trunk: 70, primary: 50, secondary: 45, tertiary: 40,
   unclassified: 30, residential: 30, living_street: 10, service: 20, road: 25, bus_guideway: 25,
   pedestrian: 5, track: 15 });
@@ -194,7 +194,8 @@ export function graphFor(ways, coordinates, restrictions, bounds, kind) {
   for (const edge of edges) adjacency[edge.from].push([edge.to, Math.round(edge.lengthM), Math.round(edge.travelSeconds), edge.wayId, edge.highway, edge.level, edge.bridge, edge.tunnel, edge.connector || 0]);
   for (const arcs of adjacency) arcs.sort((a, b) => a[0] - b[0] || a[3] - b[3]);
   const edgeCount = adjacency.reduce((sum, arcs) => sum + arcs.length, 0);
-  return { graph: { nodes, adjacency, turnRules }, stats: { nodes: nodes.length, directedEdges: edgeCount, turnRules: turnRules.length, levelConnectors, ...skipped } };
+  return { graph: { nodes, adjacency, turnRules }, stats: { nodes: nodes.length, directedEdges: edgeCount, turnRules: turnRules.length, levelConnectors,
+    wideWayIds: [...new Set(edges.map(edge => edge.wayId).filter(Boolean))].filter(id => id > 0xffffffff).length, ...skipped } };
 }
 
 export function encodeRoutingGraphBinary(graph) {
@@ -204,11 +205,11 @@ export function encodeRoutingGraphBinary(graph) {
   const coordinateOffset = 20;
   const adjacencyOffset = coordinateOffset + nodeCount * 8;
   const edgeOffset = adjacencyOffset + (nodeCount + 1) * 4;
-  const rulesOffset = edgeOffset + edgeCount * 20;
-  const bytes = new Uint8Array(rulesOffset + ruleCount * 16);
+  const rulesOffset = edgeOffset + edgeCount * 24;
+  const bytes = new Uint8Array(rulesOffset + ruleCount * 24);
   const view = new DataView(bytes.buffer);
-  bytes.set([85, 70, 71, 49]); // UFG1
-  view.setUint16(4, 1, true); view.setUint16(6, 20, true);
+  bytes.set([85, 70, 71, 50]); // UFG2: 64-bit OSM way identifiers
+  view.setUint16(4, 2, true); view.setUint16(6, 20, true);
   view.setUint32(8, nodeCount, true); view.setUint32(12, edgeCount, true); view.setUint32(16, ruleCount, true);
   let edgeIndex = 0;
   for (let node = 0; node < nodeCount; node += 1) {
@@ -216,22 +217,22 @@ export function encodeRoutingGraphBinary(graph) {
     view.setInt32(coordinateOffset + node * 8 + 4, graph.nodes[node][1], true);
     view.setUint32(adjacencyOffset + node * 4, edgeIndex, true);
     for (const edge of graph.adjacency[node]) {
-      const offset = edgeOffset + edgeIndex * 20;
+      const offset = edgeOffset + edgeIndex * 24;
       view.setUint32(offset, edge[0], true);
       view.setUint32(offset + 4, Math.max(0, Math.round(edge[1] * 1000)), true);
       view.setUint32(offset + 8, Math.max(0, Math.round(edge[2] * 1000)), true);
-      view.setUint32(offset + 12, edge[3], true);
-      view.setUint8(offset + 16, HIGHWAY_CODES.get(edge[4]) ?? HIGHWAY_CODES.get('road'));
-      view.setInt8(offset + 17, edge[5]);
-      view.setUint8(offset + 18, (edge[6] ? 1 : 0) | (edge[7] ? 2 : 0) | (edge[8] ? 4 : 0));
+      view.setBigUint64(offset + 12, BigInt(edge[3]), true);
+      view.setUint8(offset + 20, HIGHWAY_CODES.get(edge[4]) ?? HIGHWAY_CODES.get('road'));
+      view.setInt8(offset + 21, edge[5]);
+      view.setUint8(offset + 22, (edge[6] ? 1 : 0) | (edge[7] ? 2 : 0) | (edge[8] ? 4 : 0));
       edgeIndex += 1;
     }
   }
   view.setUint32(adjacencyOffset + nodeCount * 4, edgeIndex, true);
   graph.turnRules.forEach((rule, index) => {
-    const offset = rulesOffset + index * 16;
-    view.setUint32(offset, rule[0], true); view.setUint32(offset + 4, rule[1], true);
-    view.setUint32(offset + 8, rule[2], true); view.setUint32(offset + 12, rule[3] === 'only' ? 1 : 0, true);
+    const offset = rulesOffset + index * 24;
+    view.setUint32(offset, rule[0], true); view.setBigUint64(offset + 4, BigInt(rule[1]), true);
+    view.setBigUint64(offset + 12, BigInt(rule[2]), true); view.setUint32(offset + 20, rule[3] === 'only' ? 1 : 0, true);
   });
   return bytes;
 }
@@ -282,7 +283,7 @@ export async function buildRoutingGraph({ input, output, marginKm = 3 } = {}) {
   const road = graphFor(roadWays, coordinates, relevantRestrictions(roadWayIds), bounds, 'road');
   const tram = graphFor(tramWays, coordinates, relevantRestrictions(tramWayIds), bounds, 'tram');
   if (road.stats.nodes < 1000 || road.stats.directedEdges < 2000) throw new Error(`Generated road graph is unexpectedly small (${road.stats.nodes} nodes, ${road.stats.directedEdges} directed edges).`);
-  const payload = { schemaVersion: 1, generatorVersion: GENERATOR_VERSION, bounds,
+  const payload = { schemaVersion: 2, binaryFormatVersion: 2, generatorVersion: GENERATOR_VERSION, bounds,
     stats: { sourceNodesInBounds: seenNodes, sourceWays: seenWays, sourceRelations: seenRelations,
       eligibleRoadWays: roadWays.length, eligibleTramWays: tramWays.length, road: road.stats, tram: tram.stats,
       unsupportedViaWayRestrictions: restrictions.filter(item => item.members.some(member => member.role === 'via' && member.type === 'way')).length } };

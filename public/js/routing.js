@@ -1,6 +1,7 @@
 import { haversineKm, lineMetrics } from './transport.js?v=10';
-import { decodeRoutingGraphBinary, routeOnOsmGraph } from './routing-osm.js?v=1';
-export { decodeRoutingGraphBinary } from './routing-osm.js?v=1';
+import { decodeRoutingGraphBinary, routeOnOsmGraph } from './routing-osm.js?v=2';
+export { decodeRoutingGraphBinary } from './routing-osm.js?v=2';
+export { diagnoseOsmRoute } from './routing-osm.js?v=2';
 
 const SURFACE_TYPES = new Set(['bus', 'tram']);
 const RAIL_TYPES = new Set(['suburban', 'intercity']);
@@ -9,6 +10,7 @@ const graphRegistry = new Map();
 const graphLoads = new Map();
 
 export function registerRoutingGraph(cityId, manifest, roadBuffer = null, tramBuffer = null) {
+  if (manifest.binaryFormatVersion !== 2) throw new Error('Unsupported routing graph manifest format. Regenerate local OSM graph assets.');
   if (!manifest?.metadata?.graphVersion) throw new Error('Routing graph manifest is missing its version metadata.');
   const registered = graphRegistry.get(cityId) || { metadata: manifest.metadata, road: null, tram: null };
   registered.metadata = manifest.metadata;
