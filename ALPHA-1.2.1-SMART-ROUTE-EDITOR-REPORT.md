@@ -8,8 +8,9 @@
 
 - Base: `79501928a7eea148701c79a4c476e91de5635aa5` (`v1.2.0-alpha`)
 - Branch: `fix/alpha-1.2.1-smart-route-editor`
-- Implementation/final SHA: pending commit
-- GitHub Actions: pending after push
+- Implementation SHA: `a51e5502182960a31e9e22d440d1bb64ad0a68b6`
+- GitHub Actions for the implementation SHA: [run 44254575866](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44254575866), success, all 6 jobs passed.
+- A report-only follow-up commit updates this file after the implementation run. GitHub Actions is rerun for that final branch HEAD; its result is recorded in the task completion message.
 - Main was not merged; no tag or release was created.
 
 ## Findings and route reproduction
@@ -44,7 +45,7 @@ No dependable local street dataset was available to fill the missing corridors d
 - `npm run audit:all`: passed, 0 vulnerabilities.
 - `npm run audit:production`: passed, 0 vulnerabilities.
 - The first browser run had five passes and two failures while waiting for external OpenStreetMap tiles. Re-ran the suite with Playwright's local deterministic tile fixture (`CI=true`); all seven tests passed. The fixture is only a visual basemap; routing tests use the real bundled road graph.
-- GitHub Actions: pending push; do not treat as passed until the run for the final SHA succeeds.
+- GitHub Actions for implementation SHA `a51e5502182960a31e9e22d440d1bb64ad0a68b6`: success, all 6 jobs passed. The report-only follow-up commit requires its own run; this report does not claim that run passed before it finishes.
 
 ## Screenshots
 
