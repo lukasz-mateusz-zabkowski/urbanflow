@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CITIES } from '../public/js/cities.js';
+import { CITIES, attachStops } from '../public/js/cities.js';
 import { UrbanFlowGame } from '../public/js/game.js';
 import { airportUnlocked, unlockedTypes, TRANSPORT_TYPES, PROGRESSION } from '../public/js/transport.js';
 import { campaignObjectives, updateCampaign, STRESS_PHASES } from '../public/js/campaign.js';
@@ -84,6 +84,46 @@ test('multi-stop editing supports extend, reorder and remove with preview-matche
   game.cancelEdit();
   assert.equal(game.state.editingLineId, null);
   assert.deepEqual(game.state.selectedNodes, []);
+});
+
+test('staging a stop insertion targets the selected adjacent segment and cancellation charges nothing', () => {
+  const extendedCity = { ...city, points: [...city.points.map(point => ({ ...point })),
+    { id: 's-edit-target', name: 'Przystanek testowy', lat: 50.038, lng: 19.98, type: 'stop', demand: 1 }] };
+  const game = new UrbanFlowGame(extendedCity);
+  assert.equal(game.chooseStarterRoute('loop-center').ok, true);
+  game.state.revealedStops.push('s-edit-target');
+  const line = game.state.lines[0];
+  const budget = game.state.budget;
+  const oldRoute = [...line.stops];
+  assert.equal(typeof game.stageStopInsertion, 'function');
+  assert.equal(game.stageStopInsertion(line.id, 1, 's-edit-target').ok, true);
+  assert.deepEqual(game.state.selectedNodes, ['wieliczka', 'biezanow', 's-edit-target', 'centrum']);
+  assert.ok(game.previewLine().cost > 0);
+  assert.equal(game.state.budget, budget);
+  game.cancelEdit();
+  assert.deepEqual(line.stops, oldRoute);
+  assert.equal(game.state.budget, budget);
+});
+
+test('the seven-stop downtown route is rejected before any construction cost is charged', () => {
+  const candidateCity = { ...city, points: city.points.map(point => ({ ...point })), stopsAttached: false };
+  attachStops(candidateCity, [
+    { id: 's-stradom', name: 'Stradom', lat: 50.0525, lng: 19.944 },
+    { id: 's-kazimierz', name: 'Kazimierz', lat: 50.051, lng: 19.945 },
+    { id: 's-plac-wolnica', name: 'Plac Wolnica', lat: 50.0505, lng: 19.949 },
+    { id: 's-dietla', name: 'Dietla', lat: 50.053, lng: 19.95 },
+    { id: 's-podgorze', name: 'Podgórze', lat: 50.048, lng: 19.96 },
+    { id: 's-plac-bohaterow-getta', name: 'Plac Bohaterów Getta', lat: 50.047, lng: 19.953 },
+    { id: 's-rynek-podgorski', name: 'Rynek Podgórski', lat: 50.048, lng: 19.949 }
+  ]);
+  const game = new UrbanFlowGame(candidateCity);
+  game.chooseStarterRoute('loop-center');
+  game.state.revealedStops.push('s-stradom', 's-kazimierz', 's-plac-wolnica', 's-dietla', 's-podgorze', 's-plac-bohaterow-getta', 's-rynek-podgorski');
+  const before = game.state.budget;
+  const preview = game.previewLine('bus', ['s-stradom', 's-kazimierz', 's-plac-wolnica', 's-dietla', 's-podgorze', 's-plac-bohaterow-getta', 's-rynek-podgorski'], null);
+  assert.equal(preview.ok, false);
+  assert.match(preview.message, /niewiarygodnej geometrii/i);
+  assert.equal(game.state.budget, before);
 });
 
 test('unaffordable and duplicate edits leave paid infrastructure and service history intact', () => {

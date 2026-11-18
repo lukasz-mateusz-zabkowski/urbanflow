@@ -1,7 +1,7 @@
 import { getCity, loadStops } from './cities.js?v=10';
-import { UrbanFlowGame } from './game.js?v=12';
-import { GameMap } from './map.js?v=11';
-import { UI, confirmAction } from './ui.js?v=12';
+import { UrbanFlowGame } from './game.js?v=13';
+import { GameMap } from './map.js?v=17';
+import { UI, confirmAction } from './ui.js?v=15';
 import { TRANSPORT_TYPES } from './transport.js?v=10';
 import { SIMULATION } from './simulation.js?v=10';
 import { applyAtlasView } from './theme.js?v=10';
@@ -80,6 +80,14 @@ function startCity(savedState = null) {
   gameMap = new GameMap('map', id => { game.selectNode(id); ui?.selectPlace(id); }, id => {
     ui.selectedLineId = id; ui.renderNetwork(); gameMap.highlightLine(id); ui.openPanel();
     document.getElementById('lineDetail').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, (lineId, segmentIndex, stopId) => {
+    ui.selectedLineId = lineId; gameMap.highlightLine(lineId);
+    const result = game.stageStopInsertion(lineId, segmentIndex, stopId);
+    if (!result.ok) { ui.toast(result.message, 'warn'); return; }
+    ui.openPanel();
+    if (result.preview?.ok) ui.toast(`Przystanek wstawiony do podglądu. Koszt przebudowy: ${Math.round(result.preview.cost).toLocaleString('pl-PL')} zł.`, 'warn');
+    else ui.toast(result.preview?.message || 'Podgląd trasy wymaga sprawdzenia.', 'warn');
+    document.getElementById('buildSection').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   });
   gameMap.loadCity(city);
   ui = new UI(game, gameMap, { appVersion, onNewGame: async () => {

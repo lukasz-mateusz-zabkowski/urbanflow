@@ -9,7 +9,7 @@ import { fleetSnapshot } from './fleet.js?v=10';
 import { latentDemand } from './demand.js?v=10';
 import { describePlace } from './place-profiles.js?v=10';
 import { clampPanelWidth, DEFAULT_PANEL_WIDTH, loadPanelWidth, savePanelWidth } from './ui-preferences.js?v=10';
-import { createFeedbackReport, feedbackJson } from './feedback.js?v=12';
+import { createFeedbackReport, feedbackJson } from './feedback.js?v=13';
 import { TIMETABLE_PROFILES, SERVICE_DAY_TYPES, SERVICE_DAY_LABELS, formatTimetableTime, periodAt, timetableForDay } from './timetable.js?v=10';
 import { mobilitySnapshot } from './mobility.js?v=11';
 import { cityEvolutionSnapshot } from './city-evolution.js?v=2';
@@ -101,6 +101,18 @@ export class UI {
       if (action === 'edit-line') {
         this.checkResult(this.game.beginEditLine(line));
         this.openPanel(); this.scrollToBuild(); return;
+      }
+      if (action === 'insert-stop-line') {
+        const root = $('#lineDetail');
+        const segmentIndex = Number(root.querySelector('[data-edit-segment]').value);
+        const stopId = root.querySelector('[data-edit-stop]').value;
+        const result = this.game.stageStopInsertion(line, segmentIndex, stopId);
+        if (this.checkResult(result)) {
+          this.selectedLineId = line;
+          this.openPanel(); this.render(); this.scrollToBuild();
+          if (result.preview?.ok) this.toast(`Podgląd przebudowy: ${money(result.preview.cost)}. Zatwierdź dopiero po sprawdzeniu trasy.`);
+        }
+        return;
       }
       if (action === 'delete-line') {
         const item = this.game.state.lines.find(item => item.id === line);
@@ -417,7 +429,7 @@ export class UI {
     this.setText('previewRoutingAlgorithm', hasRoute ? preview.routeDetails?.algorithm || '—' : '—');
     this.setText('previewRoutingReason', hasRoute ? preview.routeDetails?.reason || '' : '');
     this.setText('previewRoutingSnap', hasRoute && preview.routeDetails?.mode !== 'direct'
-      ? `${decimal(preview.routeDetails?.snappedDistanceKm || 0)} km (do najbliższych wierzchołków, bez limitu)` : 'nie dotyczy');
+      ? `${decimal(preview.routeDetails?.snappedDistanceKm || 0)} km (do najbliższych wierzchołków, limit 0,8 km na punkt)` : 'nie dotyczy');
     const fleetCopy = preview.vehiclesToBuy ? ` W cenie: zakup ${preview.vehiclesToBuy} pojazdów (${money(preview.fleetCost)}).` : ' Pojazdy zostaną przydzielone z rezerwy.';
     const message = hasRoute ? preview.message || (!preview.affordable ? `Brakuje ${money(preview.cost - state.budget)} na budowę.` : editing ? 'Przebudowa resetuje statystyki tej trasy i wymaga ponownego wykorzystania do odblokowań.' : `Trasa korzysta z routingu: ${preview.routingMode === 'road' ? 'drogi' : preview.routingMode === 'rail-corridor' ? 'korytarz kolejowy' : 'tunel bezpośredni'}.${fleetCopy}`) : 'Co najmniej dwa przystanki tworzą połączenie.';
     this.setText('previewMessage', state.status === 'playing' ? message : 'Kampania zakończona. Możesz obejrzeć swoją sieć.');
@@ -639,8 +651,20 @@ export class UI {
       { events: state.cityEvents || [], elapsedMinutes: state.elapsedMinutes, serviceDayType: clock.dayType });
     if (this.detailLineId !== line.id) {
       container.innerHTML = `<div class="detail-heading"><span class="section-kicker">Szczegóły linii</span><strong data-detail="name"></strong></div><p class="detail-route" data-detail="route"></p><dl class="detail-stats"><div><dt>Długość</dt><dd data-detail="distance"></dd></div><div><dt>Przejazd w jedną stronę</dt><dd data-detail="travel"></dd></div><div><dt>Wpływy / h</dt><dd class="positive" data-detail="revenue"></dd></div><div><dt>Koszt / h</dt><dd data-detail="cost"></dd></div><div><dt>Bilans / h</dt><dd data-detail="balance"></dd></div><div><dt>Dotacja pasażerokm</dt><dd data-detail="subsidy"></dd></div><div><dt>Przewozy od przebudowy</dt><dd data-detail="carried"></dd></div><div><dt>Średni czas oczekiwania</dt><dd data-detail="wait"></dd></div><div><dt>Kolejka tej linii</dt><dd data-detail="waiting"></dd></div><div><dt>Wykorzystanie floty</dt><dd data-detail="vehicles"></dd></div></dl><div class="load-heading"><span>Wykorzystanie przepustowości</span><b data-detail="load"></b></div><div class="load-track"><i id="detailLoadBar"></i></div><p class="line-diagnosis" data-detail="diagnosis"></p><section class="timetable-control" aria-labelledby="timetableTitle"><div class="timetable-heading"><div><span class="section-kicker">Rozkład jazdy</span><strong id="timetableTitle">Częstotliwość w ciągu doby</strong></div><select data-timetable-profile data-line="${escapeHtml(line.id)}" aria-label="Gotowy profil rozkładu"></select></div><p class="timetable-current" data-current-period></p><p class="timetable-overview" data-detail="frequency"></p><div class="timetable-periods" data-timetable-periods></div><p class="timetable-capacity" data-timetable-capacity></p><button type="button" class="text-button timetable-restore" data-action="restore-timetable" data-line="${escapeHtml(line.id)}">Przywróć poprzednią konfigurację</button></section><div class="fleet-line-actions"><button type="button" data-action="unassign-vehicle" data-line="${escapeHtml(line.id)}">− Do rezerwy</button><button type="button" data-action="assign-vehicle" data-line="${escapeHtml(line.id)}">＋ Z rezerwy</button></div><button class="secondary-button" type="button" data-action="buy-vehicle" data-line="${escapeHtml(line.id)}" id="buyVehicleButton"></button><div class="line-actions"><button type="button" data-action="edit-line" data-line="${escapeHtml(line.id)}">Edytuj przystanki</button><button type="button" class="danger-button" data-action="delete-line" data-line="${escapeHtml(line.id)}">Usuń linię</button></div>`;
+      container.insertAdjacentHTML('beforeend', `<section class="line-stop-insert" aria-label="Wstaw przystanek do istniejącej linii"><strong>Wstaw przystanek na odcinku</strong><label>Odcinek<select data-edit-segment aria-label="Wybierz sąsiedni odcinek"></select></label><label>Przystanek<select data-edit-stop aria-label="Wybierz odkryty przystanek"></select></label><button type="button" class="secondary-button" data-action="insert-stop-line" data-line="${escapeHtml(line.id)}">Pokaż podgląd zmiany</button><small>Wstawienie pozostaje wersją roboczą. Koszt zostanie pobrany dopiero po zatwierdzeniu przebudowy.</small></section>`);
       this.detailLineId = line.id;
     }
+    const segmentSelect = container.querySelector('[data-edit-segment]');
+    segmentSelect.innerHTML = line.stops.slice(1).map((id, index) => {
+      const from = city.points.find(point => point.id === line.stops[index]);
+      const to = city.points.find(point => point.id === id);
+      return `<option value="${index}">${escapeHtml(from?.name || line.stops[index])} → ${escapeHtml(to?.name || id)}</option>`;
+    }).join('');
+    const stopSelect = container.querySelector('[data-edit-stop]');
+    const candidates = this.game.visiblePoints().filter(point => point.type === 'stop' && !line.stops.includes(point.id));
+    stopSelect.innerHTML = candidates.map(point => `<option value="${escapeHtml(point.id)}">${escapeHtml(point.name)}</option>`).join('');
+    stopSelect.disabled = candidates.length === 0;
+    container.querySelector('[data-action="insert-stop-line"]').disabled = candidates.length === 0 || state.status !== 'playing';
     const timetableControl = container.querySelector('.timetable-control');
     if (!timetableControl.dataset.calendarReady) {
       timetableControl.innerHTML = `<div class="timetable-heading"><div><span class="section-kicker">Kalendarz kursowania</span><strong id="timetableTitle">Częstotliwość według typu dnia</strong></div></div><label class="calendar-field">Typ dnia<select data-service-day></select></label><label class="same-day-toggle"><input type="checkbox" data-same-every-day data-line="${escapeHtml(line.id)}">Taki sam rozkład każdego dnia</label><div class="calendar-copy"><label>Kopiuj rozkład z<select id="timetableCopySource" data-timetable-copy-source></select></label><button type="button" class="secondary-button" data-action="copy-timetable-day" data-line="${escapeHtml(line.id)}">Kopiuj do wybranego dnia</button></div><div class="calendar-special-actions"><button type="button" class="text-button" data-action="toggle-special-today" data-line="${escapeHtml(line.id)}"></button><button type="button" class="text-button" data-action="toggle-special-next" data-line="${escapeHtml(line.id)}"></button></div><p class="timetable-next-day" data-next-day></p><div class="timetable-heading"><strong>Gotowy profil</strong><select data-timetable-profile data-line="${escapeHtml(line.id)}" aria-label="Gotowy profil rozkładu"></select></div><p class="timetable-current" data-current-period></p><p class="timetable-overview" data-detail="frequency"></p><div class="timetable-periods" data-timetable-periods></div><p class="timetable-capacity" data-timetable-capacity></p><button type="button" class="text-button timetable-restore" data-action="restore-timetable" data-line="${escapeHtml(line.id)}">Przywróć poprzednią konfigurację</button>`;

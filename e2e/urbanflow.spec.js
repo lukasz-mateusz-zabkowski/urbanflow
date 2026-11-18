@@ -146,6 +146,56 @@ for (const viewport of DESKTOPS) {
     await expect.poll(() => page.locator('#networkDailySummary').innerText()).toContain('Dzień');
     await expect.poll(() => page.locator('#networkWeeklySummary').innerText()).toContain('Tydzień');
     await saveElementScreenshot(page.locator('.network-history'), `${viewport.name}-network-history`);
+    const lineSelector = page.locator('#lineList [data-action="select-line"]').first();
+    await lineSelector.click();
+    if (!(await page.locator('#lineDetail').isVisible())) await lineSelector.click();
+    await expect(page.locator('#lineDetail .line-stop-insert')).toBeVisible();
+    expect(await page.locator('#lineDetail [data-edit-stop] option').count()).toBeGreaterThan(0);
+    await page.locator('#pauseButton').click();
+    const originalStops = await page.locator('#lineDetail [data-detail="route"]').innerText();
+    const originalBudget = await page.locator('#budgetStat').innerText();
+    const originalStopCount = originalStops.split(' → ').length;
+    await page.locator('#lineDetail [data-edit-segment]').selectOption('0');
+    await page.locator('#lineDetail [data-edit-stop]').selectOption({ index: 0 });
+    await page.locator('#lineDetail [data-action="insert-stop-line"]').click();
+    await expect(page.locator('#draftStopList li')).toHaveCount(originalStopCount + 1);
+    await expect(page.locator('#lineDetail [data-detail="route"]')).toHaveText(originalStops);
+    await expect(page.locator('#budgetStat')).toHaveText(originalBudget);
+    await saveElementScreenshot(page.locator('.line-stop-insert'), `${viewport.name}-route-insertion-preview`);
+    await page.locator('#clearSelectionButton').click();
+    await expect(page.locator('#draftStopList li')).toHaveCount(0);
+    await expect(page.locator('#lineDetail [data-detail="route"]')).toHaveText(originalStops);
+    const routeHandle = page.locator('.route-segment-hit').first();
+    await expect(routeHandle).toBeVisible();
+    if (viewport.name === 'desktop-1920x1080') {
+      const routePoint = await routeHandle.evaluate(element => {
+        const point = element.getPointAtLength(element.getTotalLength() / 2);
+        const svgPoint = element.ownerSVGElement.createSVGPoint(); svgPoint.x = point.x; svgPoint.y = point.y;
+        const screen = svgPoint.matrixTransform(element.getScreenCTM()); return { x: screen.x, y: screen.y };
+      });
+      await page.mouse.move(routePoint.x, routePoint.y);
+      await page.mouse.down();
+      await expect(page.locator('#map')).toHaveClass(/is-route-editing/);
+      await page.mouse.move(routePoint.x + 30, routePoint.y + 30, { steps: 3 });
+      await page.keyboard.press('Escape');
+      await page.mouse.up();
+      await expect(page.locator('#map')).not.toHaveClass(/is-route-editing/);
+      await expect(page.locator('#draftStopList li')).toHaveCount(0);
+      await expect(page.locator('#lineDetail')).toBeVisible();
+      const targetStop = await page.locator('#lineDetail [data-edit-stop]').inputValue();
+      const targetMarker = page.locator(`[data-stop-id="${targetStop}"]`).first();
+      await expect(targetMarker).toBeVisible();
+      const targetBox = await targetMarker.boundingBox();
+      await page.mouse.move(routePoint.x, routePoint.y);
+      await page.mouse.down();
+      await expect(page.locator('#map')).toHaveClass(/is-route-editing/);
+      await page.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2, { steps: 10 });
+      await page.mouse.up();
+      await expect(page.locator('#draftStopList li')).toHaveCount(originalStopCount + 1);
+      await expect(page.locator('#lineDetail [data-detail="route"]')).toHaveText(originalStops);
+      await expect(page.locator('#budgetStat')).toHaveText(originalBudget);
+      await page.locator('#clearSelectionButton').click();
+    }
     await page.locator('[data-mode="off"]').click();
 
     const bounds = await page.evaluate(() => {

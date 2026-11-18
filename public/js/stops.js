@@ -1,5 +1,5 @@
 // Odkrywanie przystanków: każda budowa odsłania nowe przystanki wzdłuż trasy i wokół jej końców.
-export const REVEAL = { corridorKm: 0.9, ringKm: 2.2, maxCorridor: 18, maxRing: 8, fallbackKm: 6, fallbackCount: 8 };
+export const REVEAL = { corridorKm: 0.9, ringKm: 2.2, maxCorridor: 6, maxRing: 2, fallbackKm: 6, fallbackCount: 4 };
 
 const KM_LAT = 110.574;
 // Odległość punktu od odcinka (km), rzutowanie równoprostokątne — wystarcza w skali miasta.

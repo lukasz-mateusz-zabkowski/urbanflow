@@ -4,12 +4,12 @@ import { airportUnlocked, haversineKm, lineCost, lineMetrics, unlockedTypes, TRA
 import { createLineStats, createPassengerState, passengerTick, totalWaiting } from './passengers.js?v=11';
 import { SIMULATION, calendarTickContext, createSimulationCalendar, gameClock, setSpecialDay } from './simulation.js?v=10';
 import { createCampaign, updateCampaign } from './campaign.js?v=10';
-import { pickStopsToReveal } from './stops.js?v=10';
+import { pickStopsToReveal } from './stops.js?v=11';
 import { CITY_EVENT_DEFINITIONS, createCityEvent } from './city-events.js?v=10';
 import { ensureDiagnostics } from './analytics.js?v=11';
 import { ensureMobilityState } from './mobility.js?v=11';
 import { chooseStartScenario, starterRoutesFor } from './cities.js?v=10';
-import { routeLine, routeLineDetails, routingMode } from './routing.js?v=10';
+import { routeLine, routeLineDetails, routingMode } from './routing.js?v=11';
 import { ensureFleet, fleetStatus, missingFleetCost } from './fleet.js?v=10';
 import { ensureCityEvolution, evolveCityWeek } from './city-evolution.js?v=2';
 import {
@@ -111,6 +111,9 @@ export class UrbanFlowGame {
     if (this.state.lines.some(l => l.id !== editingId && l.type === type && signature(l.stops) === signature(stops))) return fail('Taka linia już działa, także w przeciwnym kierunku.');
     const routeDetails = routeLineDetails(stops, type, this.city, this.events.routingProvider,
       gameClock(this.state.elapsedMinutes).minuteOfDay);
+    const containsRealStop = stops.some(id => this.city.points.find(point => point.id === id)?.type === 'stop');
+    if (!routeDetails.valid && containsRealStop) return { ...fail(`Nie można zatwierdzić niewiarygodnej geometrii. ${routeDetails.reason}`),
+      routeDetails, distanceKm: routeDetails.distanceKm, routeGeometry: routeDetails.coordinates };
     const routeGeometry = routeDetails.coordinates;
     const distanceKm = Math.max(0.1, routeDetails.distanceKm);
     const infrastructureCost = lineCost(type, distanceKm, stops, this.city);
@@ -150,6 +153,17 @@ export class UrbanFlowGame {
     const line = this.state.lines.find(l => l.id === id);
     if (!line || this.state.status !== 'playing') return fail('Nie można edytować tej linii.');
     this.state.editingLineId = id; this.state.selectedType = line.type; this.state.selectedNodes = [...line.stops]; this.changed(); return { ok: true };
+  }
+  stageStopInsertion(lineId, segmentIndex, stopId) {
+    const line = this.state.lines.find(item => item.id === lineId);
+    if (!line || !Number.isInteger(segmentIndex) || segmentIndex < 0 || segmentIndex >= line.stops.length - 1) return fail('Wybierz prawidłowy odcinek między sąsiednimi przystankami.');
+    if (line.stops.includes(stopId)) return fail('Ten przystanek jest już na tej linii.');
+    if (!this.visiblePoints().some(point => point.id === stopId && point.type === 'stop')) return fail('Najpierw odkryj ten przystanek.');
+    const started = this.beginEditLine(lineId);
+    if (!started.ok) return started;
+    this.state.selectedNodes.splice(segmentIndex + 1, 0, stopId);
+    this.changed();
+    return { ok: true, preview: this.previewLine() };
   }
   cancelEdit() { this.state.selectedNodes = []; this.state.editingLineId = null; this.changed(); }
   editLine(id, stops) {

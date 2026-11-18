@@ -2,7 +2,7 @@ import { TRANSPORT_TYPES, haversineKm, lineMetrics } from './transport.js?v=10';
 import { SIMULATION, gameClock } from './simulation.js?v=10';
 import { DISTRICT_PROFILES, inferProfile, latentDemand } from './demand.js?v=10';
 import { activeCityEvents, upcomingCityEvents } from './city-events.js?v=10';
-import { routeLine } from './routing.js?v=10';
+import { routeLine, routeLineDetails } from './routing.js?v=11';
 import { describePlace } from './place-profiles.js?v=10';
 import { landUseDominantUse, landUseLabel } from './land-use.js?v=1';
 
@@ -16,6 +16,10 @@ export const stopHitStyle = (order = 0, overloaded = false) => ({
   ...(order ? { fillColor: '#efb84c', radius: 8 } : overloaded ? { fillColor: '#c65347', radius: 7 } : { fillColor: '#4a7d63', radius: 5 }),
   weight: 18, opacity: 0.001
 });
+export function stopVisibleAtZoom(point, zoom, priority = false) {
+  if (priority || zoom >= 10.5) return true;
+  return zoom >= 10 ? (point.demand || 0) >= 2 : (point.demand || 0) >= 3;
+}
 
 // Distance-weighted movement, independent of Leaflet and safe for zero-length segments.
 export function routeGeometry(points) {
@@ -63,14 +67,42 @@ export function vehiclePhase(ageMinutes, index, fleet, frequency, travelMinutes,
 }
 
 export class GameMap {
-  constructor(elementId, onPointClick, onLineClick = null) {
-    this.onPointClick = onPointClick; this.onLineClick = onLineClick;
-    this.markers = new Map(); this.lines = new Map(); this.vehicles = new Map();
+  constructor(elementId, onPointClick, onLineClick = null, onSegmentDrop = null) {
+    this.onPointClick = onPointClick; this.onLineClick = onLineClick; this.onSegmentDrop = onSegmentDrop;
+    this.markers = new Map(); this.lines = new Map(); this.vehicles = new Map(); this.orderMarkers = new Map();
     this.pointViews = new Map(); this.starterLayers = new Set(); this.effectTimers = new Set();
     this.visible = true; this.intersecting = true; this.frameId = null; this.lastFrame = 0;
     this.map = L.map(elementId, { zoomControl: false, attributionControl: true, preferCanvas: true });
+    this.map.on('zoomend', () => { if (this.currentPoints && this.currentGameState) this.renderPoints(this.currentPoints, this.currentGameState); });
+    this.dragMove = event => this.moveSegmentDrag(event.latlng);
+    this.documentDragMove = event => {
+      if (this.dragState && this.element.contains(event.target)) this.moveSegmentDrag(this.map.mouseEventToLatLng(event));
+    };
+    this.dragEnd = event => this.finishSegmentDrag(event.latlng || (event.originalEvent?.changedTouches?.[0]
+      ? this.map.mouseEventToLatLng(event.originalEvent.changedTouches[0]) : null));
+    this.documentDragEnd = event => {
+      if (!this.dragState) return;
+      const touch = event.changedTouches?.[0];
+      const x = touch?.clientX ?? event.clientX, y = touch?.clientY ?? event.clientY;
+      const bounds = this.element.getBoundingClientRect();
+      const inside = Number.isFinite(x) && Number.isFinite(y) && x >= bounds.left && x <= bounds.right && y >= bounds.top && y <= bounds.bottom;
+      this.finishSegmentDrag(inside ? this.map.mouseEventToLatLng({ clientX: x, clientY: y }) : null);
+    };
+    this.cancelDragOnEscape = event => {
+      if (event.key === 'Escape' && this.dragState) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        this.cancelSegmentDrag();
+      }
+    };
+    this.map.on('mousemove', this.dragMove).on('mouseup', this.dragEnd).on('touchmove', this.dragMove).on('touchend', this.dragEnd);
+    document.addEventListener('keydown', this.cancelDragOnEscape);
+    document.addEventListener('mouseup', this.documentDragEnd);
+    document.addEventListener('touchend', this.documentDragEnd);
+    document.addEventListener('pointermove', this.documentDragMove);
+    document.addEventListener('pointerup', this.documentDragEnd);
     this.element = this.map.getContainer(); this.wrapper = this.element.closest('.map-wrap');
-    for (const [name, zIndex] of Object.entries(MAP_LAYER_ORDER)) if (!['base', 'ui'].includes(name)) {
+    for (const [name, zIndex] of Object.entries(MAP_LAYER_ORDER)) if (name !== 'base') {
       this.map.createPane(name); this.map.getPane(name).style.zIndex = String(zIndex);
     }
     this.map.getPane('routes').style.pointerEvents = 'auto';
@@ -104,11 +136,12 @@ export class GameMap {
     this.city = city; this.pointById = new Map(city.points.map(point => [point.id, point]));
     this.centerCity();
     this.markers.forEach(marker => marker.remove());
-    this.lines.forEach(line => line.group.remove());
+    this.orderMarkers.forEach(marker => marker.remove());
+    this.lines.forEach(line => { line.segmentHandles?.forEach(handle => handle.remove()); line.group.remove(); });
     this.vehicles.forEach(vehicle => vehicle.marker.remove());
     this.starterLayers.forEach(layer => layer.remove());
     this.effectTimers.forEach(timer => clearTimeout(timer)); this.effectTimers.clear();
-    this.markers.clear(); this.pointViews.clear(); this.lines.clear(); this.vehicles.clear(); this.starterLayers.clear();
+    this.markers.clear(); this.pointViews.clear(); this.lines.clear(); this.vehicles.clear(); this.orderMarkers.clear(); this.starterLayers.clear();
     this.analysisLayer.clearLayers(); this.eventLayer.clearLayers(); this.eventSignature = '';
     this.preview?.remove(); this.preview = null; this.previewSignature = ''; this.selectedLineId = null;
   }
@@ -128,7 +161,11 @@ export class GameMap {
       const selected = lineId === id;
       record.route.setStyle({ weight: selected ? 8 : 6 }); record.casing.setStyle({ weight: selected ? 13 : 10 });
       record.route.getElement()?.classList.toggle('selected', selected);
-      if (selected) { record.casing.bringToFront(); record.route.bringToFront(); }
+      this.syncSegmentHandles(record, selected);
+      if (selected) {
+        record.casing.bringToFront(); record.route.bringToFront();
+        record.segmentHandles?.forEach(handle => handle.bringToFront());
+      }
     });
   }
 
@@ -137,6 +174,7 @@ export class GameMap {
     const snapshot = [gameState.elapsedMinutes, gameState.paused, gameState.speed, gameState.status].join('|');
     if (snapshot !== this.clockSnapshot) { this.clockSnapshot = snapshot; this.clockAnchor = performance.now(); }
     this.state = gameState;
+    this.currentPoints = points; this.currentGameState = gameState;
     const clock = gameClock(gameState.elapsedMinutes, gameState.calendar);
     const night = clock.hour >= 21 || clock.hour < 6;
     const rush = (clock.hour >= 7 && clock.hour < 10) || (clock.hour >= 16 && clock.hour < 19);
@@ -148,16 +186,25 @@ export class GameMap {
   }
 
   renderPoints(points, gameState) {
-    const visible = new Set(points.map(point => point.id));
-    this.markers.forEach((marker, id) => { if (!visible.has(id)) { marker.remove(); this.markers.delete(id); this.pointViews.delete(id); } });
     const selection = gameState.selectedNodes || [];
-    for (const point of points) {
+    const served = new Set(gameState.lines.flatMap(line => line.stops));
+    const editing = new Set(gameState.lines.find(line => line.id === gameState.editingLineId)?.stops || []);
+    const renderedPoints = points.filter(point => point.type !== 'stop' || stopVisibleAtZoom(point, this.map.getZoom(),
+      served.has(point.id) || editing.has(point.id) || selection.includes(point.id)));
+    const visible = new Set(renderedPoints.map(point => point.id));
+    this.markers.forEach((marker, id) => { if (!visible.has(id)) { marker.remove(); this.markers.delete(id); this.pointViews.delete(id); } });
+    this.orderMarkers.forEach((marker, id) => { if (!selection.includes(id)) { marker.remove(); this.orderMarkers.delete(id); } });
+    for (const point of renderedPoints) {
       const waiting = Math.round(gameState.passengers?.[point.id]?.waiting || 0);
       const order = selection.indexOf(point.id) + 1;
       const overloaded = waiting > (gameState.stopCapacity || 48);
       const profile = DISTRICT_PROFILES[inferProfile(point)]?.label || 'lokalny';
       const label = `${point.name}, profil ${profile}, oczekuje ${waiting}${order ? `, przystanek ${order} planowanej linii` : ''}`;
-      if (point.type === 'stop') { this.renderStop(point, label, order, overloaded); continue; }
+      if (point.type === 'stop') {
+        this.renderStop(point, label, order, overloaded);
+        if (order) this.renderStopOrder(point, order);
+        continue;
+      }
       if (!this.markers.has(point.id)) {
         const offset = point.markerOffsetY || 0;
         const leader = offset ? `<i class="node-leader" style="top:${22 - Math.max(0, offset)}px;height:${Math.abs(offset)}px"></i>` : '';
@@ -182,6 +229,16 @@ export class GameMap {
     this.pointsRendered = true;
   }
 
+  renderStopOrder(point, order) {
+    let marker = this.orderMarkers.get(point.id);
+    const html = `<span class="route-order-badge" aria-hidden="true">${order}</span>`;
+    if (!marker) {
+      marker = L.marker([point.lat, point.lng], { pane: 'ui', interactive: false, keyboard: false,
+        icon: L.divIcon({ className: 'route-order-icon', html, iconSize: [26, 26], iconAnchor: [13, 13] }) }).addTo(this.map);
+      this.orderMarkers.set(point.id, marker);
+    } else marker.setIcon(L.divIcon({ className: 'route-order-icon', html, iconSize: [26, 26], iconAnchor: [13, 13] }));
+  }
+
   // Setki przystanków rysujemy lekko na canvasie, bez elementów DOM.
   renderStop(point, label, order, overloaded) {
     const base = stopHitStyle(order, overloaded);
@@ -203,6 +260,20 @@ export class GameMap {
         this.effectTimers.add(timer);
       }
     }
+    const element = marker.getElement();
+    if (element) {
+      element.dataset.stopId = point.id;
+      element.setAttribute('aria-label', label);
+      element.setAttribute('role', 'button');
+      element.setAttribute('tabindex', '0');
+      if (!marker._keyboardBound) {
+        element.addEventListener('keydown', event => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault(); this.onPointClick?.(point.id);
+        });
+        marker._keyboardBound = true;
+      }
+    }
     marker._base = base;
     if (marker._label !== label) { marker._label = label; marker.setTooltipContent(escapeHtml(label)); }
     const key = `${order}|${overloaded}`;
@@ -211,7 +282,7 @@ export class GameMap {
 
   renderLines(gameState, minuteOfDay) {
     const ids = new Set(gameState.lines.map(line => line.id));
-    this.lines.forEach((record, id) => { if (!ids.has(id)) { record.group.remove(); this.lines.delete(id); } });
+    this.lines.forEach((record, id) => { if (!ids.has(id)) { record.segmentHandles?.forEach(handle => handle.remove()); record.group.remove(); this.lines.delete(id); } });
     let markerBudget = MAX_VEHICLE_MARKERS; const vehicleIds = new Set();
     for (const line of gameState.lines) {
       const transport = TRANSPORT_TYPES[line.type]; if (!transport) continue;
@@ -232,6 +303,8 @@ export class GameMap {
         record.geometry = geometry; record.signature = signature;
       }
       const selected = this.selectedLineId === line.id;
+      record.line = line;
+      this.syncSegmentHandles(record, selected);
       const overloaded = (line.stats?.load || 0) >= 0.95 || (line.stats?.waiting || 0) > Math.max(48, transport.capacity);
       const profitColor = finiteColor(line.stats?.balancePerHour || 0);
       const displayColor = gameState.analyticsMode === 'profit' ? profitColor : color;
@@ -244,7 +317,7 @@ export class GameMap {
         else record.route.bindTooltip(escapeHtml(title), { sticky: true, direction: 'top' });
         record.title = title;
       }
-      record.line = line; record.color = color; record.metrics = lineMetrics(line, this.city, minuteOfDay,
+      record.color = color; record.metrics = lineMetrics(line, this.city, minuteOfDay,
         { events: gameState.cityEvents || [], elapsedMinutes: gameState.elapsedMinutes, serviceDayType: gameClock(gameState.elapsedMinutes, gameState.calendar).dayType });
       const frequency = record.metrics.effectiveFrequency || 0; const fleet = record.metrics.vehicles;
       record.activeFleet = frequency > 0 ? Math.min(fleet, Math.max(1, Math.ceil(record.metrics.roundTripMinutes * frequency / 60 - 0.000001))) : 0;
@@ -263,6 +336,86 @@ export class GameMap {
       }
     }
     this.vehicles.forEach((vehicle, id) => { if (!vehicleIds.has(id)) { vehicle.marker.remove(); this.vehicles.delete(id); } });
+  }
+
+  syncSegmentHandles(record, selected) {
+    const signature = `${selected ? record.signature : ''}`;
+    if (record.handleSignature === signature) return;
+    record.segmentHandles?.forEach(handle => handle.remove());
+    record.segmentHandles = [];
+    record.handleSignature = signature;
+    if (!selected) return;
+    const details = routeLineDetails(record.line.stops, record.line.type, this.city);
+    details.segments.forEach((segment, index) => {
+      if (segment.coordinates.length < 2) return;
+      const handle = L.polyline(segment.coordinates, { renderer: this.routeRenderer, pane: 'routes', color: '#ffd166', weight: 22,
+        opacity: 0.14, interactive: true, bubblingMouseEvents: false, className: 'route-segment-hit', lineCap: 'round' }).addTo(this.map);
+      const element = handle.getElement();
+      if (element) {
+        element.dataset.segmentIndex = String(index); element.dataset.lineId = record.line.id;
+        element.style.pointerEvents = 'stroke'; element.style.cursor = 'grab';
+        element.addEventListener('pointerdown', event => {
+          event.preventDefault(); event.stopPropagation();
+          this.beginSegmentDrag(record.line.id, index, this.map.mouseEventToLatLng(event));
+        });
+      }
+      handle.on('mousedown touchstart', event => {
+        L.DomEvent.stopPropagation(event);
+        event.originalEvent?.preventDefault?.();
+        this.beginSegmentDrag(record.line.id, index, event.latlng);
+      });
+      record.segmentHandles.push(handle);
+    });
+  }
+
+  beginSegmentDrag(lineId, segmentIndex, latlng) {
+    if (this.dragState) return;
+    const line = this.currentGameState?.lines.find(item => item.id === lineId);
+    if (!line || this.selectedLineId !== lineId || segmentIndex >= line.stops.length - 1) return;
+    const points = line.stops.map(id => this.pointById.get(id));
+    if (!points[segmentIndex] || !points[segmentIndex + 1]) return;
+    this.dragState = { lineId, segmentIndex, points, wasDragging: this.map.dragging.enabled() };
+    this.map.dragging.disable();
+    this.element.classList.add('is-route-editing');
+    this.dragPreview = L.polyline([[points[segmentIndex].lat, points[segmentIndex].lng], [latlng.lat, latlng.lng],
+      [points[segmentIndex + 1].lat, points[segmentIndex + 1].lng]], { renderer: this.routeRenderer, pane: 'routes', color: '#efb84c', weight: 8,
+      dashArray: '7 6', interactive: false, lineCap: 'round' }).addTo(this.map);
+    this.dragTargets ||= L.layerGroup().addTo(this.map);
+    this.dragTargets.clearLayers();
+    for (const point of this.currentPoints || []) if (point.type === 'stop' && !line.stops.includes(point.id)) {
+      L.circleMarker([point.lat, point.lng], { renderer: this.stopRenderer || this.routeRenderer, pane: 'prospects', radius: 11, color: '#fff', weight: 3,
+        fillColor: '#efb84c', fillOpacity: 0.85, interactive: false }).addTo(this.dragTargets);
+    }
+  }
+
+  moveSegmentDrag(latlng) {
+    if (!this.dragState || !latlng || !this.dragPreview) return;
+    const { segmentIndex, points } = this.dragState;
+    this.dragPreview.setLatLngs([[points[segmentIndex].lat, points[segmentIndex].lng], [latlng.lat, latlng.lng],
+      [points[segmentIndex + 1].lat, points[segmentIndex + 1].lng]]);
+  }
+
+  finishSegmentDrag(latlng) {
+    if (!this.dragState) return;
+    const { lineId, segmentIndex } = this.dragState;
+    const line = this.currentGameState?.lines.find(item => item.id === lineId);
+    let target = null, nearest = 0.25;
+    if (latlng) for (const point of this.currentPoints || []) if (point.type === 'stop' && !line?.stops.includes(point.id)) {
+      const distance = haversineKm(latlng, point);
+      if (distance < nearest) { target = point; nearest = distance; }
+    }
+    this.clearSegmentDrag();
+    if (target) this.onSegmentDrop?.(lineId, segmentIndex, target.id);
+  }
+
+  cancelSegmentDrag() { if (this.dragState) this.clearSegmentDrag(); }
+  clearSegmentDrag() {
+    const state = this.dragState;
+    this.dragState = null;
+    this.dragPreview?.remove(); this.dragPreview = null;
+    this.dragTargets?.clearLayers();
+    this.element.classList.remove('is-route-editing');
+    if (state?.wasDragging) this.map.dragging.enable();
   }
 
   renderAnalytics(points, gameState, minuteOfDay) {
@@ -377,10 +530,12 @@ export class GameMap {
     const stops = gameState.selectedNodes || []; const color = TRANSPORT_TYPES[gameState.selectedType]?.color || '#ffffff';
     const signature = `${stops.join('|')}:${color}`; if (signature === this.previewSignature) return;
     this.previewSignature = signature;
-    const coordinates = routeLine(stops, gameState.selectedType, this.city);
+    const details = routeLineDetails(stops, gameState.selectedType, this.city);
+    const coordinates = details.coordinates;
     if (coordinates.length < 2) { this.preview?.remove(); this.preview = null; return; }
-    if (!this.preview) this.preview = L.polyline(coordinates, { renderer: this.routeRenderer, color, weight: 8, opacity: 0.8, dashArray: '5 11', interactive: false, className: 'route-preview', lineCap: 'round' }).addTo(this.map);
-    else this.preview.setLatLngs(coordinates).setStyle({ color });
+    const displayColor = details.valid ? color : '#c43f38';
+    if (!this.preview) this.preview = L.polyline(coordinates, { renderer: this.routeRenderer, color: displayColor, weight: 8, opacity: 0.9, dashArray: '5 11', interactive: false, className: 'route-preview', lineCap: 'round' }).addTo(this.map);
+    else this.preview.setLatLngs(coordinates).setStyle({ color: displayColor });
   }
 
   shouldAnimate() {
@@ -428,10 +583,17 @@ export class GameMap {
 
   destroy() {
     if (this.destroyed) return;
-    this.destroyed = true; this.stopAnimation(); this.observer?.disconnect();
+    this.destroyed = true; this.cancelSegmentDrag(); this.stopAnimation(); this.observer?.disconnect();
+    document.removeEventListener('keydown', this.cancelDragOnEscape);
+    document.removeEventListener('mouseup', this.documentDragEnd);
+    document.removeEventListener('touchend', this.documentDragEnd);
+    document.removeEventListener('pointermove', this.documentDragMove);
+    document.removeEventListener('pointerup', this.documentDragEnd);
     document.removeEventListener('visibilitychange', this.onVisibilityChange); clearTimeout(this.invalidateTimer); this.resizeObserver?.disconnect();
-    this.effectTimers.forEach(timer => clearTimeout(timer)); this.effectTimers.clear(); this.map.remove();
-    this.markers.clear(); this.pointViews.clear(); this.lines.clear(); this.vehicles.clear(); this.starterLayers.clear(); this.state = null;
+    this.effectTimers.forEach(timer => clearTimeout(timer)); this.effectTimers.clear();
+    this.lines.forEach(record => record.segmentHandles?.forEach(handle => handle.remove())); this.map.remove();
+    this.markers.clear(); this.pointViews.clear(); this.orderMarkers.clear();
+    this.lines.clear(); this.vehicles.clear(); this.starterLayers.clear(); this.state = null;
   }
 
   dispose() { this.destroy(); }

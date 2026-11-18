@@ -2,6 +2,7 @@ import { haversineKm, lineMetrics } from './transport.js?v=10';
 
 const SURFACE_TYPES = new Set(['bus', 'tram']);
 const RAIL_TYPES = new Set(['suburban', 'intercity']);
+export const ROUTING_QUALITY = Object.freeze({ maxSnapDistanceKm: 0.8, maxDetourRatio: 4 });
 const coordinate = point => [Number(point.lat), Number(point.lng)];
 const key = ([lat, lng]) => `${lat.toFixed(6)},${lng.toFixed(6)}`;
 
@@ -19,13 +20,49 @@ function buildGraph(corridors = []) {
   return graph;
 }
 
-function closestNode(graph, point) {
-  let result = null; let best = Infinity;
-  for (const [id, node] of graph) {
-    const distance = haversineKm(point, { lat: node.coordinate[0], lng: node.coordinate[1] });
-    if (distance < best) { best = distance; result = id; }
+function cloneGraph(graph) {
+  return new Map([...graph].map(([id, node]) => [id, { coordinate: [...node.coordinate], edges: node.edges.map(edge => ({ ...edge })) }]));
+}
+
+function projectToSegment(point, a, b) {
+  const scaleX = 111.32 * Math.cos(point.lat * Math.PI / 180);
+  const px = point.lng * scaleX, py = point.lat * 110.574;
+  const ax = a[1] * scaleX, ay = a[0] * 110.574, bx = b[1] * scaleX, by = b[0] * 110.574;
+  const dx = bx - ax, dy = by - ay;
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy || 1)));
+  const snapped = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+  return { coordinate: snapped, distanceKm: haversineKm(point, { lat: snapped[0], lng: snapped[1] }) };
+}
+
+// Project each stop onto a road edge and split the graph there. This avoids
+// snapping to a distant endpoint when a locally supplied corridor is sparse.
+function snapToEdge(graph, point, suffix) {
+  let match = null;
+  for (const [from, node] of graph) for (const edge of node.edges) {
+    if (from > edge.to) continue;
+    const projection = projectToSegment(point, node.coordinate, graph.get(edge.to).coordinate);
+    if (!match || projection.distanceKm < match.distanceKm) match = { from, to: edge.to, ...projection };
   }
-  return result;
+  if (!match) return null;
+  if (match.distanceKm < 0.001) {
+    const from = graph.get(match.from), to = graph.get(match.to);
+    const node = haversineKm({ lat: match.coordinate[0], lng: match.coordinate[1] }, { lat: from.coordinate[0], lng: from.coordinate[1] })
+      <= haversineKm({ lat: match.coordinate[0], lng: match.coordinate[1] }, { lat: to.coordinate[0], lng: to.coordinate[1] }) ? from : to;
+    return { id: key(node.coordinate), coordinate: node.coordinate, distanceKm: match.distanceKm };
+  }
+  const id = `snap:${suffix}:${key(match.coordinate)}`;
+  if (!graph.has(id)) {
+    const fromNode = graph.get(match.from), toNode = graph.get(match.to);
+    fromNode.edges = fromNode.edges.filter(edge => edge.to !== match.to);
+    toNode.edges = toNode.edges.filter(edge => edge.to !== match.from);
+    graph.set(id, { coordinate: match.coordinate, edges: [] });
+    const toStart = haversineKm({ lat: fromNode.coordinate[0], lng: fromNode.coordinate[1] }, { lat: match.coordinate[0], lng: match.coordinate[1] });
+    const toEnd = haversineKm({ lat: toNode.coordinate[0], lng: toNode.coordinate[1] }, { lat: match.coordinate[0], lng: match.coordinate[1] });
+    fromNode.edges.push({ to: id, distance: toStart });
+    toNode.edges.push({ to: id, distance: toEnd });
+    graph.get(id).edges.push({ to: match.from, distance: toStart }, { to: match.to, distance: toEnd });
+  }
+  return { id, coordinate: match.coordinate, distanceKm: match.distanceKm };
 }
 
 function shortestPath(graph, start, target) {
@@ -51,32 +88,49 @@ const routeDistance = coordinates => coordinates.slice(1).reduce((sum, item, ind
   { lat: coordinates[index][0], lng: coordinates[index][1] }, { lat: item[0], lng: item[1] }), 0);
 
 export function routeSegmentDetails(a, b, type, city, provider = null) {
-  if (!a || !b) return { coordinates: [], distanceKm: 0, source: 'brak danych', algorithm: 'brak', reason: 'Nie wybrano obu punktów.', mode: routingMode(type) };
+  if (!a || !b) return { coordinates: [], distanceKm: 0, source: 'brak danych', algorithm: 'brak', reason: 'Nie wybrano obu punktów.', mode: routingMode(type), valid: false };
+  const direct = [coordinate(a), coordinate(b)];
+  const directDistanceKm = routeDistance(direct);
   if (provider?.route) {
     const coordinates = provider.route(a, b, type) || [];
-    return { coordinates, distanceKm: routeDistance(coordinates), source: provider.name || 'usługa zewnętrzna',
-      algorithm: provider.algorithm || 'algorytm dostawcy', reason: 'Trasę zwrócił skonfigurowany dostawca zewnętrzny.', mode: routingMode(type) };
+    const valid = coordinates.length >= 2;
+    const distanceKm = routeDistance(coordinates);
+    return { coordinates, distanceKm, directDistanceKm, detourRatio: distanceKm / Math.max(0.05, directDistanceKm),
+      source: provider.name || 'usługa zewnętrzna', algorithm: provider.algorithm || 'algorytm dostawcy',
+      reason: valid ? 'Trasę zwrócił skonfigurowany dostawca zewnętrzny.' : 'Dostawca nie zwrócił geometrii trasy.', mode: routingMode(type), valid };
   }
-  if (type === 'metro') {
-    const coordinates = [coordinate(a), coordinate(b)];
-    return { coordinates, distanceKm: routeDistance(coordinates), source: 'model bezpośredni UrbanFlow', algorithm: 'przebieg tunelowy bez grafu ulic', reason: 'Model metra prowadzi bezpośrednio między wybranymi punktami.', mode: 'direct' };
-  }
+  if (type === 'metro') return { coordinates: direct, distanceKm: directDistanceKm, directDistanceKm, detourRatio: 1,
+    source: 'model bezpośredni UrbanFlow', algorithm: 'przebieg tunelowy bez grafu ulic',
+    reason: 'Model metra prowadzi bezpośrednio między wybranymi punktami.', mode: 'direct', valid: true };
+
   const corridors = RAIL_TYPES.has(type) ? city?.railGeometry : SURFACE_TYPES.has(type) ? city?.roadGeometry : null;
   const graph = buildGraph(corridors);
-  const direct = [coordinate(a), coordinate(b)];
   const mode = routingMode(type);
   const source = RAIL_TYPES.has(type) ? 'lokalny korytarz kolejowy UrbanFlow' : 'lokalny graf drogowy UrbanFlow';
-  if (!graph.size) return { coordinates: direct, distanceKm: routeDistance(direct), source: 'geometria punktów', algorithm: 'bezpośredni fallback',
-    reason: 'Brak grafu dla tego środka transportu; pokazano prostą linię między punktami.', mode };
-  const start = closestNode(graph, a); const target = closestNode(graph, b);
-  const path = shortestPath(graph, start, target);
-  if (!path) return { coordinates: direct, distanceKm: routeDistance(direct), source, algorithm: 'bezpośredni fallback',
-    reason: 'Brak połączenia w lokalnym grafie; pokazano prostą linię między punktami.', mode };
-  const coordinates = [coordinate(a), ...path.coordinates, coordinate(b)].filter((item, index, items) => !index || key(item) !== key(items[index - 1]));
-  return { coordinates, distanceKm: routeDistance(coordinates), source, algorithm: 'Dijkstra, najkrótsza odległość',
-    reason: RAIL_TYPES.has(type) ? 'Wybrano najkrótszy dostępny korytarz kolejowy.' : 'Wybrano najkrótszy dostępny korytarz w lokalnym grafie drogowym.', mode,
-    snappedDistanceKm: haversineKm(a, { lat: graph.get(start).coordinate[0], lng: graph.get(start).coordinate[1] })
-      + haversineKm(b, { lat: graph.get(target).coordinate[0], lng: graph.get(target).coordinate[1] }) };
+  if (!graph.size) return { coordinates: direct, distanceKm: directDistanceKm, directDistanceKm, detourRatio: 1,
+    source: 'geometria punktów', algorithm: 'bezpośredni fallback',
+    reason: 'Brak lokalnego grafu; prosta między punktami jest tylko orientacyjnym fallbackiem, nie trasą.', mode, valid: false };
+
+  const working = cloneGraph(graph);
+  const start = snapToEdge(working, a, 'start'); const target = snapToEdge(working, b, 'end');
+  const path = start && target ? shortestPath(working, start.id, target.id) : null;
+  if (!path) return { coordinates: direct, distanceKm: directDistanceKm, directDistanceKm, detourRatio: 1, source,
+    algorithm: 'bezpośredni fallback', reason: 'Brak połączenia w lokalnym grafie; prosta między punktami nie jest wiarygodną trasą.',
+    mode, valid: false, snappedDistanceKm: Infinity, maxSnapDistanceKm: Infinity };
+
+  const coordinates = [coordinate(a), start.coordinate, ...path.coordinates.slice(1, -1), target.coordinate, coordinate(b)]
+    .filter((item, index, items) => !index || key(item) !== key(items[index - 1]));
+  const distanceKm = routeDistance(coordinates);
+  const snappedDistanceKm = start.distanceKm + target.distanceKm;
+  const maxSnapDistanceKm = Math.max(start.distanceKm, target.distanceKm);
+  const detourRatio = distanceKm / Math.max(0.05, directDistanceKm);
+  const valid = maxSnapDistanceKm <= ROUTING_QUALITY.maxSnapDistanceKm && detourRatio <= ROUTING_QUALITY.maxDetourRatio;
+  const reason = valid
+    ? (RAIL_TYPES.has(type) ? 'Wybrano najkrótszy dostępny korytarz kolejowy.' : 'Wybrano najkrótszy dostępny korytarz w lokalnym grafie drogowym.')
+    : `Niepewna trasa: odsunięcie od grafu ${maxSnapDistanceKm.toFixed(2)} km, objazd ×${detourRatio.toFixed(1)}. Lokalny graf wymaga uzupełnienia.`;
+  return { coordinates, distanceKm, directDistanceKm, detourRatio, source,
+    algorithm: 'Dijkstra po lokalnym grafie, dopasowanie do odcinka', reason, mode,
+    valid, snappedDistanceKm, maxSnapDistanceKm };
 }
 
 export function routeSegment(a, b, type, city, provider = null) {
@@ -95,23 +149,25 @@ export function routeLine(stops, type, city, provider = null) {
 }
 
 export function polylineDistanceKm(coordinates = []) {
-  return coordinates.slice(1).reduce((sum, point, index) => sum + haversineKm(
-    { lat: coordinates[index][0], lng: coordinates[index][1] }, { lat: point[0], lng: point[1] }), 0);
+  return routeDistance(coordinates);
 }
 
 export function routeLineDetails(stops, type, city, provider = null, minuteOfDay = 720) {
   const byId = new Map((city?.points || []).map(point => [point.id, point]));
   const points = (stops || []).map(id => byId.get(id)).filter(Boolean);
-  if (points.length < 2) return { coordinates: [], distanceKm: 0, travelMinutes: 0, source: 'brak danych', algorithm: 'brak', reason: 'Potrzebne są co najmniej dwa punkty.', mode: routingMode(type) };
+  if (points.length < 2) return { coordinates: [], distanceKm: 0, travelMinutes: 0, source: 'brak danych', algorithm: 'brak', reason: 'Potrzebne są co najmniej dwa punkty.', mode: routingMode(type), valid: false };
   const segments = points.slice(1).map((point, index) => routeSegmentDetails(points[index], point, type, city, provider));
   const coordinates = segments.reduce((all, item) => all.concat(all.length ? item.coordinates.slice(1) : item.coordinates), []);
   const routeModes = new Set(segments.map(item => item.mode));
   const fallback = segments.some(item => item.algorithm === 'bezpośredni fallback');
+  const valid = segments.every(item => item.valid);
+  const detourRatio = Math.max(...segments.map(item => item.detourRatio || 1));
+  const maxSnapDistanceKm = Math.max(...segments.map(item => item.maxSnapDistanceKm || 0));
   const detail = {
     coordinates, distanceKm: routeDistance(coordinates), source: [...new Set(segments.map(item => item.source))].join(' + '),
     algorithm: fallback ? 'mieszany, zawiera fallback bezpośredni' : [...new Set(segments.map(item => item.algorithm))].join(' + '),
-    reason: [...new Set(segments.map(item => item.reason))].join(' '),
-    mode: routeModes.size === 1 ? segments[0].mode : 'mixed',
+    reason: [...new Set(segments.filter(item => !item.valid).map(item => item.reason))].join(' ') || [...new Set(segments.map(item => item.reason))].join(' '),
+    mode: routeModes.size === 1 ? segments[0].mode : 'mixed', valid, detourRatio, maxSnapDistanceKm,
     snappedDistanceKm: segments.reduce((sum, item) => sum + (item.snappedDistanceKm || 0), 0), segments
   };
   detail.travelMinutes = lineMetrics({ type, stops, routeGeometry: coordinates }, city, minuteOfDay).travelMinutes;

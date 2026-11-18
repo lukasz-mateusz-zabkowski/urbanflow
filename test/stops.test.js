@@ -44,7 +44,7 @@ test('pickStopsToReveal respektuje limity i nie powtarza przystanków', () => {
   const route = [{ lat: 50, lng: 19.9 }, { lat: 50, lng: 20.0 }];
   const stops = Array.from({ length: 60 }, (_, i) => ({ id: `s${i}`, type: 'stop', lat: 50.001 + i * 0.0001, lng: 19.9 + i * 0.0016 }));
   const first = pickStopsToReveal(stops, new Set(), route);
-  assert.ok(first.length > 0 && first.length <= 26);
+  assert.ok(first.length > 0 && first.length <= 8);
   const second = pickStopsToReveal(stops, new Set(first), route);
   assert.equal(second.filter(id => first.includes(id)).length, 0);
 });

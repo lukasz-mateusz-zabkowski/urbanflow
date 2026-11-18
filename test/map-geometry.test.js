@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { positionOnRoute, routeGeometry, vehiclePhase } from '../public/js/map.js';
+import { positionOnRoute, routeGeometry, vehiclePhase, stopVisibleAtZoom } from '../public/js/map.js';
 import { CITIES } from '../public/js/cities.js';
 import { lineMetrics } from '../public/js/transport.js';
 
@@ -21,6 +21,14 @@ test('empty and repeated geographic stops do not produce invalid coordinates', (
   const route = routeGeometry([point, point, { lat: 50, lng: 21 }]);
   assert.deepEqual(positionOnRoute(route, 0).latlng, [50, 20]);
   assert.ok(Number.isFinite(positionOnRoute(route, 0.3).heading));
+});
+
+test('stop density prioritizes served and selected stops while revealing detail as zoom increases', () => {
+  const local = { demand: 1 }, major = { demand: 3 };
+  assert.equal(stopVisibleAtZoom(local, 9, false), false);
+  assert.equal(stopVisibleAtZoom(major, 9, false), true);
+  assert.equal(stopVisibleAtZoom(local, 9, true), true);
+  assert.equal(stopVisibleAtZoom(local, 11, false), true);
 });
 
 test('vehicle timetable includes both directions and two minute terminus pauses', () => {
