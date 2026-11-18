@@ -35,6 +35,13 @@ async function startPreparedGame(page, viewport, mobile = false) {
   await page.setViewportSize(viewport);
   await page.addInitScript(({ key, value }) => { if (!localStorage.getItem(key)) localStorage.setItem(key, value); Math.random = () => 0.1; },
     { key: SAVE_KEY, value: JSON.stringify(save) });
+  if (mobile) await page.addInitScript(() => {
+    const attachMapHook = () => {
+      if (window.L?.Map) window.L.Map.addInitHook(function exposeMapToVisualTest() { window.__urbanflowVisualTestMap = this; });
+      else setTimeout(attachMapHook, 0);
+    };
+    attachMapHook();
+  });
   await page.route('https://tile.openstreetmap.org/**', route => route.fulfill({ status: 200, contentType: 'image/svg+xml', body: tile }));
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
@@ -52,7 +59,16 @@ async function startPreparedGame(page, viewport, mobile = false) {
   await page.locator('[data-action="pick-on-map"]').click({ force: true });
   // On mobile the expanded build sheet covers the map controls. Close it first,
   // then zoom until local stop markers are individually targetable.
-  for (let index = 0; index < 5; index += 1) await page.locator('.leaflet-control-zoom-in').click({ force: true });
+  if (mobile) {
+    await expect.poll(() => page.evaluate(() => Boolean(window.__urbanflowVisualTestMap))).toBe(true);
+    await page.evaluate(() => {
+      const map = window.__urbanflowVisualTestMap;
+      map.invalidateSize({ pan: false, animate: false });
+      map.setView([50.05, 19.95], 14, { animate: false });
+    });
+  } else {
+    for (let index = 0; index < 5; index += 1) await page.locator('.leaflet-control-zoom-in').click({ force: true });
+  }
   return errors;
 }
 

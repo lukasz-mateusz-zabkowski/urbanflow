@@ -2,7 +2,7 @@
 
 ## Status
 
-**GO for technical review on the feature branch.** The three reported multi-fold downtown detours were reproduced in the previous 12-candidate snap configuration and reduced by allowing a broader set of legal directed-road matches. The seven-stop route now builds in the standard game UI with the chosen stop order, distinct road and pedestrian-access geometry, and a staged edit that can be cancelled without charge. Igołomia is excluded from random new games because its configured point has no eligible bus road inside the current 120 m access limit; explicitly loaded legacy campaigns remain recognized and cannot silently build a false route.
+**NO GO pending final branch CI.** The previously confirmed routing and campaign fixes remain validated locally. This follow-up improves cross-platform Playwright reliability; its GitHub Actions result is required before GO.
 
 This status is for review of the branch. It does not claim that the OSM extract models every traffic rule, vehicle restriction, or exact curb-side stop position.
 
@@ -11,8 +11,14 @@ This status is for review of the branch. It does not claim that the OSM extract 
 - Base: `79501928a7eea148701c79a4c476e91de5635aa5` (`v1.2.0-alpha`).
 - Branch: `fix/alpha-1.2.1-smart-route-editor`.
 - Starting HEAD for this follow-up: `28ef4b1ad9276d607f7307d30126a8ad9352eb27`.
-- Implementation commit: `faaf58b1c2cc246b52ae5833ff1bb44cb36f7450`. GitHub Actions [run 44301904567](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44301904567) passed for this SHA; all six jobs succeeded. A documentation-only commit carries this report, and its branch check is verified separately.
+- Implementation commit: `faaf58b1c2cc246b52ae5833ff1bb44cb36f7450`. GitHub Actions [run 44301904567](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44301904567) passed for this SHA; all six jobs succeeded. Follow-up runs [44302362816](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44302362816), [44308760114](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44308760114), and [44309732288](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44309732288) exposed browser-test assumptions around cancellation, mobile touch drop coordinates, and map projection. The latest local fixes await a new branch CI run.
 - No merge, tag, GitHub Release, Raspberry Pi operation, or deployment was performed.
+
+## Final routing QA follow-up (2026-11-18)
+
+- The mobile standard-game route test now exposes the test map after initialization, invalidates its size after the build-panel interaction, and centers the viewport on the seven-stop downtown scenario before selecting stops. The previous version tried to select local stops while zooming from the campaign-wide view.
+- The touch-drag test adds a second zoom step and verifies the touch release is within 250 m of the stop's projected map location. It still requires a successful staged insertion using touch input, while confirming the saved route and budget are unchanged before confirmation.
+- Both targeted mobile tests passed three consecutive local repetitions. Full local browser suite: 12/12 passed. Actions for the pushed follow-up are still pending; branch status remains NO GO until all six jobs pass.
 
 ## OSM source and graph integrity
 
@@ -60,12 +66,12 @@ The coordinate was not moved. Igołomia now has `availableForNewGame: false`, so
 
 - `npm ci`: passed; install reported 0 vulnerabilities.
 - `npm test`: **177 passed, 0 failed** (including route graph, campaign starts, and 52-week/persistence simulations).
-- `npm run test:browser`: **12 passed, 0 failed** in 2.7 minutes. Covered desktop 1920×1080, 1366×768, 1280×720; mobile 390×844 and 360×800; OSM route views, normal-game ordered route build/edit/cancel/confirm/reload, mobile route preview and touch drag, map resize, save/timetable, and UI behavior.
+- `npm run test:browser`: **12 passed, 0 failed** in 1.4 minutes on 2026-11-18. Covered desktop 1920 x 1080, 1366 x 768, 1280 x 720; mobile 390 x 844 and 360 x 800; OSM route views, normal-game ordered route build/edit/cancel/confirm/reload, mobile route preview and touch drag, map resize, save/timetable, and UI behavior.
 - `npm run audit:all`: passed, 0 vulnerabilities.
 - `npm run audit:production`: passed, 0 vulnerabilities.
 - Routing benchmark: 15 warmed runs on the local development machine; six-leg route search median **54.67 ms**, p95 **78.40 ms**. Graph decode and spatial-index construction are excluded. This is not a Raspberry Pi performance claim.
 - Screenshots are stored outside the repository under `%LOCALAPPDATA%\Temp\urbanflow-alpha-1.2.1-final-routing-qa\`; key files include `osm-seven-stop-desktop-1280x720.png`, `osm-seven-stop-mobile-390x844.png`, `standard-seven-stop-built-desktop.png`, `standard-seven-stop-desktop-preview.png`, `standard-seven-stop-edit-preview.png`, `standard-seven-stop-mobile-preview.png`, and `mobile-390x844-touch-route-insertion.png`. The desktop OSM map, mobile OSM map, standard built line and touch insertion artifacts were visually reviewed. No screenshot or PBF was added to the repository.
-- Local validation and Actions both pass for implementation SHA `faaf58b1c2cc246b52ae5833ff1bb44cb36f7450`. The final report commit changes documentation only; its own Actions run is checked on the branch after push.
+- `npm ci`: passed again with 0 vulnerabilities. `npm test`: 177 passed, 0 failed. `npm run audit:all`: 0 vulnerabilities. `npm run audit:production`: 0 vulnerabilities. Local checks were rerun on 2026-11-18 after the Playwright test fixes. The final branch SHA and Actions run remain to be verified after push.
 
 ## Remaining limitations and recommendation
 
@@ -75,4 +81,4 @@ The coordinate was not moved. Igołomia now has `availableForNewGame: false`, so
 - Tram remains on its separate OSM tram graph. Metro and rail use their existing models.
 - No production or Raspberry Pi checks were performed, as requested.
 
-**Recommendation: GO for technical review of this branch**, with the limitations above visible to reviewers. Do not treat this as a production deployment approval.
+**Recommendation: NO GO until final CI is green**, with the limitations above visible to reviewers. Do not treat this as a production deployment approval.

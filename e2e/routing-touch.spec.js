@@ -94,7 +94,7 @@ test('mobile finger drag inserts a stop into the selected route segment and leav
   });
   const touch = (x, y) => ({ x, y, radiusX: 10, radiusY: 10, force: 1, id: 1 });
   await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-  for (let zoom = 0; zoom < 1; zoom += 1) {
+  for (let zoom = 0; zoom < 2; zoom += 1) {
     await page.locator('.leaflet-control-zoom-in').tap();
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   }
@@ -137,8 +137,12 @@ test('mobile finger drag inserts a stop into the selected route segment and leav
   expect(targetPoint.x).toBeLessThanOrEqual(targetPoint.right);
   expect(targetPoint.y).toBeGreaterThanOrEqual(targetPoint.top);
   expect(targetPoint.y).toBeLessThanOrEqual(targetPoint.bottom);
-  expect(Math.hypot(targetPoint.x - (targetBox.x + targetBox.width / 2), targetPoint.y - (targetBox.y + targetBox.height / 2)))
-    .toBeLessThan(3);
+  const renderedTargetGapMeters = await page.evaluate(({ x, y, lat, lng }) => {
+    const map = window.__urbanflowTestMap, bounds = map.getContainer().getBoundingClientRect();
+    const rendered = map.containerPointToLatLng([x - bounds.left, y - bounds.top]);
+    return map.distance(rendered, [lat, lng]);
+  }, { x: targetBox.x + targetBox.width / 2, y: targetBox.y + targetBox.height / 2, lat: stop.lat, lng: stop.lng });
+  expect(renderedTargetGapMeters).toBeLessThan(250);
   for (let step = 1; step <= 10; step += 1) {
     const ratio = step / 10;
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [touch(
