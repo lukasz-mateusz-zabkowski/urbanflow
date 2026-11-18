@@ -2,13 +2,13 @@
 
 ## Status
 
-**Status techniczny: GO warunkowe dla przeglądu na gałęzi; bez integracji z `main`.** Produkcja nie była modyfikowana. Status końcowy zależy jeszcze od pushu i GitHub Actions.
+**Status techniczny: GO dla przeglądu na gałęzi; bez integracji z `main`.** Push zakończony, GitHub Actions SUCCESS. Produkcja nie była modyfikowana.
 
 - Baza: `17cd2b35d858690a986fe7bebbe167c480082dca` (`main`, `v1.2.1-alpha` pozostaje bez zmian).
 - Gałąź robocza: `feature/alpha-1.3.0`.
 - Commit implementacji: `0c9040a5b1b94bea846832e8a7d309ef7380a814`.
-- SHA dokumentacyjnego follow-up: zostanie widoczny jako HEAD po pushu; nie zmienia kodu gry.
-- GitHub Actions: oczekuje na push gałęzi.
+- Końcowy SHA kodu: `0c9040a5b1b94bea846832e8a7d309ef7380a814`; późniejszy commit raportu nie zmienia kodu gry.
+- GitHub Actions: SUCCESS, 6/6 jobs; [run 44391079902](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44391079902) dla gałęzi z końcowym kodem.
 
 ## Zmiany
 
@@ -21,10 +21,10 @@
 
 ## Walidacja
 
-Wyniki końcowe należy uzupełnić po pełnym przebiegu:
+Pełna walidacja lokalna i zdalna:
 
 - `npm ci`: zaliczone (bez nowych zależności; 0 podatności podczas instalacji).
-- `npm test`: 190/190 zaliczone.
+- `npm test`: 191/191 zaliczone.
 - `npm run test:browser`: 14/14 na końcowym kodzie; cykl inwestycyjny sprawdzony na desktopie 1366×768 i dotykowym telefonie 390×844. Dodatkowe powtórzenie po korekcie kadrowania zrzutów: 2/2.
 - `npm run audit:all`: 0 podatności.
 - `npm run audit:production`: 0 podatności.
@@ -49,6 +49,6 @@ Zrzuty są odkładane w katalogu tymczasowym systemu, nie w repozytorium. UI uż
 
 ## GitHub
 
-- Push gałęzi: oczekuje.
-- Actions dla końcowego SHA: oczekuje.
+- Push gałęzi: potwierdzony; zdalny HEAD odpowiada SHA raportu.
+- Actions dla SHA `2c2f3b9dcc0e4d8469ed066bad45f3e821a8a78f`: SUCCESS, 6/6 jobs.
 - Merge, tag i release: nie wykonano.
