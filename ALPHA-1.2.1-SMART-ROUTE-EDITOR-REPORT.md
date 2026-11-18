@@ -2,7 +2,7 @@
 
 ## Status
 
-**NO GO pending final branch CI.** The previously confirmed routing and campaign fixes remain validated locally. This follow-up improves cross-platform Playwright reliability; its GitHub Actions result is required before GO.
+**GO for technical review on the feature branch.** The routing and campaign fixes, standard-game editor, mobile drag insertion, and saved-route checks passed local validation and GitHub Actions. This is technical review approval only, not production deployment approval.
 
 This status is for review of the branch. It does not claim that the OSM extract models every traffic rule, vehicle restriction, or exact curb-side stop position.
 
@@ -11,14 +11,14 @@ This status is for review of the branch. It does not claim that the OSM extract 
 - Base: `79501928a7eea148701c79a4c476e91de5635aa5` (`v1.2.0-alpha`).
 - Branch: `fix/alpha-1.2.1-smart-route-editor`.
 - Starting HEAD for this follow-up: `28ef4b1ad9276d607f7307d30126a8ad9352eb27`.
-- Implementation commit: `faaf58b1c2cc246b52ae5833ff1bb44cb36f7450`. GitHub Actions [run 44301904567](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44301904567) passed for this SHA; all six jobs succeeded. Follow-up runs [44302362816](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44302362816), [44308760114](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44308760114), [44309732288](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44309732288), and [44312820742](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44312820742) exposed browser-test assumptions around cancellation, mobile touch drop coordinates, map projection, and an unsettled Leaflet SVG zoom transform. Run 443128 passed five jobs; browser-test failed only at a 377 m DOM-marker/projection gap. The test now waits for Leaflet zoom animation to end and invalidates map size; it awaits a fresh CI run.
+- Implementation commit: `faaf58b1c2cc246b52ae5833ff1bb44cb36f7450`. Earlier validation [run 44301904567](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44301904567) passed all six jobs. Browser-only follow-up failures were addressed; final code/test validation [run 44314733243](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44314733243) passed all six jobs on SHA `0612e7efc884e8a5252e2ebcac5193502f9adce9`. The final report-only commit triggers its own CI run, which is checked separately.
 - No merge, tag, GitHub Release, Raspberry Pi operation, or deployment was performed.
 
 ## Final routing QA follow-up (2026-11-18)
 
 - The mobile standard-game route test now exposes the test map after initialization, invalidates its size after the build-panel interaction, and centers the viewport on the seven-stop downtown scenario before selecting stops. The previous version tried to select local stops while zooming from the campaign-wide view.
 - The touch-drag test adds a second zoom step, waits until Leaflet removes its zoom animation transform, invalidates map size, and verifies the rendered target is within 250 m of its projected location. It still requires a successful staged insertion using touch input, while confirming the saved route and budget are unchanged before confirmation.
-- Both targeted mobile tests passed three consecutive local repetitions. Full local browser suite: 12/12 passed in 2.8 minutes after the zoom-transform wait. The new Actions run is pending; branch status remains NO GO until all six jobs pass.
+- Both targeted mobile tests passed three consecutive local repetitions. Full local browser suite: 12/12 passed in 2.8 minutes after the zoom-transform wait. Actions run 44314733243 passed all six jobs, including the browser suite on Ubuntu; this follow-up is GO for technical review.
 
 ## OSM source and graph integrity
 
@@ -81,4 +81,4 @@ The coordinate was not moved. Igołomia now has `availableForNewGame: false`, so
 - Tram remains on its separate OSM tram graph. Metro and rail use their existing models.
 - No production or Raspberry Pi checks were performed, as requested.
 
-**Recommendation: NO GO until final CI is green**, with the limitations above visible to reviewers. Do not treat this as a production deployment approval.
+**Recommendation: GO for technical review of this branch**, with the limitations above visible to reviewers. Do not treat this as a production deployment approval.
