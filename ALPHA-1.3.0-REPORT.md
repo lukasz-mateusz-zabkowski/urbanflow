@@ -6,8 +6,9 @@
 
 - Baza: `17cd2b35d858690a986fe7bebbe167c480082dca` (`main`, `v1.2.1-alpha` pozostaje bez zmian).
 - Gałąź robocza: `feature/alpha-1.3.0`.
-- Końcowy SHA: do uzupełnienia po commicie.
-- GitHub Actions: do uzupełnienia po pushu.
+- Commit implementacji: `0c9040a5b1b94bea846832e8a7d309ef7380a814`.
+- SHA dokumentacyjnego follow-up: zostanie widoczny jako HEAD po pushu; nie zmienia kodu gry.
+- GitHub Actions: oczekuje na push gałęzi.
 
 ## Zmiany
 
