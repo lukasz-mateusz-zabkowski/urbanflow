@@ -103,6 +103,15 @@
             <div class="city-evolution-week"><strong>Zmiany i potencjał</strong><p id="landUseWeeklySummary">Zmiany pojawią się po upływie pierwszego tygodnia symulacji.</p><ul id="landUseWeeklyDetails" class="diagnostic-list"></ul></div>
             <small class="city-evolution-note">Markery są symboliczne i wskazują model profilu obszaru, nie granice działek ani rzeczywisty plan zagospodarowania.</small>
           </section>
+          <section class="city-evolution-panel investments-panel" id="investmentsPanel" aria-labelledby="investmentsTitle" hidden>
+            <div class="diagnostic-title"><strong id="investmentsTitle">Atlas Investments</strong><span>projekty miejskie · model gry</span></div>
+            <label class="city-evolution-select">Obszar inwestycji<select id="investmentDistrict" aria-label="Wybierz obszar inwestycji"></select></label>
+            <div id="investmentDistrictProfile" class="city-evolution-profile" aria-live="polite"></div>
+            <div class="investment-catalog" id="investmentCatalog" aria-label="Katalog inwestycji"></div>
+            <div class="city-evolution-week"><strong>Portfel projektów</strong><p id="investmentBudgetSummary"></p><ul id="investmentProjectList" class="diagnostic-list"></ul></div>
+            <div class="city-evolution-week"><strong>Ostatni tydzień</strong><p id="investmentWeeklySummary">Raport pojawi się po zamknięciu tygodnia symulacji.</p></div>
+            <small class="city-evolution-note">Koszt zatwierdzonego projektu obciąża wspólny budżet gry; jest raportowany oddzielnie od wyniku operacyjnego przewoźnika. Pojemność nie oznacza automatycznego zasiedlenia.</small>
+          </section>
           <div class="network-problems"><div class="diagnostic-title"><strong>Problemy sieci</strong><span id="networkProblemCount">obserwacje symulacji</span></div><ul id="networkProblems" class="diagnostic-list"></ul></div>
           <div class="network-history"><div class="diagnostic-title"><strong>Wyniki sieci</strong><span id="networkComparisonNote">obserwacje, nie prognoza</span></div><div id="networkHistorySummary" class="network-history-summary"></div><div id="networkDailySummary" class="network-history-summary"></div><div id="networkWeeklySummary" class="network-history-summary"></div></div>
           <div class="diagnostic-grid">

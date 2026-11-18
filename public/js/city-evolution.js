@@ -2,6 +2,7 @@ import { inferProfile } from './demand.js?v=10';
 import { gameClock } from './simulation.js?v=10';
 import { lineMetrics } from './transport.js?v=10';
 import { capacitiesForLandUse, createLandUseProfile, evolveLandUseProfile, validateLandUseProfile } from './land-use.js?v=1';
+import { INVESTMENT_CATALOG } from './investments.js?v=1';
 
 export const CITY_EVOLUTION_VERSION = 1;
 export const CITY_EVOLUTION_LIMITS = Object.freeze({ weeklyReports: 12, demandFactorMin: 0.8, demandFactorMax: 1.25, maxWeeklyChange: 0.0045 });
@@ -137,16 +138,20 @@ export function evolveCityWeek(state, city) {
   const ranked = Object.values(evolution.districts);
   const byChange = key => [...ranked].sort((a, b) => b.lastChange[key] - a.lastChange[key]);
   const network = (state.networkWeeklyHistory || []).at(-1);
+  const investmentSummary = state.investments?.weekly?.find(item => item.week === week - 1) || null;
   const landUseChanges = [];
   const blockedByTransport = [];
   const developmentPotential = [];
   for (const zone of ranked) {
+    const reservedReserve = (state.investments?.projects || []).filter(project => project.districtId === zone.id
+      && ['planned', 'in-progress'].includes(project.status) && project.type !== 'hub')
+      .reduce((sum, project) => sum + (INVESTMENT_CATALOG[project.type]?.reserve || 0), 0);
     const advancement = evolveLandUseProfile(zone.landUse, {
       week, profile: zone.profile, transportAccess: zone.transportAccess,
       transportSatisfaction: zone.transportSatisfaction,
       residentialAttractiveness: zone.residentialAttractiveness,
       economicAttractiveness: zone.economicAttractiveness,
-      growthPotential: zone.growthPotential
+      growthPotential: zone.growthPotential, reservedReserve
     });
     zone.landUse = advancement.profile;
     const expanded = capacitiesForLandUse(zone.base, zone.landUse);
@@ -177,6 +182,7 @@ export function evolveCityWeek(state, city) {
     landUseChanges,
     blockedByTransport: blockedByTransport.slice(0, 5),
     developmentPotential: developmentPotential.slice(0, 3),
+    investments: investmentSummary,
     networkBalance: network ? network.revenue - network.cost : null,
     networkWeek: network?.week ?? null
   };

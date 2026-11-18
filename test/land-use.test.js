@@ -53,6 +53,17 @@ test('poor transport prevents construction and preserves the development reserve
   assert.equal(land.developmentProgress, 0);
 });
 
+test('active urban projects reserve land so autonomous Land Use cannot consume construction materials', () => {
+  const office = createLandUseProfile('office');
+  office.developmentProgress = 100;
+  const result = evolveLandUseProfile(office, { week: 9, profile: 'office', transportAccess: 90,
+    transportSatisfaction: 90, residentialAttractiveness: 90, economicAttractiveness: 90,
+    growthPotential: 90, reservedReserve: 6 });
+  assert.equal(result.change, null);
+  assert.equal(result.profile.shares.reserve, 8);
+  assert.equal(Object.values(result.profile.shares).reduce((sum, share) => sum + share, 0), 100);
+});
+
 test('land-use demand follows origin, destination, time of day, and service day', () => {
   const office = createLandUseProfile('office');
   const retail = createLandUseProfile('center');

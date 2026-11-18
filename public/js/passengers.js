@@ -11,6 +11,11 @@ const MAX_WAIT_MINUTES = 120;
 // Matches the existing save validator bound. Cohorts represent many people and
 // are merged when their journey state matches; this is not a resident cap.
 const MAX_COHORTS = 5000;
+
+export function stopQueueLimit(state, pointId) {
+  const hubFactor = state?.hubCapacityByPoint?.[pointId] || 1;
+  return Math.max(160, Math.min(1200, (state?.stopCapacity || 80) * 4 * hubFactor));
+}
 export const MAX_TRANSFERS = 2;
 export const MAX_ACCEPTED_JOURNEY_MINUTES = 100;
 
@@ -428,12 +433,12 @@ export function passengerTick(state, visiblePoints, minuteOfDay = 720, random = 
     }
   }
 
-  const queueLimit = Math.max(160, Math.min(600, (state.stopCapacity || 80) * 4));
   const waitingByStop = new Map();
   state.cohorts = [];
   for (const cohort of next) {
     if (cohort.phase === 'waiting') {
       const waiting = waitingByStop.get(cohort.currentStop) || 0;
+      const queueLimit = stopQueueLimit(state, cohort.currentStop);
       const keep = Math.max(0, Math.min(cohort.count, queueLimit - waiting));
       if (cohort.count > keep) recordFailure(state, 'longQueue', cohort.currentStop, cohort.count - keep);
       abandoned += cohort.count - keep;
@@ -476,7 +481,8 @@ export function passengerTick(state, visiblePoints, minuteOfDay = 720, random = 
     line.stats.waiting = state.cohorts.reduce((sum, cohort) => sum + (cohort.phase === 'waiting' && cohort.route?.[0]?.lineId === line.id ? cohort.count : 0), 0);
     line.stats.onboard = state.cohorts.reduce((sum, cohort) => sum + (cohort.phase === 'riding' && cohort.route?.[cohort.legIndex]?.lineId === line.id ? cohort.count : 0), 0);
   }
-  const overcrowded = visiblePoints.filter(point => state.passengers[point.id].waiting > (state.stopCapacity || 80)).map(point => point.id);
+  const overcrowded = visiblePoints.filter(point => state.passengers[point.id].waiting > (state.stopCapacity || 80)
+    * (state.hubCapacityByPoint?.[point.id] || 1)).map(point => point.id);
   state.diagnostics.lastUpdated = state.elapsedMinutes || state.transportMinutes;
   return { generated, transported, abandoned, overcrowded };
 }

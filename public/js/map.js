@@ -440,6 +440,29 @@ export class GameMap {
     this.analysisLayer.clearLayers();
     const mode = gameState.analyticsMode || 'off';
     if (mode === 'off' || mode === 'profit') return;
+    if (mode === 'investments') {
+      const zones = gameState.cityEvolution?.districts || {};
+      const byArea = new Map();
+      for (const project of gameState.investments?.projects || []) byArea.set(project.districtId, project);
+      for (const project of [...(gameState.investments?.history || [])].reverse()) if (project.status === 'completed' && !byArea.has(project.districtId)) byArea.set(project.districtId, project);
+      for (const [districtId, project] of byArea) {
+        const point = points.find(item => item.id === districtId); const zone = zones[districtId];
+        if (!point || !zone) continue;
+        const done = project.status === 'completed';
+        const progress = project.status === 'in-progress'
+          ? Math.min(100, Math.max(0, Math.round((gameState.elapsedMinutes - project.approvedAt) / (project.completesAt - project.approvedAt) * 100)))
+          : done ? 100 : 0;
+        const color = done ? '#31845a' : '#d49434';
+        const marker = L.circleMarker([point.lat, point.lng], { renderer: this.analysisRenderer, radius: 12,
+          color: '#fffefa', weight: 3, fillColor: color, fillOpacity: 0.45 + progress / 200, interactive: true, keyboard: true }).addTo(this.analysisLayer);
+        const title = ({ housing: 'Rozwój mieszkaniowy', economic: 'Rozwój gospodarczy', hub: 'Modernizacja węzła' })[project.type] || 'Inwestycja';
+        const content = `<strong>${escapeHtml(zone.name)}</strong><br>${title}<br>${done ? 'Ukończono' : project.status === 'planned' ? 'Zaplanowano' : `Realizacja ${progress}%`}`;
+        marker.bindTooltip(content, { direction: 'top', sticky: true, className: 'place-tooltip' });
+        marker.bindPopup(content);
+        marker.on('click', () => window.dispatchEvent(new CustomEvent('urbanflow:select-investment-area', { detail: { id: districtId } })));
+      }
+      return;
+    }
     if (mode === 'cityEvolution') {
       const zones = gameState.cityEvolution?.districts || {};
       for (const point of points) {

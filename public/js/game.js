@@ -12,6 +12,7 @@ import { chooseStartScenario, starterRoutesFor } from './cities.js?v=10';
 import { getRoutingGraphStatus, routeLine, routeLineDetails, routingMode } from './routing.js?v=13';
 import { ensureFleet, fleetStatus, missingFleetCost } from './fleet.js?v=10';
 import { ensureCityEvolution, evolveCityWeek } from './city-evolution.js?v=2';
+import { advanceInvestmentProjects, approveInvestment, cancelInvestment, createInvestmentState, planInvestment, recordInvestmentWeek } from './investments.js?v=1';
 import {
   createWeeklyTimetable, createWeeklyUniformTimetable, setDailyFrequency, setDailyProfile,
   copyTimetableDay as copyScheduleDay, setSameScheduleEveryDay as updateSameSchedule, TIMETABLE_PROFILES
@@ -36,7 +37,8 @@ export class UrbanFlowGame {
       demandModifier: 1, stressDemandMultiplier: 1, nextEventAt: SIMULATION.eventIntervalMinutes, activeEventUntil: 0,
       cityEvents: [], nextEventId: 1, analyticsMode: 'off', networkHistory: [], networkDailyHistory: [], networkWeeklyHistory: [], startScenarioId: this.startScenario.id,
       campaign: createCampaign(), status: 'playing', lossReason: '', lowQualityMinutes: 0,
-      preferences: { tutorialCollapsed: false, goalsCollapsed: true }, nextLineId: 1, networkVersion: 0
+      preferences: { tutorialCollapsed: false, goalsCollapsed: true }, nextLineId: 1, networkVersion: 0,
+      investments: createInvestmentState(), hubCapacityByPoint: {}
     };
     this.state.revealedStops ||= [];
     this.state.calendar ||= createSimulationCalendar();
@@ -45,6 +47,7 @@ export class UrbanFlowGame {
     this.starterRoutes = starterRoutesFor(this.startScenario);
     this.state.subsidies ||= 0; this.state.passengerKm ||= 0; this.state.stressDemandMultiplier ||= 1;
     this.state.fleetPurchases ||= 0;
+    this.state.investments ||= createInvestmentState(); this.state.hubCapacityByPoint ||= {};
     this.state.cityEvents ||= []; this.state.nextEventId ||= 1; this.state.analyticsMode ||= 'off';
     this.state.networkHistory ||= []; this.state.networkDailyHistory ||= []; this.state.networkWeeklyHistory ||= [];
     this.state.preferences = { tutorialCollapsed: false, goalsCollapsed: true, ...(this.state.preferences || {}) };
@@ -309,8 +312,23 @@ export class UrbanFlowGame {
   setSpeed(value) { if ([1, 2, 4].includes(value)) { this.state.speed = value; this.changed(); } }
   setPreference(key, value) { if (['tutorialCollapsed', 'goalsCollapsed'].includes(key)) { this.state.preferences[key] = Boolean(value); this.changed(); } }
   setAnalyticsMode(mode) {
-    if (!['off', 'demand', 'queues', 'load', 'profit', 'travel', 'access', 'flow', 'overload', 'unmet', 'cityEvolution', 'landUse'].includes(mode)) return fail('Nieznany widok diagnostyczny.');
+    if (!['off', 'demand', 'queues', 'load', 'profit', 'travel', 'access', 'flow', 'overload', 'unmet', 'cityEvolution', 'landUse', 'investments'].includes(mode)) return fail('Nieznany widok diagnostyczny.');
     this.state.analyticsMode = mode; this.changed(); return { ok: true };
+  }
+  planInvestment(districtId, type) {
+    const result = planInvestment(this.state, districtId, type);
+    if (result.ok) this.changed();
+    return result;
+  }
+  approveInvestment(projectId) {
+    const result = approveInvestment(this.state, projectId);
+    if (result.ok) this.changed();
+    return result;
+  }
+  cancelInvestment(projectId) {
+    const result = cancelInvestment(this.state, projectId);
+    if (result.ok) this.changed();
+    return result;
   }
   tick(random = Math.random) {
     const s = this.state;
@@ -321,6 +339,7 @@ export class UrbanFlowGame {
       s.elapsedMinutes += SIMULATION.minutesPerTick;
       s.cityEvents = (s.cityEvents || []).filter(event => event.endMinute > s.elapsedMinutes);
       const clock = gameClock(s.elapsedMinutes, s.calendar);
+      advanceInvestmentProjects(s);
       const accessibilityBefore = { ...s.mobility.accessibility };
       const result = passengerTick(s, this.visiblePoints(), clock.minuteOfDay, random,
         calendarTickContext(s.elapsedMinutes, SIMULATION.minutesPerTick, s.calendar));
@@ -328,7 +347,10 @@ export class UrbanFlowGame {
       total.overcrowded = result.overcrowded;
       s.carried += result.transported; s.generated += result.generated; s.abandoned += result.abandoned || 0;
       const economy = applyEconomyTick(s, result.transported, SIMULATION.minutesPerTick);
-      if (clock.week > previousWeek) evolveCityWeek(s, this.city);
+      if (clock.week > previousWeek) {
+        recordInvestmentWeek(s, clock.week - 1);
+        evolveCityWeek(s, this.city);
+      }
       recordNetworkHistory(s, { transported: result.transported, generated: result.generated, abandoned: result.abandoned,
         accessibility: { opportunities: s.mobility.accessibility.opportunities - accessibilityBefore.opportunities,
           reachable: s.mobility.accessibility.reachable - accessibilityBefore.reachable,

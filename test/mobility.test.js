@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildRegularTravelPatterns, departuresForTick, createMobilityState, recordCompletedJourney, recordAccessibilityOpportunity, mobilitySnapshot, journeySatisfaction } from '../public/js/mobility.js';
-import { planTransitJourney, diagnoseTransitRelation, createLineStats, passengerTick, createPassengerState, intervalDemandScore } from '../public/js/passengers.js';
+import { planTransitJourney, diagnoseTransitRelation, createLineStats, passengerTick, createPassengerState, intervalDemandScore, stopQueueLimit } from '../public/js/passengers.js';
 import { calendarAt, calendarTickContext, createSimulationCalendar, setSpecialDay } from '../public/js/simulation.js';
 import { CITIES } from '../public/js/cities.js';
 import { createCityEvolutionState } from '../public/js/city-evolution.js';
@@ -158,4 +158,14 @@ test('existing Kraków places provide deterministic bounded pattern candidates',
   assert.ok(patterns.length <= city.points.filter(point => point.type !== 'stop').length * 8);
   assert.ok(patterns.every(pattern => city.points.some(point => point.id === pattern.origin)
     && city.points.some(point => point.id === pattern.destination)));
+});
+
+test('served hub upgrade raises only the selected point queue limit by 50 percent per level', () => {
+  const state = { stopCapacity: 120, hubCapacityByPoint: { hub: 1.5 } };
+  assert.equal(stopQueueLimit(state, 'home'), 480);
+  assert.equal(stopQueueLimit(state, 'hub'), 720);
+  state.hubCapacityByPoint.hub = 2;
+  assert.equal(stopQueueLimit(state, 'hub'), 960);
+  state.stopCapacity = 1000;
+  assert.equal(stopQueueLimit(state, 'hub'), 1200, 'per-point queues keep a hard upper bound');
 });

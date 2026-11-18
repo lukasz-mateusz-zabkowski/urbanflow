@@ -124,7 +124,8 @@ export function evolveLandUseProfile(landUse, conditions = {}) {
   const attractiveness = Math.max(conditions.residentialAttractiveness || 0, conditions.economicAttractiveness || 0);
   const access = clamp(Number(conditions.transportAccess) || 0, 0, 100);
   const satisfaction = clamp(Number(conditions.transportSatisfaction) || 0, 0, 100);
-  const reserveReady = next.shares.reserve >= LAND_USE_PARAMETERS.reservePerUpgrade;
+  const reservedReserve = clamp(Number(conditions.reservedReserve) || 0, 0, next.shares.reserve);
+  const reserveReady = next.shares.reserve - reservedReserve >= LAND_USE_PARAMETERS.reservePerUpgrade;
   const belowMax = next.intensity !== 'high';
   const attractive = attractiveness >= 48;
   const transportReady = access >= 25 && satisfaction >= 35;

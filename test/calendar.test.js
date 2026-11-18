@@ -129,7 +129,7 @@ test('schema 2 migrates the legacy uniform frequency to all four day profiles wi
   assert.equal(loaded.state.lines[0].timetable.profiles.special.periods[4].frequency, 2.5);
   assert.deepEqual(loaded.state.campaign.completed, ['gateway']);
   assert.equal(loaded.state.budget, state.budget);
-  assert.equal(JSON.parse(storage.values.get(SAVE_KEY)).version, 9);
+  assert.equal(JSON.parse(storage.values.get(SAVE_KEY)).version, 10);
 });
 
 test('schema 3 daily profiles migrate identically to every day and schema 4 round-trips deterministically', () => {
@@ -149,7 +149,7 @@ test('schema 3 daily profiles migrate identically to every day and schema 4 roun
   assert.equal(loaded.error, null);
   assert.equal(loaded.state.lines[0].timetable.profiles.saturday.periods[0].frequency, 5);
   assert.equal(loaded.state.lines[0].timetable.profiles.weekday.periods[4].frequency, 0);
-  assert.equal(SAVE_VERSION, 9);
+  assert.equal(SAVE_VERSION, 10);
 });
 
 test('malformed schema 4 special-day data is rejected and preserved for recovery', () => {
@@ -161,7 +161,7 @@ test('malformed schema 4 special-day data is rejected and preserved for recovery
   assert.equal(storage.values.get(`${SAVE_KEY}.recovery`), raw);
 });
 
-test('schema 4 migrates to schema 9 without changing lines, fleet, budget, or campaign progress', () => {
+test('schema 4 migrates to schema 10 without changing lines, fleet, budget, or campaign progress', () => {
   const state = savedGameState();
   state.budget = 12345;
   state.campaign.completed = ['gateway'];
@@ -173,5 +173,5 @@ test('schema 4 migrates to schema 9 without changing lines, fleet, budget, or ca
   assert.deepEqual(result.state.fleet, state.fleet);
   assert.deepEqual(result.state.campaign.completed, ['gateway']);
   assert.equal(result.state.mobility.version, 1);
-  assert.equal(JSON.parse(storage.values.get(SAVE_KEY)).version, 9);
+  assert.equal(JSON.parse(storage.values.get(SAVE_KEY)).version, 10);
 });

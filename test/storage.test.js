@@ -195,7 +195,7 @@ test('schema 5 migrates to bounded network history without losing campaign, flee
   assert.deepEqual(loaded.state.mobility, oldState.mobility);
   assert.deepEqual(loaded.state.unlocked, oldState.unlocked);
   assert.deepEqual(loaded.state.networkHistory, []);
-  assert.equal(JSON.parse(storage.getItem(SAVE_KEY)).version, 9);
+  assert.equal(JSON.parse(storage.getItem(SAVE_KEY)).version, 10);
   const invalid = snapshot(loaded.state); invalid.networkHistory = Array(97).fill({ at: 0, networkVersion: 0, transported: 0, averageWaitMinutes: 0,
     availability: 0, utilization: 0, revenue: 0, cost: 0, balance: 0 });
   assert.equal(validateState(invalid, city), false);
@@ -215,7 +215,7 @@ test('schema 6 migrates observed coverage while preserving state and starting lo
   assert.deepEqual(loaded.state.networkWeeklyHistory, []);
   assert.equal(loaded.state.lines.length, game.state.lines.length);
   assert.deepEqual(loaded.state.campaign, game.state.campaign);
-  assert.equal(JSON.parse(storage.getItem(SAVE_KEY)).version, 9);
+  assert.equal(JSON.parse(storage.getItem(SAVE_KEY)).version, 10);
 });
 
 test('schema 7 migrates deterministic city profiles without losing campaign, budget, lines, fleet or mobility', () => {
@@ -233,7 +233,7 @@ test('schema 7 migrates deterministic city profiles without losing campaign, bud
   assert.deepEqual(first.state.mobility, oldState.mobility);
   assert.deepEqual(first.state.campaign, oldState.campaign);
   assert.equal(first.state.cityEvolution.source, 'simulation-parameters');
-  assert.equal(JSON.parse(storage.getItem(SAVE_KEY)).version, 9);
+  assert.equal(JSON.parse(storage.getItem(SAVE_KEY)).version, 10);
   const district = first.state.cityEvolution.districts.ruczaj;
   assert.ok(district && district.residents === district.base.residents);
   const saved = snapshot(first.state);
@@ -254,7 +254,7 @@ test('schema 8 adds deterministic land-use profiles while preserving occupied va
   storage.setItem(SAVE_KEY, JSON.stringify({ version: 8, cityId: city.id, state: oldState }));
   const loaded = loadGame(storage, city);
   assert.equal(loaded.error, null);
-  assert.equal(JSON.parse(storage.getItem(SAVE_KEY)).version, 9);
+  assert.equal(JSON.parse(storage.getItem(SAVE_KEY)).version, 10);
   const afterZone = loaded.state.cityEvolution.districts.ruczaj;
   assert.equal(afterZone.residents, beforeZone.residents);
   assert.equal(afterZone.jobs, beforeZone.jobs);
@@ -269,10 +269,54 @@ test('schema 8 adds deterministic land-use profiles while preserving occupied va
   assert.equal(loaded.state.cityEvolution.weeklyReports[0].networkWeek, 1);
 });
 
-test('schema 9 validates Atlas Land Use mode and rejects shares that no longer total 100 percent', () => {
+test('schema 10 validates Atlas Land Use and Investments modes and rejects malformed project ledgers', () => {
   const state = snapshot(activeGame().state);
   state.analyticsMode = 'landUse';
   assert.equal(validateState(state, city), true);
-  state.cityEvolution.districts.ruczaj.landUse.shares.residential += 1;
+  state.analyticsMode = 'investments';
+  assert.equal(validateState(state, city), true);
+  state.investments.projects.push({ id: 'investment-1', type: 'housing', districtId: 'ruczaj', status: 'planned',
+    cost: Infinity, durationWeeks: 3, createdAt: 0, approvedAt: null, completesAt: null, completedAt: null,
+    effectApplied: false, refund: 0, charged: false, expected: {}, result: null });
   assert.equal(validateState(state, city), false);
+  const reset = snapshot(activeGame().state);
+  reset.analyticsMode = 'landUse';
+  reset.cityEvolution.districts.ruczaj.landUse.shares.residential += 1;
+  assert.equal(validateState(reset, city), false);
+});
+
+test('schema 9 migrates an in-progress campaign to schema 10 without touching campaign or transit state', () => {
+  const oldState = snapshot(activeGame().state);
+  oldState.budget = 234567;
+  oldState.campaign.completed = ['gateway'];
+  delete oldState.investments; delete oldState.hubCapacityByPoint;
+  const storage = memoryStorage();
+  storage.setItem(SAVE_KEY, JSON.stringify({ version: 9, cityId: city.id, state: oldState }));
+  const loaded = loadGame(storage, city);
+  assert.equal(loaded.error, null);
+  assert.equal(JSON.parse(storage.getItem(SAVE_KEY)).version, 10);
+  assert.equal(loaded.state.budget, oldState.budget);
+  assert.deepEqual(loaded.state.lines, oldState.lines);
+  assert.deepEqual(loaded.state.cohorts, oldState.cohorts);
+  assert.deepEqual(loaded.state.campaign, oldState.campaign);
+  assert.deepEqual(loaded.state.investments.projects, []);
+  assert.deepEqual(loaded.state.hubCapacityByPoint, {});
+});
+
+test('save and resume during construction preserve project progress and deterministic completion', () => {
+  const original = activeGame();
+  const planned = original.planInvestment('bronowice', 'housing');
+  assert.equal(planned.ok, true);
+  assert.equal(original.approveInvestment(planned.project.id).ok, true);
+  for (let index = 0; index < 10; index += 1) original.tick(() => 0.5);
+  const storage = memoryStorage();
+  assert.equal(saveGame(storage, original.state).ok, true);
+  const loaded = loadGame(storage, city);
+  assert.equal(loaded.error, null);
+  const resumed = new UrbanFlowGame(city, {}, loaded.state);
+  assert.deepEqual(resumed.state.investments, original.state.investments);
+  for (let index = 0; index < 100; index += 1) {
+    original.tick(() => 0.5); resumed.tick(() => 0.5);
+    assert.deepEqual(snapshot(resumed.state), snapshot(original.state), `project save diverged at tick ${index}`);
+  }
 });

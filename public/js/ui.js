@@ -14,6 +14,7 @@ import { TIMETABLE_PROFILES, SERVICE_DAY_TYPES, SERVICE_DAY_LABELS, formatTimeta
 import { mobilitySnapshot } from './mobility.js?v=11';
 import { cityEvolutionSnapshot } from './city-evolution.js?v=2';
 import { LAND_USE_TYPES, landUseDominantUse, landUseDirection, landUseLabel } from './land-use.js?v=1';
+import { INVESTMENT_CATALOG } from './investments.js?v=1';
 
 const $ = selector => document.querySelector(selector);
 const formatNumber = value => new Intl.NumberFormat('pl-PL').format(Math.round(Number(value) || 0));
@@ -56,6 +57,7 @@ export class UI {
     this.selectedPlaceId = null;
     this.selectedEvolutionDistrict = null;
     this.selectedLandUseDistrict = null;
+    this.selectedInvestmentDistrict = null;
     this.panelStorage = null;
     try { this.panelStorage = window.localStorage; } catch { /* Panel width is an optional preference. */ }
     this.setupPanelWidth();
@@ -67,6 +69,10 @@ export class UI {
     window.addEventListener('urbanflow:select-land-use', event => {
       this.selectedLandUseDistrict = event.detail?.id || null;
       this.renderLandUsePanel(this.game.visiblePoints());
+    }, { signal });
+    window.addEventListener('urbanflow:select-investment-area', event => {
+      this.selectedInvestmentDistrict = event.detail?.id || null;
+      this.renderInvestmentsPanel(this.game.visiblePoints());
     }, { signal });
     document.addEventListener('click', async event => {
       const button = event.target.closest('button');
@@ -90,6 +96,21 @@ export class UI {
         return;
       }
       if (action === 'analytics-mode') { this.checkResult(this.game.setAnalyticsMode(button.dataset.mode)); return; }
+      if (action === 'plan-investment') {
+        const result = this.game.planInvestment(this.selectedInvestmentDistrict, button.dataset.investmentType);
+        if (this.checkResult(result)) this.toast('Projekt zaplanowano. Zatwierdź go po sprawdzeniu kosztu i warunków.');
+        return;
+      }
+      if (action === 'approve-investment') {
+        const result = this.game.approveInvestment(button.dataset.project);
+        if (this.checkResult(result)) this.toast('Projekt zatwierdzony. Koszt pobrano jeden raz; realizacja postępuje w czasie gry.');
+        return;
+      }
+      if (action === 'cancel-investment') {
+        const result = this.game.cancelInvestment(button.dataset.project);
+        if (this.checkResult(result)) this.toast(`Projekt anulowano. Zwrot: ${money(result.refund)}.`);
+        return;
+      }
       if (action === 'diagnose-mobility') { this.renderMobilityRelation(); return; }
       if (action === 'select-line') {
         this.selectedLineId = this.selectedLineId === line ? null : line;
@@ -220,6 +241,9 @@ export class UI {
       } else if (event.target.matches('#landUseDistrict')) {
         this.selectedLandUseDistrict = event.target.value;
         this.renderLandUsePanel(this.game.visiblePoints());
+      } else if (event.target.matches('#investmentDistrict')) {
+        this.selectedInvestmentDistrict = event.target.value;
+        this.renderInvestmentsPanel(this.game.visiblePoints());
       }
     }, { signal });
     document.addEventListener('input', event => {
@@ -403,6 +427,7 @@ export class UI {
     this.renderAnalytics(clock.minuteOfDay);
     this.renderCityEvolutionPanel(this.game.visiblePoints());
     this.renderLandUsePanel(this.game.visiblePoints());
+    this.renderInvestmentsPanel(this.game.visiblePoints());
     this.renderDraft(unlocked, counts);
     this.renderNetwork();
     this.renderFleet();
@@ -516,10 +541,10 @@ export class UI {
     this.setHtml('mobilityRelations', mobility.busiestRelations.length ? mobility.busiestRelations.map(item => `<li><span>${escapeHtml(item.label)}</span><b>${formatNumber(item.passengers || item.generated)}</b></li>`).join('') : '<li class="empty-mini">Relacje pojawią się po rozpoczęciu podróży.</li>');
     const mobilityFailures = mobility.failures.filter(item => item.passengers > 0);
     this.setHtml('mobilityFailures', mobilityFailures.length ? mobilityFailures.map(item => `<li><span>${escapeHtml(FAILURE_LABELS[item.reason] || item.reason)}</span><b>${formatNumber(item.passengers)}</b></li>`).join('') : '<li class="empty-mini">Brak zarejestrowanych niepowodzeń.</li>');
-    const modes = [['off', 'Zwykła'], ['demand', 'Popyt'], ['flow', 'Przewozy'], ['overload', 'Przeciążenia'], ['queues', 'Kolejki'], ['unmet', 'Braki popytu'], ['profit', 'Rentowność'], ['load', 'Odcinki'], ['travel', 'Czas'], ['access', 'Dostępność'], ['cityEvolution', 'Rozwój miasta'], ['landUse', 'Zagospodarowanie']];
-    const modeTitles = { off: 'Wyłącz warstwę analityczną', demand: 'Potencjał szacunkowy i wygenerowane podróże', flow: 'Zaobserwowane obciążenie segmentów', overload: 'Podświetl odcinki o wysokim obciążeniu', queues: 'Liczba oczekujących na punktach', unmet: 'Zgromadzone niezrealizowane próby', profit: 'Obserwowany bilans linii', load: 'Wykorzystanie pojemności odcinków', travel: 'Czas oczekiwania', access: 'Dostępność punktów', cityEvolution: 'Modelowane zmiany obszarów miasta i ich dostępności', landUse: 'Model zagospodarowania i intensywności obszarów' };
+    const modes = [['off', 'Zwykła'], ['demand', 'Popyt'], ['flow', 'Przewozy'], ['overload', 'Przeciążenia'], ['queues', 'Kolejki'], ['unmet', 'Braki popytu'], ['profit', 'Rentowność'], ['load', 'Odcinki'], ['travel', 'Czas'], ['access', 'Dostępność'], ['cityEvolution', 'Rozwój miasta'], ['landUse', 'Zagospodarowanie'], ['investments', 'Inwestycje']];
+    const modeTitles = { off: 'Wyłącz warstwę analityczną', demand: 'Potencjał szacunkowy i wygenerowane podróże', flow: 'Zaobserwowane obciążenie pojazdów', overload: 'Podświetl odcinki o wysokim obciążeniu', queues: 'Liczba oczekujących na punktach', unmet: 'Zgromadzone niezrealizowane próby', profit: 'Obserwowany bilans linii', load: 'Wykorzystanie pojemności odcinków', travel: 'Czas oczekiwania', access: 'Dostępność punktów', cityEvolution: 'Modelowane zmiany obszarów miasta i ich dostępności', landUse: 'Model zagospodarowania i intensywności obszarów', investments: 'Planowanie i obserwacja projektów miejskich' };
     this.setHtml('analyticsModes', modes.map(([id, label]) => `<button type="button" data-action="analytics-mode" data-mode="${id}" class="${state.analyticsMode === id ? 'active' : ''}" aria-pressed="${state.analyticsMode === id}" title="${modeTitles[id]}">${label}</button>`).join(''));
-    const legends = { demand: 'Popyt potencjalny jest estymacją modelu; obserwowane wygenerowane podróże pochodzą z symulacji.', flow: 'Grubość pokazuje zaobserwowane obciążenie pojazdów; zielony <65%, pomarańczowy 65–94%, czerwony ≥95%. To wykorzystanie miejsc, nie licznik przejazdów na segmencie.', overload: 'Czerwony odcinek osiągnął co najmniej 95% zaobserwowanego obciążenia.', queues: 'Rozmiar punktu pokazuje liczbę pasażerów aktualnie oczekujących.', unmet: 'Punkty pokazują zgromadzone, zaobserwowane niezrealizowane próby podróży.', profit: 'Kolor linii pokazuje obserwowany bilans operacyjny na godzinę.', load: 'Kolor odcinka pokazuje zaobserwowane wykorzystanie pojemności.', cityEvolution: 'Kolor oznacza atrakcyjność obszaru: czerwony niższą, żółty pośrednią, zielony wyższą. Rozmiar oznacza potencjał rozwoju. Wartości to parametry gry, nie dane demograficzne.', landUse: 'Kolor markera oznacza dominującą modelowaną funkcję terenu, rozmiar — intensywność zabudowy. Markery nie są poligonami dzielnic.' };
+    const legends = { demand: 'Popyt potencjalny jest estymacją modelu; obserwowane wygenerowane podróże pochodzą z symulacji.', flow: 'Grubość pokazuje zaobserwowane obciążenie pojazdów; zielony <65%, pomarańczowy 65–94%, czerwony ≥95%. To wykorzystanie miejsc, nie licznik przejazdów na segmencie.', overload: 'Czerwony odcinek osiągnął co najmniej 95% zaobserwowanego obciążenia.', queues: 'Rozmiar punktu pokazuje liczbę pasażerów aktualnie oczekujących.', unmet: 'Punkty pokazują zgromadzone, zaobserwowane niezrealizowane próby podróży.', profit: 'Kolor linii pokazuje obserwowany bilans operacyjny na godzinę.', load: 'Kolor odcinka pokazuje zaobserwowane wykorzystanie pojemności.', cityEvolution: 'Kolor oznacza atrakcyjność obszaru: czerwony niższą, żółty pośrednią, zielony wyższą. Rozmiar oznacza potencjał rozwoju. Wartości to parametry gry, nie dane demograficzne.', landUse: 'Kolor markera oznacza dominującą modelowaną funkcję terenu, rozmiar — intensywność zabudowy. Markery nie są poligonami dzielnic.', investments: 'Żółty marker oznacza projekt w realizacji, zielony ukończoną inwestycję. Podgląd nie pokazuje parceli ani dokładnego obrysu.' };
     this.setText('networkLegend', legends[state.analyticsMode] || 'Warstwa mapy korzysta z danych bieżącej symulacji. Potencjalny popyt w podsumowaniu jest estymacją.');
     const problems = networkProblems(state, points);
     this.setText('networkProblemCount', `${problems.length} obserwacji`);
@@ -613,6 +638,49 @@ export class UI {
       latest?.developmentPotential.find(item => item.id === zone.id) && 'Obszar należy do grupy z najwyższym bieżącym potencjałem rozwoju.'
     ].filter(Boolean);
     this.setHtml('landUseWeeklyDetails', details.length ? details.map(item => `<li><span>${escapeHtml(item)}</span></li>`).join('') : '<li class="empty-mini">W ostatnim tygodniu nie odnotowano zmiany dla tego obszaru.</li>');
+  }
+
+  renderInvestmentsPanel(points = this.game.visiblePoints()) {
+    const panel = $('#investmentsPanel');
+    if (!panel) return;
+    const { state } = this.game;
+    const show = state.analyticsMode === 'investments';
+    panel.hidden = !show;
+    if (!show) return;
+    const zones = Object.values(state.cityEvolution?.districts || {}).filter(zone => points.some(point => point.id === zone.id && point.type !== 'stop'));
+    if (!zones.some(zone => zone.id === this.selectedInvestmentDistrict)) this.selectedInvestmentDistrict = zones[0]?.id || null;
+    this.setHtml('investmentDistrict', zones.map(zone => `<option value="${escapeHtml(zone.id)}">${escapeHtml(zone.name)}</option>`).join(''));
+    const select = $('#investmentDistrict'); if (this.selectedInvestmentDistrict) select.value = this.selectedInvestmentDistrict;
+    const zone = zones.find(item => item.id === this.selectedInvestmentDistrict);
+    const served = (state.lines || []).some(line => line.stops?.includes(zone?.id));
+    if (zone) {
+      this.setHtml('investmentDistrictProfile', `<p class="city-evolution-factor">${escapeHtml(zone.profile)} · dostępność ${zone.transportAccess}% · rezerwa terenu ${zone.landUse.shares.reserve}% · pojemność mieszkańców/pracy ${formatNumber(zone.capacity.residents)} / ${formatNumber(zone.capacity.jobs)}. Modernizacja węzła: ${served ? 'obsługiwany przez linię' : 'wymaga istniejącej obsługi linią'}.</p>`);
+    } else this.setHtml('investmentDistrictProfile', '<p class="empty-mini">Brak dostępnego obszaru.</p>');
+    const options = [
+      ['housing', 'Rozwój mieszkaniowy', 'Zużywa 6 pp. rezerwy i zwiększa pojemność mieszkaniową. Zasiedlenie pozostaje stopniowe i zależy od warunków miasta.'],
+      ['economic', 'Rozwój gospodarczy', 'Zużywa 6 pp. rezerwy na biura, zwiększa pojemność pracy i przyszły popyt dojazdowy.'],
+      ['hub', 'Modernizacja węzła', 'Zwiększa lokalny limit kolejki o 50% za poziom (maks. 2×, globalny limit 1 200 osób); wymaga linii obsługującej obszar i kosztuje 400 zł/tydzień za poziom.']
+    ];
+    this.setHtml('investmentCatalog', options.map(([type, label, effect]) => {
+      const item = INVESTMENT_CATALOG[type];
+      return `<article class="investment-offer"><strong>${label}</strong><small>${money(item.cost)} · ${item.weeks} tyg.</small><p>${effect}</p><button type="button" class="secondary-button" data-action="plan-investment" data-investment-type="${type}" ${state.status !== 'playing' || !zone ? 'disabled' : ''}>Utwórz plan</button></article>`;
+    }).join(''));
+    this.setText('investmentBudgetSummary', `Dostępny budżet ${money(state.budget)} · nakłady miejskie ${money(state.investments.totalSpent)} · zwroty ${money(state.investments.totalRefunded)}.`);
+    const current = state.investments.projects.map(project => {
+      const definition = INVESTMENT_CATALOG[project.type];
+      const progress = project.status === 'planned' ? 0 : Math.min(100, Math.round((state.elapsedMinutes - project.approvedAt) / (project.completesAt - project.approvedAt) * 100));
+      const controls = project.status === 'planned'
+        ? `<button type="button" data-action="approve-investment" data-project="${escapeHtml(project.id)}" ${state.status !== 'playing' || state.budget < project.cost ? 'disabled' : ''}>Zatwierdź · ${money(project.cost)}</button><button type="button" data-action="cancel-investment" data-project="${escapeHtml(project.id)}">Usuń plan</button>`
+        : `<button type="button" data-action="cancel-investment" data-project="${escapeHtml(project.id)}" ${state.status !== 'playing' ? 'disabled' : ''}>Anuluj · zwrot 50%</button>`;
+      return `<li class="investment-item"><span><b>${escapeHtml(definition.label)}</b><br>${escapeHtml(state.cityEvolution.districts[project.districtId]?.name || project.districtId)} · ${project.status === 'planned' ? 'plan' : `realizacja ${progress}%`}</span><span class="investment-actions">${controls}</span></li>`;
+    });
+    const completed = [...state.investments.history].filter(project => project.status === 'completed' || project.status === 'cancelled').reverse().slice(0, 4).map(project => {
+      const definition = INVESTMENT_CATALOG[project.type];
+      return `<li><span><b>${escapeHtml(definition.label)}</b><br>${escapeHtml(state.cityEvolution.districts[project.districtId]?.name || project.districtId)} · ${project.status === 'completed' ? 'ukończono' : `anulowano · zwrot ${money(project.refund)}`}</span><span>${project.status === 'completed' ? `koszt ${money(project.cost)}` : ''}</span></li>`;
+    });
+    this.setHtml('investmentProjectList', [...current, ...completed].join('') || '<li class="empty-mini">Brak zaplanowanych projektów.</li>');
+    const week = state.investments.weekly.at(-1);
+    this.setText('investmentWeeklySummary', week ? `Tydzień ${week.week}: aktywne ${week.active}, ukończone ${week.completed}, anulowane ${week.cancelled}, nakłady ${money(week.costs)}, utrzymanie ${money(week.maintenance)}, zwroty ${money(week.refunds)}.` : 'Raport pojawi się po zamknięciu tygodnia symulacji.');
   }
 
   renderMobilityRelation() {

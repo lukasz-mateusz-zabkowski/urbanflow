@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.3.0 — Alpha 10
+
+- Added Atlas Investments with housing, economic, and served-hub projects, including planning, approval, timed completion, cancellation/refunds, single-application effects, and bounded project history.
+- Connected housing and economic investment effects to the existing Land Use shares, capacity and City Evolution; project completion changes future demand profiles without creating residents or passenger cohorts immediately.
+- Added a local hub queue-handling upgrade that affects existing passenger retention/overcrowding, caps the upgrade at 2×, and charges a separate 400 per-level weekly maintenance cost.
+- Kept one existing spendable game budget while separating urban investment capex/maintenance from network operating revenue and expense metrics; no money is minted.
+- Added the Atlas Investments map layer and responsive project catalog, area profile, cost/progress controls, weekly investment summary, keyboard support, and mobile interaction.
+- Migrated save schema 9 to 10 with deterministic empty investment state while preserving existing campaigns and passenger cohorts.
+- Added lifecycle, cancellation, affordability, 52-week determinism, reserve contention, schema migration, save/resume, and desktop/touch Playwright coverage.
+- See `docs/URBANFLOW-INVESTMENTS.md` and `ALPHA-1.3.0-REPORT.md` for model definitions and verification.
+
 ## 1.2.0 — Alpha 8
 
 - Added deterministic residential, retail, office, industrial, public, green, and reserve land-use mixes for modeled city areas, with constrained low/medium/high development intensity and capacity growth.
