@@ -1,8 +1,50 @@
 import { haversineKm, lineMetrics } from './transport.js?v=10';
+import { decodeRoutingGraphBinary, routeOnOsmGraph } from './routing-osm.js?v=1';
+export { decodeRoutingGraphBinary } from './routing-osm.js?v=1';
 
 const SURFACE_TYPES = new Set(['bus', 'tram']);
 const RAIL_TYPES = new Set(['suburban', 'intercity']);
 export const ROUTING_QUALITY = Object.freeze({ maxSnapDistanceKm: 0.8, maxDetourRatio: 4 });
+const graphRegistry = new Map();
+const graphLoads = new Map();
+
+export function registerRoutingGraph(cityId, manifest, roadBuffer = null, tramBuffer = null) {
+  if (!manifest?.metadata?.graphVersion) throw new Error('Routing graph manifest is missing its version metadata.');
+  const registered = graphRegistry.get(cityId) || { metadata: manifest.metadata, road: null, tram: null };
+  registered.metadata = manifest.metadata;
+  if (roadBuffer) registered.road = decodeRoutingGraphBinary(roadBuffer, manifest.bounds);
+  if (tramBuffer) registered.tram = decodeRoutingGraphBinary(tramBuffer, manifest.bounds);
+  graphRegistry.set(cityId, registered);
+  return manifest.metadata;
+}
+
+export async function loadRoutingGraph(cityId, type = 'bus', fetcher = globalThis.fetch) {
+  const mode = type === 'tram' ? 'tram' : 'road';
+  if (graphRegistry.get(cityId)?.[mode]) return graphRegistry.get(cityId).metadata;
+  const loadKey = `${cityId}:${mode}`;
+  if (graphLoads.has(loadKey)) return graphLoads.get(loadKey);
+  const loading = (async () => {
+    if (typeof fetcher !== 'function') throw new Error('Fetch API is unavailable for loading the local routing graph.');
+    const manifestResponse = await fetcher(`/data/routing/${cityId}.json`, { cache: 'force-cache' });
+    if (!manifestResponse.ok) throw new Error(`Routing graph manifest returned HTTP ${manifestResponse.status}.`);
+    const manifest = await manifestResponse.json();
+    const asset = manifest.metadata[mode === 'road' ? 'roadUrl' : 'tramUrl'];
+    if (!asset) throw new Error(`No local ${mode} routing graph is available for this city.`);
+    const response = await fetcher(`/data/routing/${asset}`, { cache: 'force-cache' });
+    if (!response.ok) throw new Error(`${mode} routing graph returned HTTP ${response.status}.`);
+    return registerRoutingGraph(cityId, manifest, mode === 'road' ? await response.arrayBuffer() : null,
+      mode === 'tram' ? await response.arrayBuffer() : null);
+  })();
+  graphLoads.set(loadKey, loading);
+  try { return await loading; } catch (error) { graphLoads.delete(loadKey); throw error; }
+}
+
+export function getRoutingGraphStatus(cityId) {
+  const item = graphRegistry.get(cityId);
+  return item ? { loaded: Boolean(item.road), roadLoaded: Boolean(item.road), tramLoaded: Boolean(item.tram), version: item.metadata.graphVersion, source: item.metadata.source,
+    roadNodes: item.road?.nodeCount || 0, roadEdges: item.road?.edgeCount || 0, tramNodes: item.tram?.nodeCount || 0 }
+    : { loaded: false, loading: [...graphLoads.keys()].some(key => key.startsWith(`${cityId}:`)) };
+}
 const coordinate = point => [Number(point.lat), Number(point.lng)];
 const key = ([lat, lng]) => `${lat.toFixed(6)},${lng.toFixed(6)}`;
 
@@ -103,6 +145,20 @@ export function routeSegmentDetails(a, b, type, city, provider = null) {
     source: 'model bezpośredni UrbanFlow', algorithm: 'przebieg tunelowy bez grafu ulic',
     reason: 'Model metra prowadzi bezpośrednio między wybranymi punktami.', mode: 'direct', valid: true };
 
+  const osmGraph = graphRegistry.get(city?.id);
+  if (osmGraph && SURFACE_TYPES.has(type)) {
+    const graph = type === 'tram' ? osmGraph.tram : osmGraph.road;
+    if (!graph) return { coordinates: [], distanceKm: 0, directDistanceKm, detourRatio: Infinity,
+      source: 'Geofabrik OSM regional extract', algorithm: 'lokalny graf OSM',
+      reason: type === 'tram' ? 'Brak wiarygodnego grafu torowisk tramwajowych dla tego obszaru.' : 'Brak grafu dla pojazdu.',
+      mode: routingMode(type), valid: false };
+    return { ...routeOnOsmGraph(a, b, graph), mode: routingMode(type) };
+  }
+  if (typeof window !== 'undefined' && SURFACE_TYPES.has(type)) return { coordinates: [], distanceKm: 0, directDistanceKm,
+    detourRatio: Infinity, source: 'lokalny graf OSM (niedostępny)', algorithm: 'brak trasowania',
+    reason: 'Lokalny graf ulic nie został załadowany; nie można zatwierdzić orientacyjnej prostej jako trasy.',
+    mode: routingMode(type), valid: false };
+
   const corridors = RAIL_TYPES.has(type) ? city?.railGeometry : SURFACE_TYPES.has(type) ? city?.roadGeometry : null;
   const graph = buildGraph(corridors);
   const mode = routingMode(type);
@@ -174,4 +230,4 @@ export function routeLineDetails(stops, type, city, provider = null, minuteOfDay
   return detail;
 }
 
-export const routingMode = type => type === 'metro' ? 'direct' : RAIL_TYPES.has(type) ? 'rail-corridor' : 'road';
+export const routingMode = type => type === 'metro' ? 'direct' : type === 'tram' ? 'tramway' : RAIL_TYPES.has(type) ? 'rail-corridor' : 'road';

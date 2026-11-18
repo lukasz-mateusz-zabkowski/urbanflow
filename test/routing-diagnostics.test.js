@@ -24,7 +24,7 @@ test('disconnected local graph is reported as direct fallback, not as a road rou
 
 test('line routing details aggregate all segments and preserve the existing offline mode', () => {
   const result = routeLineDetails(['bronowice', 'krowodrza'], 'tram', CITIES.krakow);
-  assert.equal(result.mode, 'road');
+  assert.equal(result.mode, 'tramway');
   assert.equal(result.source, 'lokalny graf drogowy UrbanFlow');
   assert.ok(result.distanceKm > 0);
   assert.ok(result.travelMinutes > 0);

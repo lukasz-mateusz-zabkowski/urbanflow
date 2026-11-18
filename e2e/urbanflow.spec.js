@@ -17,7 +17,7 @@ const MOBILES = [
 ];
 async function startGame(page, viewport, mobile = false) {
   await page.setViewportSize({ width: viewport.width, height: viewport.height });
-  await page.addInitScript(() => localStorage.clear());
+  await page.addInitScript(() => { localStorage.clear(); Math.random = () => 0.1; });
   if (process.env.CI) await page.route('https://tile.openstreetmap.org/**', route => route.fulfill({ status: 200, contentType: 'image/svg+xml', body: CI_TEST_TILE }));
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));

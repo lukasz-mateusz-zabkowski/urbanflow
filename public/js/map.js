@@ -2,7 +2,7 @@ import { TRANSPORT_TYPES, haversineKm, lineMetrics } from './transport.js?v=10';
 import { SIMULATION, gameClock } from './simulation.js?v=10';
 import { DISTRICT_PROFILES, inferProfile, latentDemand } from './demand.js?v=10';
 import { activeCityEvents, upcomingCityEvents } from './city-events.js?v=10';
-import { routeLine, routeLineDetails } from './routing.js?v=11';
+import { routeLine, routeLineDetails } from './routing.js?v=12';
 import { describePlace } from './place-profiles.js?v=10';
 import { landUseDominantUse, landUseLabel } from './land-use.js?v=1';
 
@@ -348,7 +348,14 @@ export class GameMap {
     const details = routeLineDetails(record.line.stops, record.line.type, this.city);
     details.segments.forEach((segment, index) => {
       if (segment.coordinates.length < 2) return;
-      const handle = L.polyline(segment.coordinates, { renderer: this.routeRenderer, pane: 'routes', color: '#ffd166', weight: 22,
+      for (const access of segment.accessSegments || []) {
+        if (access.length < 2) continue;
+        const accessLine = L.polyline(access, { renderer: this.routeRenderer, pane: 'routes', color: '#f0a744', weight: 5,
+          opacity: 0.95, dashArray: '3 5', interactive: false, className: 'route-access-leg', lineCap: 'round' }).addTo(this.map);
+        record.segmentHandles.push(accessLine);
+      }
+      this.handleRenderer ||= L.svg({ padding: 0.3, pane: 'ui' });
+      const handle = L.polyline(segment.coordinates, { renderer: this.handleRenderer, pane: 'ui', color: '#ffd166', weight: 22,
         opacity: 0.14, interactive: true, bubblingMouseEvents: false, className: 'route-segment-hit', lineCap: 'round' }).addTo(this.map);
       const element = handle.getElement();
       if (element) {
@@ -383,8 +390,10 @@ export class GameMap {
     this.dragTargets ||= L.layerGroup().addTo(this.map);
     this.dragTargets.clearLayers();
     for (const point of this.currentPoints || []) if (point.type === 'stop' && !line.stops.includes(point.id)) {
-      L.circleMarker([point.lat, point.lng], { renderer: this.stopRenderer || this.routeRenderer, pane: 'prospects', radius: 11, color: '#fff', weight: 3,
-        fillColor: '#efb84c', fillOpacity: 0.85, interactive: false }).addTo(this.dragTargets);
+      const target = L.circleMarker([point.lat, point.lng], { renderer: this.stopRenderer || this.routeRenderer, pane: 'prospects', radius: 11, color: '#fff', weight: 3,
+        fillColor: '#efb84c', fillOpacity: 0.85, interactive: false, className: 'route-drag-target' }).addTo(this.dragTargets);
+      const element = target.getElement();
+      if (element) { element.dataset.stopId = point.id; element.setAttribute('role', 'img'); element.setAttribute('aria-label', `Możliwy przystanek: ${point.name}`); }
     }
   }
 

@@ -9,7 +9,7 @@ import { CITY_EVENT_DEFINITIONS, createCityEvent } from './city-events.js?v=10';
 import { ensureDiagnostics } from './analytics.js?v=11';
 import { ensureMobilityState } from './mobility.js?v=11';
 import { chooseStartScenario, starterRoutesFor } from './cities.js?v=10';
-import { routeLine, routeLineDetails, routingMode } from './routing.js?v=11';
+import { getRoutingGraphStatus, routeLine, routeLineDetails, routingMode } from './routing.js?v=12';
 import { ensureFleet, fleetStatus, missingFleetCost } from './fleet.js?v=10';
 import { ensureCityEvolution, evolveCityWeek } from './city-evolution.js?v=2';
 import {
@@ -64,6 +64,18 @@ export class UrbanFlowGame {
     ensureCityEvolution(this.state, this.city);
     Object.defineProperty(this.state, 'city', { value: city, enumerable: false, configurable: true });
   }
+  refreshRoutesFromGraph(type = 'bus') {
+    const updated = [], unavailable = [];
+    for (const line of this.state.lines) {
+      if (line.type !== type) continue;
+      const details = routeLineDetails(line.stops, line.type, this.city, this.events.routingProvider,
+        gameClock(this.state.elapsedMinutes, this.state.calendar).minuteOfDay);
+      if (!details.valid) { unavailable.push({ lineId: line.id, reason: details.reason }); continue; }
+      line.routeGeometry = details.coordinates; line.distanceKm = details.distanceKm; line.routingMode = routingMode(line.type);
+      updated.push(line.id);
+    }
+    return { updated, unavailable };
+  }
   changed() { this.events.onSave?.(this.state); this.events.onChange?.(); }
   pointName(id) { return this.city.points.find(point => point.id === id)?.name || id; }
   visiblePoints() {
@@ -112,7 +124,8 @@ export class UrbanFlowGame {
     const routeDetails = routeLineDetails(stops, type, this.city, this.events.routingProvider,
       gameClock(this.state.elapsedMinutes).minuteOfDay);
     const containsRealStop = stops.some(id => this.city.points.find(point => point.id === id)?.type === 'stop');
-    if (!routeDetails.valid && containsRealStop) return { ...fail(`Nie można zatwierdzić niewiarygodnej geometrii. ${routeDetails.reason}`),
+    const localSurfaceGraphLoaded = ['bus', 'tram'].includes(type) && getRoutingGraphStatus(this.city.id).loaded;
+    if (!routeDetails.valid && (containsRealStop || localSurfaceGraphLoaded)) return { ...fail(`Nie można zatwierdzić niewiarygodnej geometrii. ${routeDetails.reason}`),
       routeDetails, distanceKm: routeDetails.distanceKm, routeGeometry: routeDetails.coordinates };
     const routeGeometry = routeDetails.coordinates;
     const distanceKm = Math.max(0.1, routeDetails.distanceKm);

@@ -6,6 +6,7 @@ import { TRANSPORT_TYPES } from './transport.js?v=10';
 import { SIMULATION } from './simulation.js?v=10';
 import { applyAtlasView } from './theme.js?v=10';
 import { loadGame, saveGame, clearSave } from './storage.js?v=12';
+import { loadRoutingGraph } from './routing.js?v=12';
 
 let game, gameMap, ui, timer, removeStarterRoutes;
 let storage, storageWarningShown = false;
@@ -48,8 +49,13 @@ function renderCityScreen(error = null) {
   if (error) { const warning = document.createElement('p'); warning.className = 'city-description'; warning.textContent = error; grid.append(warning); }
 }
 
-function startCity(savedState = null) {
+async function startCity(savedState = null) {
   if (!window.L) { window.alert('Nie udało się uruchomić lokalnej biblioteki mapy. Odśwież stronę.'); return; }
+  let routingError = null;
+  const routingStatus = document.createElement('p'); routingStatus.className = 'city-description';
+  routingStatus.textContent = 'Ładowanie lokalnego grafu ulic Krakowa…'; document.getElementById('cityGrid').append(routingStatus);
+  try { await loadRoutingGraph(city.id); } catch (error) { routingError = error; }
+  routingStatus.remove();
   clearInterval(timer); ui?.destroy(); removeStarterRoutes?.(); gameMap?.destroy();
   ui = null; storageWarningShown = false;
   cityScreen.classList.add('is-hidden'); gameElement.classList.remove('is-hidden');
@@ -77,6 +83,7 @@ function startCity(savedState = null) {
       else if (result.overcrowded.length && game.state.elapsedMinutes % 60 === 0) ui?.event(`Przeciążone przystanki: ${result.overcrowded.length}. Sprawdź kolejki i częstotliwości linii.`);
     }
   }, savedState);
+  const routeRefresh = routingError ? { updated: [], unavailable: [] } : game.refreshRoutesFromGraph('bus');
   gameMap = new GameMap('map', id => { game.selectNode(id); ui?.selectPlace(id); }, id => {
     ui.selectedLineId = id; ui.renderNetwork(); gameMap.highlightLine(id); ui.openPanel();
     document.getElementById('lineDetail').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -96,6 +103,8 @@ function startCity(savedState = null) {
     if (!result.ok && storage) { ui.toast(result.message, 'warn'); return; }
     startCity();
   } });
+  if (routingError) ui.toast(`Graf ulic jest niedostępny. Nowe trasy są zablokowane: ${routingError.message}`, 'warn');
+  else if (routeRefresh.unavailable.length) ui.toast(`${routeRefresh.unavailable.length} zapisanych linii nie ma połączenia w grafie OSM; zachowano ich dotychczasową geometrię.`, 'warn');
   document.getElementById('objectiveTitle').textContent = `${game.startScenario.name} → ${game.pointName(game.startScenario.localHubId)}`;
   document.getElementById('objectiveCopy').textContent = 'Zbuduj pierwszą linię dowozową. Trasa na mapie prowadzi po lokalnym korytarzu drogowym.';
   const selectStarter = id => { const result = game.selectStarterRoute(id); if (!result.ok) ui.toast(result.message, 'warn'); return result; };
@@ -115,4 +124,4 @@ document.getElementById('backToCities').addEventListener('click', () => {
 document.addEventListener('visibilitychange', () => { if (document.hidden) persist(); });
 window.addEventListener('pagehide', persist);
 renderCityScreen(initial.error);
-if (initial.state) startCity(initial.state);
+if (initial.state) await startCity(initial.state);

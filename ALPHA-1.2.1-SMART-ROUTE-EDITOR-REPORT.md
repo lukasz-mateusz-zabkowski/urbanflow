@@ -1,69 +1,96 @@
-# UrbanFlow ALPHA 1.2.1 — Smart Route Editor & Stop Discovery
+# UrbanFlow ALPHA 1.2.1 — Smart Route Editor & Routing Recovery
 
 ## Status
 
-**NO GO for release acceptance.** The editor safeguards, segment insertion and local QA are implemented, but the local Kraków road graph cannot produce a sufficiently credible street route for the requested seven-stop relation. Construction of that stop-based route is blocked rather than silently accepting a misleading path. The graph needs better local coverage before this issue can be closed.
+**GO for technical review of the feature branch.** The ordered seven-stop route is connected in the local directed road graph, every adjacent segment has OSM-derived geometry, the editor’s mobile drag was exercised, and the full local test/audit suite passes. Three segments still carry strong detour warnings; review them before accepting the route in a campaign. This is not a claim that OSM data models every traffic or vehicle restriction.
 
-## Git
+## Git and CI
 
 - Base: `79501928a7eea148701c79a4c476e91de5635aa5` (`v1.2.0-alpha`)
 - Branch: `fix/alpha-1.2.1-smart-route-editor`
-- Implementation SHA: `a51e5502182960a31e9e22d440d1bb64ad0a68b6`
-- GitHub Actions for the implementation SHA: [run 44254575866](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44254575866), success, all 6 jobs passed.
-- A report-only follow-up commit updates this file after the implementation run. GitHub Actions is rerun for that final branch HEAD; its result is recorded in the task completion message.
-- Main was not merged; no tag or release was created.
+- Starting implementation HEAD: `75bc48fa4b45e4bf5b91c6742ba99d9cbece101a`
+- Final implementation SHA: recorded after commit and push.
+- GitHub Actions: final pushed SHA and workflow result are recorded after the run completes.
+- No merge, tag, GitHub Release or deployment was performed.
 
-## Findings and route reproduction
+## Data source and generated graph
 
-The old surface route calculation attached every stop to the nearest graph **vertex**. For this route, that introduced large access legs. Routing was also liable to fall back to a direct line without distinguishing that line from a road path. The hand-curated road graph is sparse around central Kraków and does not represent enough of the streets between the selected stops.
+- Provider: [Geofabrik, Małopolskie](https://download.geofabrik.de/europe/poland/malopolskie.html), pinned snapshot `malopolskie-261117.osm.pbf`, timestamp `2026-11-16T21:22:36Z`.
+- PBF size: 203,834,395 bytes. SHA-256: `ef2cd6018902dc64871ca98ec827bf8628c6172b29f96fde7c4e722584c566e1`; MD5: `c8aacea203bd8ce5bde71195ebb94197`.
+- The BBBike Cracow extract was checked first but its stated bounds do not cover all game areas and stops. The regional snapshot covers the playable extent plus a 3 km margin.
+- Generated road graph: 534,216 nodes, 1,033,128 directed edges, 1,123 node turn rules, 5,858 explicit grade-level connectors.
+- Separate tram graph: 14,041 nodes and 14,329 directed edges. Tram routing does not fall back to the road graph.
+- Compressed graph assets: 10,000,752 byte road graph and 189,539 byte tram graph; manifest 2,322 bytes. The PBF remains outside the browser bundle. Express serves the `.bin.gz` assets with `Content-Encoding: gzip`; browser Fetch transparently decodes them.
+- Regeneration: `npm run routing:build`. The script verifies pinned SHA-256 and MD5 before generating resources. Source documentation, filters and regeneration steps are in [docs/OSM-ROUTING-DATA.md](docs/OSM-ROUTING-DATA.md).
+- License: ODbL 1.0. The app retains OpenStreetMap attribution and a license link. The generated graph is marked as an OSM-derived ODbL database.
 
-Reproduced the ordered relation using existing stop IDs:
+## Routing and seven-stop reproduction
+
+The prior curated graph snapped places to isolated vertices and produced large off-road access distances. The new pathfinder snaps each stop to a directed eligible road edge, splits the graph at the projection, and runs Dijkstra with OSM node turn restrictions for each consecutive stop pair. Bus-access rules, one-way directions, grade separation and bridge connections are included. Stop-to-road access is shown separately and capped at 120 m. No direct line is accepted as a surface-road fallback.
+
+Existing IDs and order were used:
 
 `s-stradom → s-kazimierz → s-plac-wolnica → s-dietla → s-podgorze → s-plac-bohaterow-getta → s-rynek-podgorski`
 
-Routing now projects each stop onto the nearest graph **edge**, splits the local graph at that projection, and routes each adjacent pair separately. The selected stop coordinates and order are preserved in the output. The resulting route still exceeds the configured detour quality threshold (4× direct distance on a segment) or the maximum snap threshold (0.8 km); diagnostics mark it invalid. The reported graph route is approximately 11.46 km versus roughly 3 km as a straight-line lower bound; at least one segment has an extreme detour. The prior vertex-snap calculation was approximately 21.34 km. These are local model measurements, not claims about legal or traffic-feasible streets.
+All six legs were graph-connected. Total modelled road distance: **9.630 km**; estimated road time: **25.6 minutes**. Largest stop-to-edge snap: **48 m**. Per-leg modelled distance and detour ratio (distance divided by direct distance):
 
-No dependable local street dataset was available to fill the missing corridors during this task. An external Overpass fetch was attempted but did not return usable data (the primary endpoint returned HTTP 406 and an alternate timed out). No fabricated straight line through buildings or across the river is accepted as a road route.
+| Segment | Road distance | Detour | Result |
+|---|---:|---:|---|
+| Stradom → Kazimierz | 1.833 km | ×9.85 | Connected; warning shown |
+| Kazimierz → Plac Wolnica | 2.374 km | ×7.94 | Connected; warning shown |
+| Plac Wolnica → Dietla | 1.915 km | ×6.46 | Connected; warning shown |
+| Dietla → Podgórze | 1.511 km | ×1.58 | Connected |
+| Podgórze → Plac Bohaterów Getta | 0.968 km | ×1.81 | Connected |
+| Plac Bohaterów Getta → Rynek Podgórski | 1.029 km | ×3.31 | Connected |
 
-## Implemented
+The three high-detour paths remain visible warnings. The screenshot review showed their geometry following road edges and legal mapped crossings over the Wisła; no straight shortcut crosses buildings or water. The previous curated graph returned an invalid route of about 11.46 km, with snaps up to 520 m and detours up to ×15.0. These are graph-model measurements, not observed traffic distances.
 
-- Route diagnostics now expose direct distance, snap distance, detour ratio, segment validity, geometry source, algorithm and reason. Disconnected fallback is explicitly labelled as fallback.
-- Each neighboring stop pair gets its own route calculation. New lines using real stop markers are rejected before cost is charged if the geometry is invalid.
-- Existing abstract campaign points retain their current build flow for compatibility; route warnings remain visible. This is a limitation while the city graph remains incomplete.
-- The line editor can stage a discovered stop between the exact endpoints of a selected segment. The staged route is previewed; cancellation charges nothing and only the existing confirmation path can commit and charge the edit.
-- Selected stop order is numbered; route segments have explicit hit areas, selected-line highlighting, and an in-progress preview. Mouse segment drag/drop inserts into the chosen gap; Escape or an invalid drop cancels, and map dragging is restored.
-- Added keyboard selection affordances and responsive stop density. Served, selected and actively edited stops retain priority; detailed local stops appear at closer zoom levels.
-- New stop discovery caps: 6 along the route corridor, 2 in the ring and 4 fallback stops per discovery pass.
-- Save schema remains 9; no stop IDs or save migrations were changed.
-- Package version is `1.2.1-alpha`.
+One real gap remains: the Igołomia start point has no eligible bus road inside 120 m in this snapshot. Starting that scenario now reports the affected stop and blocks construction without spending money or saving empty/fake geometry. Other configured start routes tested against the same graph connected.
+
+## Smart editor and stop display
+
+- Selected stop order is numbered; adjacent segments are calculated separately and the currently edited segment gets a hit area above stop markers.
+- Dragging a segment onto an available stop inserts it between that segment’s two endpoints. Mouse, touch and Escape cancellation are supported; dropping elsewhere cancels. The panel remains an alternate editor.
+- Insertion stages a preview through existing line edit/preview operations. No cost or line mutation occurs until the player confirms the rebuild.
+- Route geometry, distance, travel time, rebuilding preview, vehicle need and line transfer data are recalculated through the existing systems.
+- Discovery is limited per pass and ranks candidates by their distance from the routed geometry. Previously served stops retain visibility priority; local markers appear as zoom increases.
+- Save schema stays at 9; stop IDs and existing campaign lines remain unchanged. Saved bus geometry refreshes from the local graph when possible without charges or campaign changes; unavailable saved routes retain their old geometry and show a warning.
 
 ## Validation
 
-- `npm ci`: passed; 0 vulnerabilities reported during install.
-- `npm test`: passed, 161 tests.
-- `npm run test:browser`: passed, 7 Playwright tests. Covered desktop 1920×1080, 1366×768, 1280×720 and mobile 390×844, 360×800. Browser tests verified route order, staged insertion and no-charge cancellation, desktop mouse drag/drop and Escape cancellation, panel/map sizing, mobile touch UI, timetable regressions and no browser JavaScript errors.
+- `npm ci`: passed; install reported 0 vulnerabilities.
+- `npm test`: **173 passed, 0 failed**.
+- `npm run test:browser`: **10 passed, 0 failed**. Covered desktop 1920×1080, 1366×768 and 1280×720; mobile 390×844 and 360×800; route preview/cancel, save/timetable behavior, UI errors, and mobile touch drag.
+- Seven-stop visual browser review: desktop 1280×720 and mobile 390×844; both passed. The review draws the actual OSM road graph beneath the selected path so raster tile gaps cannot hide the graph geometry.
+- Touch drag uses mobile Chromium emulation and CDP `touchStart/touchMove/touchEnd`. The test confirms `touchstart` targets the route hit path, inserts the stop into the chosen segment draft, and preserves the saved line and budget before confirmation.
+- Routing benchmark (15 warm runs, same local Node environment): median **54.67 ms**, p95 **78.40 ms** for the six-leg relation. Initial graph decode and spatial-index construction are excluded from these route-search samples.
 - `npm run audit:all`: passed, 0 vulnerabilities.
 - `npm run audit:production`: passed, 0 vulnerabilities.
-- The first browser run had five passes and two failures while waiting for external OpenStreetMap tiles. Re-ran the suite with Playwright's local deterministic tile fixture (`CI=true`); all seven tests passed. The fixture is only a visual basemap; routing tests use the real bundled road graph.
-- GitHub Actions for implementation SHA `a51e5502182960a31e9e22d440d1bb64ad0a68b6`: success, all 6 jobs passed. The report-only follow-up commit requires its own run; this report does not claim that run passed before it finishes.
 
 ## Screenshots
 
-Artifacts are outside the repository at:
+Playwright artifacts are outside the repository at:
 
-`%TEMP%\urbanflow-alpha-1.2.1-visual-qa\`
+`%TEMP%\urbanflow-alpha-1.2.1-routing-qa\`
 
-Key files:
+Key evidence:
 
-- `desktop-1920x1080.png`, `desktop-1366x768.png`, `desktop-1280x720.png`
-- `mobile-390x844.png`, `mobile-360x800.png`
-- `desktop-1920x1080-route-insertion-preview.png`
-- `desktop-1920x1080-atlas-network-line.png`
+- `osm-seven-stop-desktop-1280x720.png`
+- `osm-seven-stop-mobile-390x844.png`
+- `mobile-390x844-touch-route-insertion.png`
+- `desktop-1280x720-route-insertion-preview.png`
+- `mobile-390x844-place-profile.png`
 
-The insertion preview capture shows the selected segment and discovered-stop controls. Browser automation exercised the actual map path and line editor. A touch-specific drag/drop on a real phone has not been independently verified; touch operation through the panel and mobile interaction checks passed.
+The two seven-stop images were visually inspected after the final visual spec run. The mobile drag screenshot shows the staged insertion toast; the test asserts that line order and budget remain unchanged until confirmation.
 
-## Limitations and next step
+## Limits and risks
 
-The bundled downtown graph is too sparse for confident surface-road routing on the reported relation. Add a reviewed, appropriately licensed local street graph for the relevant corridors, then rerun the seven-stop regression and visual route inspection. Current detour thresholds are safeguards, not a substitute for complete street, turn-restriction or traffic data. The model does not claim to account for one-way rules or live conditions.
+- The graph reports 192 via-way turn restrictions that this version cannot model. Conditional restrictions, vehicle height/weight limits, turn lanes, signals, curb-side boarding and live traffic are not represented.
+- Long detours remain warnings and still require player review; a connected shortest path is not proof that the path is the best service design.
+- Igołomia’s start relation is unavailable within the strict 120 m access cap. Add a reviewed source/corridor or adjust the city start point based on verified geography before making that scenario available for surface service.
+- Tram graph is isolated and filtered to OSM tram infrastructure. Metro and rail keep separate existing models.
+- Local benchmark is not a Raspberry Pi performance claim.
 
-**Recommendation:** keep the branch available for review, but do not accept ALPHA 1.2.1 as GO until the requested relation can be routed credibly with local data and the final GitHub Actions run is green.
+## Recommendation
+
+**GO for technical review on the feature branch**, with the three detour warnings and Igołomia restriction explicitly retained. Keep the branch unmerged until the route reviewer accepts those paths and decides how to handle the disconnected Igołomia start.

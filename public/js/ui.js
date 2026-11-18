@@ -78,7 +78,17 @@ export class UI {
         else { this.openPanel(); this.scrollToBuild(); }
         return;
       }
-      if (type) { this.checkResult(this.game.setTransport(type)); return; }
+      if (type) {
+        if (type === 'tram') {
+          button.disabled = true; this.toast('Ładowanie lokalnego grafu torowisk…');
+          loadRoutingGraph(this.game.city.id, 'tram').then(() => {
+            const refresh = this.game.refreshRoutesFromGraph('tram'); this.game.changed();
+            button.disabled = false; this.checkResult(this.game.setTransport(type)); this.render();
+            if (refresh.unavailable.length) this.toast(`${refresh.unavailable.length} zapisanych tras tramwajowych nie ma połączenia w lokalnym grafie torowisk.`, 'warn');
+          }).catch(error => { button.disabled = false; this.toast(`Nie można załadować grafu tramwajowego: ${error.message}`, 'warn'); });
+        } else this.checkResult(this.game.setTransport(type));
+        return;
+      }
       if (action === 'analytics-mode') { this.checkResult(this.game.setAnalyticsMode(button.dataset.mode)); return; }
       if (action === 'diagnose-mobility') { this.renderMobilityRelation(); return; }
       if (action === 'select-line') {
@@ -422,6 +432,7 @@ export class UI {
     this.setText('draftHint', selected.length ? 'Dodaj kolejny punkt z mapy lub zmień kolejność strzałkami.' : 'Kliknij pierwszy punkt na mapie lub wybierz trasę startową.');
     const preview = this.game.previewLine();
     const hasRoute = selected.length >= 2;
+    const detourWarnings = preview.routeDetails?.segments?.filter(segment => segment.detourWarning) || [];
     this.setText('previewDistance', hasRoute ? `${decimal(preview.distanceKm)} km` : '—');
     this.setText('previewTime', hasRoute && preview.metrics ? `${decimal(preview.metrics.travelMinutes)} min` : '—');
     this.setText('previewCost', hasRoute ? money(preview.cost) : '—');
@@ -429,11 +440,15 @@ export class UI {
     this.setText('previewRoutingAlgorithm', hasRoute ? preview.routeDetails?.algorithm || '—' : '—');
     this.setText('previewRoutingReason', hasRoute ? preview.routeDetails?.reason || '' : '');
     this.setText('previewRoutingSnap', hasRoute && preview.routeDetails?.mode !== 'direct'
-      ? `${decimal(preview.routeDetails?.snappedDistanceKm || 0)} km (do najbliższych wierzchołków, limit 0,8 km na punkt)` : 'nie dotyczy');
+      ? `${decimal(preview.routeDetails?.snappedDistanceKm || 0)} km (do najbliższej krawędzi jezdni, limit 0,12 km na punkt)` : 'nie dotyczy');
     const fleetCopy = preview.vehiclesToBuy ? ` W cenie: zakup ${preview.vehiclesToBuy} pojazdów (${money(preview.fleetCost)}).` : ' Pojazdy zostaną przydzielone z rezerwy.';
-    const message = hasRoute ? preview.message || (!preview.affordable ? `Brakuje ${money(preview.cost - state.budget)} na budowę.` : editing ? 'Przebudowa resetuje statystyki tej trasy i wymaga ponownego wykorzystania do odblokowań.' : `Trasa korzysta z routingu: ${preview.routingMode === 'road' ? 'drogi' : preview.routingMode === 'rail-corridor' ? 'korytarz kolejowy' : 'tunel bezpośredni'}.${fleetCopy}`) : 'Co najmniej dwa przystanki tworzą połączenie.';
+    const message = hasRoute ? preview.message || (!preview.affordable ? `Brakuje ${money(preview.cost - state.budget)} na budowę.` : editing ? 'Przebudowa resetuje statystyki tej trasy i wymaga ponownego wykorzystania do odblokowań.' : `Trasa korzysta z routingu: ${preview.routingMode === 'road' ? 'drogi' : preview.routingMode === 'tramway' ? 'torowisko' : preview.routingMode === 'rail-corridor' ? 'korytarz kolejowy' : 'tunel bezpośredni'}.${fleetCopy}`) : 'Co najmniej dwa przystanki tworzą połączenie.';
     this.setText('previewMessage', state.status === 'playing' ? message : 'Kampania zakończona. Możesz obejrzeć swoją sieć.');
     $('#previewMessage').classList.toggle('negative', hasRoute && (!preview.ok || !preview.affordable));
+    if (hasRoute && preview.ok && detourWarnings.length) {
+      this.setText('previewMessage', `Ostrzeżenie: ${detourWarnings.length} odc. ma objazd powyżej progu. ${detourWarnings[0].reason}`);
+    }
+    $('#previewMessage').classList.toggle('route-warning', hasRoute && preview.ok && detourWarnings.length > 0);
     $('#createLineButton').disabled = !preview.ok || !preview.affordable || state.status !== 'playing';
     this.setText('createLineButton', !hasRoute ? 'Zaznacz przystanki' : `${editing ? 'Zapisz zmiany' : 'Zbuduj linię'} · ${money(preview.cost)}`);
     this.setText('clearSelectionButton', editing ? 'Anuluj edycję' : 'Wyczyść wybór');
@@ -841,3 +856,4 @@ export class UI {
   }
 }
 
+import { loadRoutingGraph } from './routing.js?v=12';

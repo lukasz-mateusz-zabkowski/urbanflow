@@ -9,6 +9,7 @@
     "start": "node server.js",
     "test": "node --test",
     "test:browser": "playwright test",
+    "routing:build": "node scripts/build-routing-graph.mjs",
     "audit:all": "npm audit --audit-level=moderate",
     "audit:production": "npm audit --omit=dev --audit-level=moderate"
   },

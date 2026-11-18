@@ -49,7 +49,7 @@ export function validateState(s, city) {
     if (!nonnegative(l.distanceKm) || !nonnegative(l.cost) || !nonnegative(l.ageMinutes) || !plain(l.stats) || !['carried', 'revenue', 'expenses'].every(k => nonnegative(l.stats[k]))) return false;
     if (typeof l.name !== 'string' || l.name.length > 100 || !/^#[0-9a-f]{6}$/i.test(l.color)) return false;
     if (l.infrastructureCost !== undefined && !nonnegative(l.infrastructureCost)) return false;
-    if (l.routingMode !== undefined && !['road', 'rail-corridor', 'direct'].includes(l.routingMode)) return false;
+    if (l.routingMode !== undefined && !['road', 'tramway', 'rail-corridor', 'direct'].includes(l.routingMode)) return false;
     if (l.routeGeometry !== undefined && (!Array.isArray(l.routeGeometry) || l.routeGeometry.length < 2 || l.routeGeometry.length > 500
       || l.routeGeometry.some(item => !Array.isArray(item) || item.length !== 2 || !finite(item[0]) || !finite(item[1]) || Math.abs(item[0]) > 90 || Math.abs(item[1]) > 180))) return false;
     const optionalStats = ['boardings', 'revenuePerHour', 'costPerHour', 'avgWaitMinutes', 'waitMinutesTotal', 'waiting', 'onboard', 'passengerKm', 'subsidy', 'idleCostPerHour'];

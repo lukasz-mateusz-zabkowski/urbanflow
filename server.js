@@ -16,6 +16,16 @@ export function createApp({ commitSha = process.env.URBANFLOW_COMMIT_SHA } = {})
 
   app.disable('x-powered-by');
   app.get('/health', (_req, res) => res.json(health));
+  // The routing graph is stored gzip-compressed on disk. Mark it as an HTTP
+  // content encoding so Fetch transparently decompresses it in the browser.
+  app.get(/^\/data\/routing\/krakow-(road|tram)-graph\.bin\.gz$/, (req, res, next) => {
+    const mode = req.path.includes('-road-') ? 'road' : 'tram';
+    const filename = path.join(root, 'public', 'data', 'routing', `krakow-${mode}-graph.bin.gz`);
+    res.set('Content-Type', 'application/octet-stream');
+    res.set('Content-Encoding', 'gzip');
+    res.vary('Accept-Encoding');
+    res.sendFile(path.basename(filename), { root: path.dirname(filename) }, error => { if (error) next(error); });
+  });
   app.use('/vendor/leaflet', express.static(path.join(root, 'node_modules', 'leaflet', 'dist'), {
     etag: true,
     maxAge: '30d'
