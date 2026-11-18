@@ -98,6 +98,11 @@ test('mobile finger drag inserts a stop into the selected route segment and leav
     await page.locator('.leaflet-control-zoom-in').tap();
     await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
   }
+  await expect(page.locator('#map .leaflet-map-pane')).not.toHaveClass(/leaflet-zoom-anim/);
+  await page.evaluate(() => {
+    window.__urbanflowTestMap.invalidateSize({ pan: false, animate: false });
+    return new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  });
   await expect(page.locator('.route-segment-hit').first()).toBeVisible();
   const routePoint = await page.locator('.route-segment-hit').evaluateAll(elements => {
     for (const element of elements) {

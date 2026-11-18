@@ -11,14 +11,14 @@ This status is for review of the branch. It does not claim that the OSM extract 
 - Base: `79501928a7eea148701c79a4c476e91de5635aa5` (`v1.2.0-alpha`).
 - Branch: `fix/alpha-1.2.1-smart-route-editor`.
 - Starting HEAD for this follow-up: `28ef4b1ad9276d607f7307d30126a8ad9352eb27`.
-- Implementation commit: `faaf58b1c2cc246b52ae5833ff1bb44cb36f7450`. GitHub Actions [run 44301904567](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44301904567) passed for this SHA; all six jobs succeeded. Follow-up runs [44302362816](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44302362816), [44308760114](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44308760114), and [44309732288](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44309732288) exposed browser-test assumptions around cancellation, mobile touch drop coordinates, and map projection. The latest local fixes await a new branch CI run.
+- Implementation commit: `faaf58b1c2cc246b52ae5833ff1bb44cb36f7450`. GitHub Actions [run 44301904567](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44301904567) passed for this SHA; all six jobs succeeded. Follow-up runs [44302362816](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44302362816), [44308760114](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44308760114), [44309732288](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44309732288), and [44312820742](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44312820742) exposed browser-test assumptions around cancellation, mobile touch drop coordinates, map projection, and an unsettled Leaflet SVG zoom transform. Run 443128 passed five jobs; browser-test failed only at a 377 m DOM-marker/projection gap. The test now waits for Leaflet zoom animation to end and invalidates map size; it awaits a fresh CI run.
 - No merge, tag, GitHub Release, Raspberry Pi operation, or deployment was performed.
 
 ## Final routing QA follow-up (2026-11-18)
 
 - The mobile standard-game route test now exposes the test map after initialization, invalidates its size after the build-panel interaction, and centers the viewport on the seven-stop downtown scenario before selecting stops. The previous version tried to select local stops while zooming from the campaign-wide view.
-- The touch-drag test adds a second zoom step and verifies the touch release is within 250 m of the stop's projected map location. It still requires a successful staged insertion using touch input, while confirming the saved route and budget are unchanged before confirmation.
-- Both targeted mobile tests passed three consecutive local repetitions. Full local browser suite: 12/12 passed. Actions for the pushed follow-up are still pending; branch status remains NO GO until all six jobs pass.
+- The touch-drag test adds a second zoom step, waits until Leaflet removes its zoom animation transform, invalidates map size, and verifies the rendered target is within 250 m of its projected location. It still requires a successful staged insertion using touch input, while confirming the saved route and budget are unchanged before confirmation.
+- Both targeted mobile tests passed three consecutive local repetitions. Full local browser suite: 12/12 passed in 2.8 minutes after the zoom-transform wait. The new Actions run is pending; branch status remains NO GO until all six jobs pass.
 
 ## OSM source and graph integrity
 
@@ -66,7 +66,7 @@ The coordinate was not moved. Igołomia now has `availableForNewGame: false`, so
 
 - `npm ci`: passed; install reported 0 vulnerabilities.
 - `npm test`: **177 passed, 0 failed** (including route graph, campaign starts, and 52-week/persistence simulations).
-- `npm run test:browser`: **12 passed, 0 failed** in 1.4 minutes on 2026-11-18. Covered desktop 1920 x 1080, 1366 x 768, 1280 x 720; mobile 390 x 844 and 360 x 800; OSM route views, normal-game ordered route build/edit/cancel/confirm/reload, mobile route preview and touch drag, map resize, save/timetable, and UI behavior.
+- `npm run test:browser`: **12 passed, 0 failed** in 2.8 minutes on 2026-11-18. Covered desktop 1920 x 1080, 1366 x 768, 1280 x 720; mobile 390 x 844 and 360 x 800; OSM route views, normal-game ordered route build/edit/cancel/confirm/reload, mobile route preview and touch drag, map resize, save/timetable, and UI behavior.
 - `npm run audit:all`: passed, 0 vulnerabilities.
 - `npm run audit:production`: passed, 0 vulnerabilities.
 - Routing benchmark: 15 warmed runs on the local development machine; six-leg route search median **54.67 ms**, p95 **78.40 ms**. Graph decode and spatial-index construction are excluded. This is not a Raspberry Pi performance claim.
