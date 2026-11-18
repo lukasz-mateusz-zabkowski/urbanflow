@@ -9,8 +9,9 @@
 - Base: `79501928a7eea148701c79a4c476e91de5635aa5` (`v1.2.0-alpha`)
 - Branch: `fix/alpha-1.2.1-smart-route-editor`
 - Starting implementation HEAD: `75bc48fa4b45e4bf5b91c6742ba99d9cbece101a`
-- Final implementation SHA: recorded after commit and push.
-- GitHub Actions: final pushed SHA and workflow result are recorded after the run completes.
+- Routing implementation SHA: `3f4c70608abb4b67e2191d036cead34c1817ec53`.
+- GitHub Actions for that implementation SHA: [run 44277060772](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44277060772), success; all six jobs passed (Node 18/20/22, browser, security audit and container health).
+- A report-only follow-up records that run. Its exact branch HEAD and Actions result are verified in the task completion message.
 - No merge, tag, GitHub Release or deployment was performed.
 
 ## Data source and generated graph
