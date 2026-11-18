@@ -66,6 +66,10 @@ async function selectSevenStops(page, mobile = false) {
     const marker = page.locator(`[data-stop-id="${id}"]`).first();
     for (let attempt = 0; attempt < 8 && await marker.count() === 0; attempt += 1) {
       await page.locator('.leaflet-control-zoom-in').click({ force: true });
+      // Leaflet completes animated zoom asynchronously; wait for this stop to
+      // enter the DOM before issuing another zoom against an in-flight map.
+      await expect.poll(() => marker.count(), { timeout: 700, intervals: [50, 100] })
+        .toBeGreaterThan(0).catch(() => {});
     }
     await expect(marker).toHaveCount(1);
     await expect.poll(() => marker.getAttribute('aria-label')).toContain(', profil');
@@ -126,7 +130,10 @@ test('standard desktop game builds the ordered seven-stop OSM route, safely edit
   await expect(page.locator('#lineDetail [data-detail="route"]')).toHaveText(savedStopsText);
   await expect(page.locator('#budgetStat')).toHaveText(savedBudget);
   await screenshot(page, 'standard-seven-stop-edit-preview.png');
-  await page.locator('#clearSelectionButton').click({ force: true });
+  const cancelEdit = page.locator('#clearSelectionButton');
+  await cancelEdit.scrollIntoViewIfNeeded();
+  await expect(cancelEdit).toBeVisible();
+  await cancelEdit.click();
   await expect(page.locator('#draftStopList li')).toHaveCount(0);
   await expect(page.locator('#lineDetail [data-detail="route"]')).toHaveText(savedStopsText);
   await expect(page.locator('#budgetStat')).toHaveText(savedBudget);
