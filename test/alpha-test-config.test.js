@@ -44,6 +44,8 @@ test('container-health CI starts and stops the isolated alpha compose profile', 
   assert.match(script, /Tmpfs\?\.\['\/tmp'\]/);
   assert.match(script, /network', 'inspect'/);
   assert.match(script, /no external egress/i);
+  assert.match(script, /lastError\?\.cause\?\.message/);
+  assert.match(script, /logs', '--tail=40/);
 });
 
 test('private playtest kit defines invite-only access, independent origin, rollback, and three measurable scenarios', async () => {

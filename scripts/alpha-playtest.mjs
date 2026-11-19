@@ -110,7 +110,17 @@ async function checkHealth(expectedSha, cwd) {
       await new Promise(resolve => setTimeout(resolve, 1000));
     }
   }
-  throw new Error(`Alpha playtest health check failed: ${lastError?.message ?? 'unknown error'}`);
+  const details = [lastError?.message, lastError?.cause?.message].filter(Boolean).join(' — ');
+  let containerLogs = '';
+  let containerState = '';
+  try {
+    containerLogs = compose(['logs', '--tail=40', 'urbanflow-alpha-test'], cwd);
+    const containerId = compose(['ps', '-q', 'urbanflow-alpha-test'], cwd);
+    if (containerId) containerState = docker(['inspect', '--format={{json .State}}', containerId], cwd, { capture: true });
+  } catch (diagnosticError) {
+    containerLogs = `Unable to collect Compose diagnostics: ${diagnosticError.message}`;
+  }
+  throw new Error(`Alpha playtest health check failed: ${details || 'unknown error'}\nContainer state: ${containerState || 'not available'}\nContainer logs:\n${containerLogs || 'not available'}`);
 }
 
 export async function runAlphaPlaytest(action, cwd = ROOT) {
