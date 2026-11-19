@@ -2,7 +2,7 @@
 
 ## Status
 
-- **GO for the package** after the current branch commit passes its GitHub Actions workflow.
+- **GO for the package:** implementation SHA `646d4342bf28ffb9c0aa723c96e1ac0031e24171` passed all six GitHub Actions jobs in [run #86](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44615813081).
 - **NO GO for starting a real tester session from this Surface Book:** Docker Desktop's Linux engine is unavailable and there is no independent host or authorized private access path available in this environment. CI results are not represented as testing on that host.
 - No public endpoint, external access service, tester account, production system, or Raspberry Pi was configured or contacted.
 - Nie przeprowadzono sesji ani nie zaproszono testerów.
@@ -13,7 +13,7 @@
 - Release tag `v1.4.0-alpha` and base game code: `346bcbe9880d8719d4c8cf8a3d8b26a6e89b2491`.
 - The first private Compose profile was added later at `c2b0ea1a7241fd4bb4f545405e6547c8d4aac4fb`; this work adds a guard and operator wrapper so a value passed through the environment cannot impersonate different source code.
 - **Build SHA rule:** use one full, reviewed SHA from `feature/alpha-1.4.0-private-playtest`; the checked-out `HEAD`, `.env.alpha-test` `URBANFLOW_COMMIT_SHA`, Compose image tag and image revision label, container environment, and `/health.commit` must all equal that SHA. Do not use the old release tag as the hardened profile source.
-- Current implementation SHA, final branch HEAD, and Actions link will be inserted after push/verification.
+- Implementation SHA tested locally and in run #86: `646d4342bf28ffb9c0aa723c96e1ac0031e24171`. If this report is committed separately, that documentation-only commit must receive its own green workflow before final handoff.
 
 ## Guard and isolation
 
@@ -34,7 +34,7 @@ The old [ALPHA-1.4.0-PLAYTEST.md](ALPHA-1.4.0-PLAYTEST.md) now directs operators
 ## Local validation on Surface Book
 
 - `npm ci`: **pass**, 0 vulnerabilities.
-- `npm test`: **236/236 pass** before final docs-only cleanup; source-guard and alpha-config tests pass independently on the current edits.
+- `npm test`: **237/237 pass** on the implementation state, including checkout guard, mismatched SHA rejection, and rollback worktree argument handling.
 - `npm run test:browser`: **25/25 pass** on the existing app UI, including full tutorial, feedback JSON and desktop/mobile paths. No playtest container was started locally.
 - Browser viewport coverage includes 360×800 and 390×844 touch layouts plus desktop 1920×1080, 1366×768, and 1280×720.
 - Additional 360×800 mobile repeat: **3/3 pass**.
@@ -46,11 +46,13 @@ The old [ALPHA-1.4.0-PLAYTEST.md](ALPHA-1.4.0-PLAYTEST.md) now directs operators
 
 ## GitHub Actions
 
-The previous workflow runs #81 and #82 predate the SHA-guard and internal-network changes, so they are not evidence for this revision. The current branch push must pass six jobs: Node 18, Node 20, Node 22, Playwright, security audit, and container health. The updated container-health job verifies checkout SHA, deliberately tests a mismatched SHA rejection, then runs the wrapper through start, health/config inspection, restart, status and stop. Its result will be recorded after it runs on the current commit.
+Run #84 exposed a real networking mistake: Docker `internal: true` left the app healthy inside its container but made its host-published loopback port unreachable (`ECONNREFUSED`), which would also break an SSH tunnel. The Compose profile now uses the standard bridge network and still publishes only `127.0.0.1:3101`; host-side inbound access remains loopback-only. This permits container egress, which is recorded as a limitation rather than claimed away.
+
+Run #86 on SHA `646d4342bf28ffb9c0aa723c96e1ac0031e24171` passed all six jobs: Node 18, Node 20, Node 22, Playwright, security audit, and container health. The container job rejected a deliberately mismatched configured SHA, then verified start, `/health`, image revision label, published loopback port, restart, status, stop, and rollback in a separate worktree at approved SHA `c2b0ea1a7241fd4bb4f545405e6547c8d4aac4fb`.
 
 ## Actual-run decision and risks
 
-- **Package: GO** once the current revision's six Actions jobs are green.
+- **Package: GO** for the tested implementation SHA above.
 - **Actual playtest session: NO GO until** a separate non-Raspberry-Pi host is chosen, its network is isolated from production, its exact SHA is checked with the wrapper, and the owner provisions the already approved private invite path. No public exposure is authorized by this report.
 - No local Docker runtime or tester SSH path was available, so CI's ephemeral runner is the only possible runtime evidence here; it must not be described as a real-host or real-tester test.
 - Browser `localStorage` survives a container rollback. Use separate browser profiles/origins for each version; rollback does not reverse schema migrations.
