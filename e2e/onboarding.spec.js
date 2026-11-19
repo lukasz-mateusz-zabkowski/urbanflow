@@ -193,6 +193,15 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 360, height: 800 }
       await touchCenter(page, lineRow);
       await expect(page.locator('#lineDetail')).toBeVisible();
       await assertNoOverflow(page, viewport.width);
+      const toastLayout = await page.evaluate(() => {
+        const stack = document.querySelector('#toastStack');
+        const panel = document.querySelector('#buildPanel');
+        const toastRect = stack.getBoundingClientRect();
+        const panelRect = panel.getBoundingClientRect();
+        return { count: stack.children.length, overlapsPanel: toastRect.bottom > panelRect.top && toastRect.top < panelRect.bottom };
+      });
+      expect(toastLayout.count).toBeLessThanOrEqual(1);
+      expect(toastLayout.overlapsPanel).toBe(false);
       await mkdir(artifacts, { recursive: true });
       await page.screenshot({ path: join(artifacts, `onboarding-mobile-line-details-${viewport.width}.png`), fullPage: false, animations: 'disabled' });
     } finally { await context.close(); }

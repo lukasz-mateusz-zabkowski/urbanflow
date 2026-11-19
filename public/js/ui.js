@@ -378,12 +378,17 @@ export class UI {
   openPanel() {
     $('#playfield').classList.remove('panel-collapsed');
     $('#buildPanel').classList.add('open'); $('#panelScrim').classList.add('open');
+    if (window.matchMedia('(max-width: 760px)').matches) {
+      $('#toastStack').replaceChildren();
+      $('#toastStack').classList.add('panel-open');
+    }
     $('#mobilePanelButton').setAttribute('aria-expanded', 'true');
     $('#panelCollapseButton').setAttribute('aria-expanded', 'true'); $('#panelExpandButton').setAttribute('aria-expanded', 'true');
     this.map.invalidate?.();
   }
   closePanel() {
     $('#buildPanel').classList.remove('open'); $('#panelScrim').classList.remove('open');
+    $('#toastStack').classList.remove('panel-open');
     $('#mobilePanelButton').setAttribute('aria-expanded', 'false');
     this.map.invalidate?.();
   }
@@ -1066,7 +1071,10 @@ export class UI {
   toast(message, kind = '') {
     if (!message) return;
     const stack = $('#toastStack');
-    while (stack.children.length >= 3) stack.firstElementChild.remove();
+    const mobile = window.matchMedia('(max-width: 760px)').matches;
+    if (mobile) stack.replaceChildren();
+    else while (stack.children.length >= 3) stack.firstElementChild.remove();
+    stack.classList.toggle('panel-open', mobile && $('#buildPanel').classList.contains('open'));
     const toast = document.createElement('div');
     toast.className = `toast ${kind}`;
     toast.textContent = message;
