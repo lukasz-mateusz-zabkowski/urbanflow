@@ -2,14 +2,15 @@
 
 ## Status
 
-**NO GO pending GitHub Actions.** Local checks are green. The branch has not been merged, tagged, released, or deployed. Final GO requires all six jobs to pass on the pushed branch HEAD.
+**GO for technical review.** Local checks and all six GitHub Actions jobs passed on the pushed implementation commit. The branch has not been merged, tagged, released, or deployed.
 
 ## Repository
 
 - Base `main` and `v1.3.1-alpha`: `22abeccf742908c6a1262a6c1853662a7a488922`.
 - Working branch: `feature/alpha-1.4.0`.
+- Implementation commit: `55024cc86432b40b68e5c0ef90f709e76f9602a4`.
+- GitHub Actions: [run 44575890240](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44575890240) — success (Node 18, Node 20, Node 22, browser test, security audit, container health).
 - Save schema remains 11; no migration was needed.
-- Final implementation SHA and Actions run will be recorded after push.
 
 ## Delivered
 
@@ -30,7 +31,7 @@
 - `npm run audit:production`: **0 vulnerabilities**.
 - `git diff --check`: passed.
 - Included existing schema-11 compatibility tests and a regression test for a pre-onboarding schema-11 campaign retaining budget, lines, fleet, and campaign state. Existing deterministic 52-week city/investment simulation tests pass within the Node suite.
-- GitHub Actions: pending push; not counted as a success yet.
+- GitHub Actions run 44575890240: **success**, all six jobs passed for implementation SHA `55024cc86432b40b68e5c0ef90f709e76f9602a4`.
 
 ## Screenshots
 
@@ -48,4 +49,4 @@ The deterministic browser suite substitutes local SVG map tiles; it verifies the
 - Contextual hints are based on current recorded state, and dismissed hints may reappear in a later session if the same condition remains.
 - The alpha profile is local-only by default. Any remote tester access must add invite-only access control outside this Compose file; no public service was created.
 - No Raspberry Pi or production configuration was accessed.
-- Push `feature/alpha-1.4.0`, wait for all six GitHub Actions jobs, then update this report with the final SHA and workflow link before technical review.
+- The report update is documentation-only; it records the verified implementation SHA above. The branch remains available for review and has not been merged.
