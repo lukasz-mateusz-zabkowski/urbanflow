@@ -41,7 +41,9 @@ export class UrbanFlowGame {
       demandModifier: 1, stressDemandMultiplier: 1, nextEventAt: SIMULATION.eventIntervalMinutes, activeEventUntil: 0,
       cityEvents: [], nextEventId: 1, analyticsMode: 'off', networkHistory: [], networkDailyHistory: [], networkWeeklyHistory: [], startScenarioId: this.startScenario.id,
       campaign: createCampaign(), status: 'playing', lossReason: '', lowQualityMinutes: 0,
-      preferences: { tutorialCollapsed: false, goalsCollapsed: true, tutorialStatus: 'active', tutorialMapExplored: false, tutorialDiagnosisVersion: null }, nextLineId: 1, networkVersion: 0,
+      preferences: { tutorialCollapsed: false, goalsCollapsed: true, tutorialStatus: 'active', tutorialMapExplored: false,
+        tutorialDiagnosisVersion: null, tutorialActionsVersion: 1,
+        tutorialActions: { firstGoal: false, busPlanned: false, costPreview: false, fleetDetails: false, opportunities: false, investment: false } }, nextLineId: 1, networkVersion: 0,
       investments: createInvestmentState(), hubCapacityByPoint: {}, tramInfrastructure: createTramInfrastructure(),
       tramBuildMode: 'street', tramControlPoints: []
     };
@@ -56,7 +58,16 @@ export class UrbanFlowGame {
     this.state.tramInfrastructure ||= createTramInfrastructure(); this.state.tramBuildMode ||= 'street'; this.state.tramControlPoints ||= [];
     this.state.cityEvents ||= []; this.state.nextEventId ||= 1; this.state.analyticsMode ||= 'off';
     this.state.networkHistory ||= []; this.state.networkDailyHistory ||= []; this.state.networkWeeklyHistory ||= [];
-    this.state.preferences = { tutorialCollapsed: false, goalsCollapsed: true, tutorialStatus: 'active', tutorialMapExplored: false, tutorialDiagnosisVersion: null, ...(this.state.preferences || {}) };
+    const previousPreferences = this.state.preferences || {};
+    this.state.preferences = {
+      tutorialCollapsed: false, goalsCollapsed: true, tutorialStatus: 'active', tutorialMapExplored: false,
+      tutorialDiagnosisVersion: null, tutorialActionsVersion: savedState ? 0 : 1,
+      tutorialActions: { firstGoal: false, busPlanned: false, costPreview: false, fleetDetails: false, opportunities: false, investment: false },
+      ...previousPreferences,
+      tutorialActionsVersion: Number.isSafeInteger(previousPreferences.tutorialActionsVersion)
+        ? previousPreferences.tutorialActionsVersion : savedState ? 0 : 1,
+      tutorialActions: { firstGoal: false, busPlanned: false, costPreview: false, fleetDetails: false, opportunities: false, investment: false, ...(previousPreferences.tutorialActions || {}) }
+    };
     this.state.campaign = { ...createCampaign(), ...(this.state.campaign || {}), stress: { ...createCampaign().stress, ...(this.state.campaign?.stress || {}) } };
     this.state.lines.forEach(line => {
       line.stats = { ...blankStats(), ...(line.stats || {}), segmentLoad: { ...(line.stats?.segmentLoad || {}) } };
@@ -177,7 +188,8 @@ export class UrbanFlowGame {
       route = { id, label: 'Pętla Dworzec', stops: ['wieliczka', 'biezanow', 'dworzec'] };
     } else route = this.starterRoutes.find(r => r.id === id);
     if (!route) return fail('Nieznana trasa.');
-    this.state.preferences.tutorialMapExplored = true;
+    this.state.preferences.tutorialActions.firstGoal = true;
+    this.state.preferences.tutorialActions.busPlanned = true;
     this.state.selectedType = 'bus'; this.state.selectedNodes = [...route.stops]; this.changed(); return this.previewLine();
   }
   chooseStarterRoute(id) { const result = this.selectStarterRoute(id); return result.ok ? this.createSelectedLine() : result; }
@@ -443,7 +455,12 @@ export class UrbanFlowGame {
     if (this.state.status !== 'playing' || !this.visiblePoints().some(p => p.id === id)) return;
     this.state.preferences.tutorialMapExplored = true;
     const selected = this.state.selectedNodes;
-    this.state.selectedNodes = selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id]; this.changed();
+    this.state.selectedNodes = selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id];
+    if (this.state.selectedNodes.includes(this.startScenario.localHubId) || this.state.selectedNodes.includes(this.startScenario.centerId)) {
+      this.state.preferences.tutorialActions.firstGoal = true;
+    }
+    if (this.state.selectedNodes.length >= 2 && this.state.selectedType === 'bus') this.state.preferences.tutorialActions.busPlanned = true;
+    this.changed();
   }
   moveSelectedStop(index, delta) {
     const next = index + delta, stops = this.state.selectedNodes;
@@ -464,9 +481,31 @@ export class UrbanFlowGame {
     this.changed();
     return { ok: true };
   }
+  markTutorialAction(action) {
+    const keys = ['firstGoal', 'busPlanned', 'costPreview', 'fleetDetails', 'opportunities', 'investment'];
+    if (!keys.includes(action) || this.state.status !== 'playing') return fail('Nieznana czynność samouczka.');
+    if (!this.state.preferences.tutorialActions[action]) {
+      this.state.preferences.tutorialActions[action] = true;
+      this.events.onSave?.(this.state);
+    }
+    return { ok: true };
+  }
+  markTutorialDiagnosisViewed() {
+    if (this.state.status !== 'playing' || this.state.analyticsMode === 'off' || !this.state.networkHistory.length
+      || Number.isSafeInteger(this.state.preferences.tutorialDiagnosisVersion)) return false;
+    this.state.preferences.tutorialDiagnosisVersion = this.state.networkVersion;
+    this.events.onSave?.(this.state);
+    return true;
+  }
   setAnalyticsMode(mode) {
     if (!['off', 'demand', 'queues', 'load', 'profit', 'travel', 'access', 'flow', 'overload', 'unmet', 'cityEvolution', 'landUse', 'investments'].includes(mode)) return fail('Nieznany widok diagnostyczny.');
-    if (mode !== 'off' && this.state.preferences.tutorialDiagnosisVersion === null) this.state.preferences.tutorialDiagnosisVersion = this.state.networkVersion;
+    if (this.state.status === 'playing') {
+      if (mode !== 'off' && this.state.networkHistory.length > 0 && this.state.preferences.tutorialDiagnosisVersion === null) {
+        this.state.preferences.tutorialDiagnosisVersion = this.state.networkVersion;
+      }
+      if (['cityEvolution', 'landUse'].includes(mode)) this.state.preferences.tutorialActions.opportunities = true;
+      if (mode === 'investments') this.state.preferences.tutorialActions.investment = true;
+    }
     this.state.analyticsMode = mode; this.changed(); return { ok: true };
   }
   planInvestment(districtId, type) {

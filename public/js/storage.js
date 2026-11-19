@@ -73,6 +73,10 @@ export function validateState(s, city) {
   if (s.preferences.tutorialStatus !== undefined && !['active', 'skipped'].includes(s.preferences.tutorialStatus)) return false;
   if (s.preferences.tutorialMapExplored !== undefined && typeof s.preferences.tutorialMapExplored !== 'boolean') return false;
   if (s.preferences.tutorialDiagnosisVersion !== undefined && s.preferences.tutorialDiagnosisVersion !== null && !integer(s.preferences.tutorialDiagnosisVersion)) return false;
+  if (s.preferences.tutorialActionsVersion !== undefined && ![0, 1].includes(s.preferences.tutorialActionsVersion)) return false;
+  if (s.preferences.tutorialActions !== undefined && (!plain(s.preferences.tutorialActions)
+    || ['firstGoal', 'busPlanned', 'costPreview', 'fleetDetails', 'opportunities', 'investment'].some(key => typeof s.preferences.tutorialActions[key] !== 'boolean')
+    || Object.keys(s.preferences.tutorialActions).some(key => !['firstGoal', 'busPlanned', 'costPreview', 'fleetDetails', 'opportunities', 'investment'].includes(key)))) return false;
   if (s.analyticsMode !== undefined && !['off', 'demand', 'queues', 'load', 'profit', 'travel', 'access', 'flow', 'overload', 'unmet', 'cityEvolution', 'landUse', 'investments'].includes(s.analyticsMode)) return false;
   if (!validateCityEvolutionState(s.cityEvolution, city)) return false;
   if (!validateInvestmentState(s.investments, city, s)) return false;

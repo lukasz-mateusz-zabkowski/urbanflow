@@ -18,3 +18,12 @@ test('alpha test compose is isolated, loopback-only and pins version metadata to
   assert.match(docs, /local storage/i);
   assert.match(docs, /invite-only access control/i);
 });
+
+test('container-health CI starts and stops the isolated alpha compose profile', async () => {
+  const workflow = await read('.github/workflows/test.yml');
+  assert.match(workflow, /Run isolated alpha Compose profile/);
+  assert.match(workflow, /compose=\(docker compose -p "\$COMPOSE_PROJECT_NAME" -f compose\.alpha-test\.yml\)/);
+  assert.match(workflow, /"\$\{compose\[@\]\}" up --build --detach/);
+  assert.match(workflow, /"\$\{compose\[@\]\}" port urbanflow-alpha-test 3000/);
+  assert.match(workflow, /"\$\{compose\[@\]\}" stop urbanflow-alpha-test/);
+});

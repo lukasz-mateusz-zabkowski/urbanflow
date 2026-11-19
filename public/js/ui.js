@@ -66,7 +66,21 @@ export class UI {
     this.panelStorage = null;
     try { this.panelStorage = window.localStorage; } catch { /* Panel width is an optional preference. */ }
     this.setupPanelWidth();
+    this.setupTutorialPreviewTracking();
     this.bind();
+  }
+
+  setupTutorialPreviewTracking() {
+    const target = $('#lineDecisionSummary');
+    if (!target || typeof IntersectionObserver !== 'function') return;
+    this.tutorialPreviewObserver = new IntersectionObserver(entries => {
+      const entry = entries[0];
+      if (!entry?.isIntersecting || entry.intersectionRatio < 0.5 || target.hidden
+        || this.game.state.status !== 'playing' || this.game.state.selectedNodes.length < 2) return;
+      const preview = this.game.previewLine();
+      if (preview.ok && this.game.markTutorialAction('costPreview').ok) this.renderTutorial();
+    }, { threshold: [0.5] });
+    this.tutorialPreviewObserver.observe(target);
   }
 
   bind() {
@@ -140,6 +154,7 @@ export class UI {
       if (action === 'diagnose-mobility') { this.renderMobilityRelation(); return; }
       if (action === 'select-line') {
         this.selectedLineId = this.selectedLineId === line ? null : line;
+        if (this.game.state.carried > 0 && this.selectedLineId) this.game.markTutorialAction('fleetDetails');
         this.renderNetwork();
         this.map.highlightLine?.(this.selectedLineId);
         return;
@@ -629,10 +644,11 @@ export class UI {
     const step = getOnboardingStep(this.game, preview);
     const index = step ? steps.findIndex(item => item.id === step.id) : steps.length;
     const collapsed = Boolean(this.game.state.preferences?.tutorialCollapsed);
-    this.setText('stepNumber', step ? String(index + 1).padStart(2, '0') : status.status === 'skipped' ? '—' : '✓');
-    this.setText('tutorialTitle', status.status === 'skipped' ? 'Samouczek pominięty' : step?.title || 'Samouczek ukończony');
-    this.setText('tutorialText', status.status === 'skipped' ? 'Gra działa normalnie. Możesz wrócić do samouczka w dowolnym momencie.' : step?.text || 'Wykonałeś wszystkie kroki w tej kampanii. Możesz nadal grać i rozwijać sieć.');
-    this.setText('tutorialTip', status.status === 'skipped' ? 'Postęp kampanii i zapis pozostają bez zmian.' : step?.tip || 'Dalsze cele kampanii znajdziesz powyżej.');
+    const ended = status.status === 'unavailable';
+    this.setText('stepNumber', step ? String(index + 1).padStart(2, '0') : status.status === 'skipped' ? '—' : ended ? 'Ⅱ' : '✓');
+    this.setText('tutorialTitle', ended ? 'Samouczek wstrzymany po zakończeniu kampanii' : status.status === 'skipped' ? 'Samouczek pominięty' : step?.title || 'Samouczek ukończony');
+    this.setText('tutorialText', ended ? 'Kampania jest zakończona. Samouczek nie uruchamia ponownie symulacji ani nie zmienia jej wyniku.' : status.status === 'skipped' ? 'Gra działa normalnie. Możesz wrócić do samouczka w dowolnym momencie.' : step?.text || 'Wykonałeś wszystkie kroki w tej kampanii. Możesz nadal grać i rozwijać sieć.');
+    this.setText('tutorialTip', ended ? 'Możesz obejrzeć zapis, ale czynności wymagające działającej kampanii są wyłączone.' : status.status === 'skipped' ? 'Postęp kampanii i zapis pozostają bez zmian.' : step?.tip || 'Dalsze cele kampanii znajdziesz powyżej.');
     this.setText('tutorialProgressCopy', `${status.completed} z ${status.total} kroków${status.status === 'skipped' ? ' · pominięto' : ''}`);
     $('#tutorialProgress').setAttribute('aria-valuenow', String(status.completed));
     $('#tutorialProgressBar').style.width = `${Math.round(status.completed / status.total * 100)}%`;
@@ -640,7 +656,7 @@ export class UI {
     $('#toggleTutorialButton').hidden = status.status === 'skipped';
     $('#toggleTutorialButton').setAttribute('aria-expanded', String(!collapsed));
     $('#tutorialSkip').hidden = status.status !== 'active';
-    $('#tutorialRestart').hidden = status.status === 'active';
+    $('#tutorialRestart').hidden = !['skipped', 'completed'].includes(status.status);
   }
 
   renderContextHint() {
@@ -658,6 +674,7 @@ export class UI {
     const points = this.game.visiblePoints();
     const snapshot = diagnosticSnapshot(state, points, minuteOfDay);
     const mobility = mobilitySnapshot(state, points);
+    if (this.game.markTutorialDiagnosisViewed()) this.renderTutorial();
     const originSelect = $('#mobilityOrigin'); const destinationSelect = $('#mobilityDestination');
     const originValue = originSelect?.value; const destinationValue = destinationSelect?.value;
     const options = points.filter(point => point.type !== 'stop').map(point => `<option value="${escapeHtml(point.id)}">${escapeHtml(point.name)}</option>`).join('');
@@ -1059,6 +1076,7 @@ export class UI {
 
   destroy() {
     this.abortController.abort();
+    this.tutorialPreviewObserver?.disconnect();
     this.timers.forEach(clearTimeout); this.timers.clear();
     this.closePanel();
     $('#summaryDialog').close();

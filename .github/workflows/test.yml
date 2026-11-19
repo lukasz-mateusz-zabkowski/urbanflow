@@ -86,3 +86,38 @@ jobs:
           done
           echo "Container healthcheck state: $state" >&2
           exit 1
+      - name: Run isolated alpha Compose profile
+        env:
+          URBANFLOW_COMMIT_SHA: ${{ github.sha }}
+          COMPOSE_PROJECT_NAME: urbanflow-alpha-test-${{ github.run_id }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          compose=(docker compose -p "$COMPOSE_PROJECT_NAME" -f compose.alpha-test.yml)
+          cleanup() { "${compose[@]}" down --remove-orphans || true; }
+          trap cleanup EXIT
+          "${compose[@]}" up --build --detach
+          ready=false
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:3101/health -o /tmp/urbanflow-alpha-test-health.json; then
+              ready=true
+              break
+            fi
+            sleep 1
+          done
+          test "$ready" = true
+          EXPECTED_VERSION="$(node -p "require('./package.json').version")" EXPECTED_COMMIT="$GITHUB_SHA" node -e '
+            const fs = require("node:fs");
+            const health = JSON.parse(fs.readFileSync("/tmp/urbanflow-alpha-test-health.json", "utf8"));
+            if (health.status !== "ok" || health.version !== process.env.EXPECTED_VERSION || health.commit !== process.env.EXPECTED_COMMIT) {
+              throw new Error(`Unexpected alpha-test health payload: ${JSON.stringify(health)}`);
+            }
+          '
+          test "$("${compose[@]}" port urbanflow-alpha-test 3000)" = "127.0.0.1:3101"
+          container=$("${compose[@]}" ps -q urbanflow-alpha-test)
+          test -n "$container"
+          test "$(docker inspect --format '{{len .Mounts}}' "$container")" = 0
+          curl --fail --silent http://127.0.0.1:3101/ -o /dev/null
+          curl --fail --silent http://127.0.0.1:3101/vendor/leaflet/leaflet.js -o /dev/null
+          "${compose[@]}" stop urbanflow-alpha-test
+          test "$(docker inspect --format '{{.State.Status}}' "$container")" = exited

@@ -20,24 +20,27 @@ export function onboardingProgress(game, previewResult = null) {
   const line = firstLine(game);
   const preview = previewResult || game.previewLine('bus', state.selectedNodes, state.editingLineId);
   const baseline = state.preferences?.tutorialDiagnosisVersion;
+  const actions = state.preferences?.tutorialActions || {};
+  const tracked = state.preferences?.tutorialActionsVersion === 1;
   const historyReady = (state.networkHistory || []).length > 0;
+  const legacy = !tracked;
   const investments = state.investments || {};
   const invested = (investments.projects || []).some(project => ['in-progress', 'completed'].includes(project.status))
     || (investments.history || []).some(item => ['approved', 'completed'].includes(item.status));
   const complete = [
-    Boolean(state.preferences?.tutorialMapExplored || line),
-    Boolean(state.selectedNodes.some(id => id === game.startScenario.localHubId || id === game.startScenario.centerId) || line),
-    Boolean((state.selectedNodes.length >= 2 && state.selectedType === 'bus') || line),
-    Boolean((state.selectedNodes.length >= 2 && preview.ok && preview.affordable) || line),
+    Boolean(state.preferences?.tutorialMapExplored || legacy && line),
+    Boolean(actions.firstGoal || legacy && line),
+    Boolean(actions.busPlanned || legacy && line),
+    Boolean(actions.costPreview || legacy && line),
     Boolean(line),
     Boolean(line && state.elapsedMinutes > 0),
     state.carried > 0,
-    Boolean(line && line.vehicles > 0 && line.ageMinutes > 0 && (line.stats?.expenses > 0 || line.stats?.carried > 0)),
-    Boolean(historyReady && state.analyticsMode !== 'off'),
-    Boolean(Number.isSafeInteger(baseline) && state.networkVersion > baseline),
-    Boolean(state.unlocked?.length > 1 || state.unlockedPointLevel > 0 || state.airportUnlocked
-      || ['cityEvolution', 'landUse'].includes(state.analyticsMode)),
-    Boolean(invested || state.analyticsMode === 'investments' && state.cityEvolution?.districts)
+    Boolean(tracked ? actions.fleetDetails : line && line.vehicles > 0 && line.ageMinutes > 0
+      && (line.stats?.expenses > 0 || line.stats?.carried > 0)),
+    Boolean(historyReady && (tracked ? Number.isSafeInteger(baseline) : state.analyticsMode !== 'off' || legacy)),
+    Boolean(Number.isSafeInteger(baseline) && state.networkVersion > baseline || legacy && state.networkVersion > 1),
+    Boolean(actions.opportunities || legacy && (state.unlocked?.length > 1 || state.unlockedPointLevel > 0 || state.airportUnlocked)),
+    Boolean(actions.investment || invested || legacy && state.analyticsMode === 'investments' && state.cityEvolution?.districts)
   ];
   return ONBOARDING_STEPS.map((step, index) => ({ ...step, completed: complete[index] }));
 }
@@ -47,6 +50,7 @@ export function onboardingStatus(game, previewResult = null) {
   if (savedStatus === 'skipped') return { status: 'skipped', step: null, completed: 0, total: ONBOARDING_STEPS.length };
   const steps = onboardingProgress(game, previewResult);
   const current = steps.find(step => !step.completed) || null;
+  if (game.state.status !== 'playing' && current) return { status: 'unavailable', step: current, completed: steps.filter(step => step.completed).length, total: steps.length };
   return { status: current ? 'active' : 'completed', step: current, completed: steps.filter(step => step.completed).length, total: steps.length };
 }
 

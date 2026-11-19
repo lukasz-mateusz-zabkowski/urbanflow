@@ -13,10 +13,11 @@ test('onboarding advances only from saved game facts and never from dismissing t
   game.selectNode(game.startScenario.id);
   assert.equal(getOnboardingStep(game).id, 'first-goal');
   game.selectNode(game.startScenario.localHubId);
-  assert.equal(getOnboardingStep(game).id, 'build-line');
+  assert.equal(getOnboardingStep(game).id, 'review-cost');
   assert.equal(getOnboardingStep(game).completed, false);
 
   assert.equal(game.previewLine('bus', game.state.selectedNodes, null).ok, true);
+  assert.equal(game.markTutorialAction('costPreview').ok, true);
   assert.equal(getOnboardingStep(game).id, 'build-line');
   assert.equal(game.createSelectedLine().ok, true);
   assert.equal(getOnboardingStep(game).id, 'start-service');
@@ -73,6 +74,8 @@ test('a schema-11 campaign from before onboarding preferences keeps its campaign
   delete legacy.preferences.tutorialStatus;
   delete legacy.preferences.tutorialMapExplored;
   delete legacy.preferences.tutorialDiagnosisVersion;
+  delete legacy.preferences.tutorialActionsVersion;
+  delete legacy.preferences.tutorialActions;
   assert.equal(saveGame(storage, legacy, CITIES.krakow.id).ok, true);
   const loaded = loadGame(storage, CITIES.krakow);
   assert.equal(loaded.error, null);
@@ -83,6 +86,74 @@ test('a schema-11 campaign from before onboarding preferences keeps its campaign
   assert.deepEqual(resumed.state.campaign, legacy.campaign);
   assert.equal(resumed.state.preferences.tutorialStatus, 'active');
   assert.equal(getOnboardingStep(resumed).id, 'start-service');
+});
+
+test('a new campaign requires explicit cost review and panel visits instead of inferring them from a line', () => {
+  const game = new UrbanFlowGame(CITIES.krakow, { random: () => 0 });
+  const route = game.starterRoutes[0];
+  assert.equal(game.selectStarterRoute(route.id).ok, true);
+  assert.equal(game.createSelectedLine().ok, true);
+  const progress = () => Object.fromEntries(onboardingProgress(game).map(step => [step.id, step.completed]));
+  assert.equal(progress()['review-cost'], false);
+  assert.equal(progress().fleet, false);
+  assert.equal(progress()['diagnose-network'], false);
+  assert.equal(progress().opportunities, false);
+  assert.equal(progress().investment, false);
+
+  assert.equal(game.markTutorialAction('costPreview').ok, true);
+  assert.equal(progress()['review-cost'], true);
+  assert.equal(progress().fleet, false);
+  assert.equal(game.setTutorialStatus('skipped').ok, true);
+  assert.equal(game.setTutorialStatus('active').ok, true);
+  assert.equal(progress()['review-cost'], true);
+});
+
+test('diagnostic and opportunity steps record actual views and require a later network change', () => {
+  const game = new UrbanFlowGame(CITIES.krakow, { random: () => 0 });
+  assert.equal(game.setAnalyticsMode('queues').ok, true);
+  assert.equal(onboardingProgress(game).find(step => step.id === 'diagnose-network').completed, false);
+  game.state.networkHistory.push({ at: 6, networkVersion: 0, transported: 1, generated: 1, abandoned: 0, denied: 0,
+    averageWaitMinutes: 2, coverage: 1, tripAvailability: 1, utilization: 0.1, revenue: 5, cost: 2, balance: 3 });
+  assert.equal(game.markTutorialDiagnosisViewed(), true);
+  assert.equal(onboardingProgress(game).find(step => step.id === 'diagnose-network').completed, true);
+  assert.equal(onboardingProgress(game).find(step => step.id === 'improve-network').completed, false);
+  game.state.networkVersion += 1;
+  game.changed();
+  assert.equal(onboardingProgress(game).find(step => step.id === 'improve-network').completed, true);
+  game.setAnalyticsMode('cityEvolution');
+  game.setAnalyticsMode('investments');
+  const progress = Object.fromEntries(onboardingProgress(game).map(step => [step.id, step.completed]));
+  assert.equal(progress.opportunities, true);
+  assert.equal(progress.investment, true);
+});
+
+test('a developed schema-11 save without onboarding trackers is recognized from saved simulation facts', () => {
+  const game = new UrbanFlowGame(CITIES.krakow, { random: () => 0 });
+  const route = game.starterRoutes[0];
+  assert.equal(game.selectStarterRoute(route.id).ok, true);
+  assert.equal(game.createSelectedLine().ok, true);
+  game.state.elapsedMinutes = 120;
+  game.state.carried = 14;
+  game.state.lines[0].ageMinutes = 120;
+  game.state.lines[0].stats.carried = 14;
+  game.state.networkHistory = [{ at: 120, networkVersion: 1, transported: 14, generated: 14, abandoned: 0, denied: 0,
+    averageWaitMinutes: 2, coverage: 1, tripAvailability: 1, utilization: 0.2, revenue: 100, cost: 50, balance: 50 }];
+  game.state.preferences.tutorialActionsVersion = 0;
+  delete game.state.preferences.tutorialActions;
+  const steps = Object.fromEntries(onboardingProgress(game).map(step => [step.id, step.completed]));
+  assert.equal(steps['review-cost'], true);
+  assert.equal(steps.fleet, true);
+  assert.equal(steps['diagnose-network'], true);
+});
+
+test('a finished campaign pauses the remaining tutorial without offering a restart that changes campaign state', () => {
+  const game = new UrbanFlowGame(CITIES.krakow, { random: () => 0 });
+  game.state.status = 'lost';
+  game.state.lossReason = 'bankruptcy';
+  const before = { budget: game.state.budget, lines: game.state.lines.length, elapsed: game.state.elapsedMinutes, status: game.state.status };
+  assert.equal(onboardingStatus(game).status, 'unavailable');
+  assert.equal(onboardingProgress(game).every(step => !step.completed), true);
+  assert.deepEqual({ budget: game.state.budget, lines: game.state.lines.length, elapsed: game.state.elapsedMinutes, status: game.state.status }, before);
 });
 
 test('contextual hints name observed problems and the stop involved without inventing forecasts', () => {
