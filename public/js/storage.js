@@ -53,6 +53,9 @@ export function validateState(s, city) {
     if (l.infrastructureCost !== undefined && !nonnegative(l.infrastructureCost)) return false;
     if (l.routingMode !== undefined && !['road', 'tramway', 'rail-corridor', 'direct'].includes(l.routingMode)) return false;
     if (l.routingUnavailable !== undefined && (typeof l.routingUnavailable !== 'string' || l.routingUnavailable.length > 500)) return false;
+    if (l.tramBuildMode !== undefined && (l.type !== 'tram' || !['street', 'manual', 'existing'].includes(l.tramBuildMode))) return false;
+    if (l.tramControlPoints !== undefined && (l.type !== 'tram' || !Array.isArray(l.tramControlPoints) || l.tramControlPoints.length > 300
+      || l.tramControlPoints.some(point => !Array.isArray(point) || point.length !== 2 || !finite(point[0]) || !finite(point[1]) || Math.abs(point[0]) > 90 || Math.abs(point[1]) > 180))) return false;
     if (l.routeGeometry !== undefined && (!Array.isArray(l.routeGeometry) || l.routeGeometry.length < 2 || l.routeGeometry.length > 500
       || l.routeGeometry.some(item => !Array.isArray(item) || item.length !== 2 || !finite(item[0]) || !finite(item[1]) || Math.abs(item[0]) > 90 || Math.abs(item[1]) > 180))) return false;
     const optionalStats = ['boardings', 'revenuePerHour', 'costPerHour', 'avgWaitMinutes', 'waitMinutesTotal', 'waiting', 'onboard', 'passengerKm', 'subsidy', 'idleCostPerHour'];
@@ -74,7 +77,8 @@ export function validateState(s, city) {
     || !Array.isArray(s.tramControlPoints) || s.tramControlPoints.length > 300
     || s.tramControlPoints.some(point => !Array.isArray(point) || point.length !== 2 || !finite(point[0]) || !finite(point[1]) || Math.abs(point[0]) > 90 || Math.abs(point[1]) > 180)) return false;
   if (s.lines.some(line => line.tramTrackIds !== undefined && (line.type !== 'tram' || !Array.isArray(line.tramTrackIds)
-    || line.tramTrackIds.length > 500 || line.tramTrackIds.some(id => !s.tramInfrastructure.segments.some(segment => segment.id === id))))) return false;
+    || line.tramTrackIds.length > 500 || new Set(line.tramTrackIds).size !== line.tramTrackIds.length
+    || line.tramTrackIds.some(id => !s.tramInfrastructure.segments.some(segment => segment.id === id))))) return false;
   if (s.networkHistory !== undefined && (!Array.isArray(s.networkHistory) || s.networkHistory.length > 96 || s.networkHistory.some(item =>
     !plain(item) || !['at', 'networkVersion', 'transported', 'generated', 'abandoned', 'denied', 'averageWaitMinutes', 'coverage', 'utilization', 'revenue', 'cost'].every(key => nonnegative(item[key])) || !integer(item.networkVersion) ||
     (item.tripAvailability !== null && (!nonnegative(item.tripAvailability) || item.tripAvailability > 1)) || !finite(item.balance) || item.coverage > 1 || item.utilization > 1.5))) return false;

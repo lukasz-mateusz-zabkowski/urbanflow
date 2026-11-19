@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { gunzipSync } from 'node:zlib';
 import { createTramInfrastructure, planTrackSegments, commitTrackPlan, trackSegmentId,
-  validateTramInfrastructure, buildManualTramGeometry } from '../public/js/tramway.js';
+  validateTramInfrastructure, buildManualTramGeometry, routeOnPlayerTramTracks } from '../public/js/tramway.js';
 import { UrbanFlowGame } from '../public/js/game.js';
 import { CITIES } from '../public/js/cities.js';
 import { registerRoutingGraph } from '../public/js/routing.js?v=14';
@@ -28,6 +28,44 @@ test('new line pays only for track segments not already built by the player', ()
   assert.equal(shared.reusedSegments.length, 2);
   assert.equal(shared.cost, 0);
   assert.equal(validateTramInfrastructure(infrastructure), true);
+});
+
+test('tram track reuse detects a new control point lying on a partially shared existing segment', () => {
+  const infrastructure = createTramInfrastructure();
+  const a = [50, 19.9], b = [50, 19.91], d = [50, 19.905];
+  const first = planTrackSegments(infrastructure, [a, b], { costPerKm: 100000 });
+  assert.equal(first.valid, true);
+  assert.equal(commitTrackPlan(infrastructure, first), true);
+  const second = planTrackSegments(infrastructure, [a, d, b], { costPerKm: 100000 });
+  assert.equal(second.valid, true);
+  assert.deepEqual(second.segmentIds, [first.segmentIds[0]]);
+  assert.equal(second.newSegments.length, 0);
+  assert.equal(second.cost, 0);
+});
+
+test('close parallel tram track is not shared unless it lies within the documented geometry tolerance', () => {
+  const infrastructure = createTramInfrastructure();
+  const original = [[50, 19.9], [50, 19.91]];
+  const first = planTrackSegments(infrastructure, original, { costPerKm: 100000 });
+  assert.equal(commitTrackPlan(infrastructure, first), true);
+  const parallel = planTrackSegments(infrastructure, original.map(([lat, lng]) => [lat + 0.00002, lng]), { costPerKm: 100000 });
+  assert.equal(parallel.valid, true);
+  assert.equal(parallel.newSegments.length, 1);
+  assert.ok(parallel.cost > 0);
+});
+
+test('player track graph joins a branch endpoint to the interior of an existing segment', () => {
+  const infrastructure = createTramInfrastructure();
+  const a = [50, 19.9], b = [50, 19.91], junction = [50, 19.905], terminal = [50.001, 19.905];
+  assert.equal(commitTrackPlan(infrastructure, planTrackSegments(infrastructure, [a, b])), true);
+  assert.equal(commitTrackPlan(infrastructure, planTrackSegments(infrastructure, [junction, terminal])), true);
+  const city = { points: [
+    { id: 'a', lat: a[0], lng: a[1] }, { id: 'terminal', lat: terminal[0], lng: terminal[1] }
+  ] };
+  const route = routeOnPlayerTramTracks(infrastructure, ['a', 'terminal'], city);
+  assert.equal(route.valid, true, route.reason);
+  assert.ok(route.trackIds.length >= 2);
+  assert.ok(route.distanceKm > 0);
 });
 
 test('manual tram geometry stays independent from streets and must pass selected stops in order', () => {
@@ -75,6 +113,100 @@ test('street tram construction accepts a real OSM route over 300 points and save
   const result = game.addLine('tram', stops);
   assert.equal(result.ok, true, result.message);
   assert.equal(game.state.budget, before - preview.cost);
-  assert.equal(game.state.lines[1].tramTrackIds.length, preview.trackPlan.segmentIds.length);
+  assert.deepEqual(game.state.lines[1].tramTrackIds, [...new Set(preview.trackPlan.segmentIds)]);
   assert.equal(validateState(game.state, CITIES.krakow), true);
+});
+
+test('editing a tram control point rebuilds geometry even when the stop list is unchanged', () => {
+  const game = new UrbanFlowGame(CITIES.krakow, { startScenarioId: 'wieliczka' });
+  assert.equal(game.chooseStarterRoute('loop-center').ok, true);
+  game.state.unlocked.push('tram');
+  game.setTramBuildMode('manual');
+  const stops = ['wieliczka', 'biezanow'];
+  game.state.selectedNodes = stops;
+  game.state.tramControlPoints = [[49.99, 20.03]];
+  const created = game.addLine('tram', stops);
+  assert.equal(created.ok, true, created.message);
+  const line = created.line;
+  const originalGeometry = structuredClone(line.routeGeometry);
+  const originalTrackIds = [...line.tramTrackIds];
+  const originalBudget = game.state.budget;
+
+  assert.equal(game.beginEditLine(line.id).ok, true);
+  game.state.tramControlPoints = [[49.991, 20.031]];
+  const preview = game.previewLine('tram', stops, line.id);
+  assert.equal(preview.ok, true, preview.message);
+  assert.notDeepEqual(preview.routeGeometry, originalGeometry);
+  assert.ok(preview.cost > 0);
+  assert.equal(game.state.budget, originalBudget);
+
+  const result = game.editLine(line.id, stops);
+  assert.equal(result.ok, true, result.message);
+  assert.deepEqual(line.stops, stops);
+  assert.notDeepEqual(line.routeGeometry, originalGeometry);
+  assert.notDeepEqual(line.tramTrackIds, originalTrackIds);
+  assert.equal(game.state.budget, originalBudget - preview.cost);
+  const saved = structuredClone(game.state);
+  const resumed = new UrbanFlowGame(CITIES.krakow, {}, saved);
+  assert.deepEqual(resumed.state.lines.find(item => item.id === line.id).routeGeometry, line.routeGeometry);
+  assert.equal(resumed.previewLine('tram', stops, line.id).cost, 0, 'loading committed geometry cannot collect a rebuild cost again');
+});
+
+test('editing an unchanged tram route costs nothing and keeps its service history', () => {
+  const game = new UrbanFlowGame(CITIES.krakow, { startScenarioId: 'wieliczka' });
+  assert.equal(game.chooseStarterRoute('loop-center').ok, true);
+  game.state.unlocked.push('tram');
+  game.setTramBuildMode('manual');
+  const stops = ['wieliczka', 'biezanow'];
+  game.state.selectedNodes = stops;
+  game.state.tramControlPoints = [[49.99, 20.03]];
+  const { line } = game.addLine('tram', stops);
+  line.stats.carried = 42;
+  const budget = game.state.budget;
+  game.beginEditLine(line.id);
+  const preview = game.previewLine('tram', stops, line.id);
+  assert.equal(preview.ok, true, preview.message);
+  assert.equal(preview.cost, 0);
+  assert.equal(game.editLine(line.id, stops).ok, true);
+  assert.equal(game.state.budget, budget);
+  assert.equal(line.stats.carried, 42);
+});
+
+test('manual tram control points support move, delete, undo and redo without changing stops', () => {
+  const game = new UrbanFlowGame(CITIES.krakow, { startScenarioId: 'wieliczka' });
+  game.chooseStarterRoute('loop-center');
+  game.state.unlocked.push('tram');
+  game.setTramBuildMode('manual');
+  const stops = ['wieliczka', 'biezanow']; game.state.selectedNodes = stops;
+  assert.equal(game.addTramControlPoint(49.99, 20.03).ok, true);
+  const original = structuredClone(game.state.tramControlPoints);
+  assert.equal(game.moveTramControlPoint(0, 49.991, 20.031).ok, true);
+  assert.notDeepEqual(game.state.tramControlPoints, original);
+  assert.equal(game.undoTramControlEdit().ok, true);
+  assert.deepEqual(game.state.tramControlPoints, original);
+  assert.equal(game.redoTramControlEdit().ok, true);
+  assert.deepEqual(game.state.selectedNodes, stops);
+  assert.equal(game.removeTramControlPoint(0).ok, true);
+  assert.deepEqual(game.state.tramControlPoints, []);
+  assert.equal(game.undoTramControlEdit().ok, true);
+  assert.deepEqual(game.state.tramControlPoints, [[49.991, 20.031]]);
+});
+
+test('existing-track tram mode reuses the campaign own track without charging track construction again', () => {
+  const game = new UrbanFlowGame(CITIES.krakow, { startScenarioId: 'wieliczka' });
+  assert.equal(game.chooseStarterRoute('loop-center').ok, true);
+  game.state.unlocked.push('tram');
+  game.setTramBuildMode('manual');
+  const stops = ['wieliczka', 'biezanow'];
+  game.state.selectedNodes = stops;
+  game.state.tramControlPoints = [[49.99, 20.03]];
+  const built = game.addLine('tram', stops);
+  assert.equal(built.ok, true, built.message);
+  game.beginEditLine(built.line.id);
+  game.setTramBuildMode('existing');
+  const preview = game.previewLine('tram', stops, built.line.id);
+  assert.equal(preview.ok, true, preview.message);
+  assert.match(preview.routeDetails.source, /Własne torowisko UrbanFlow/);
+  assert.equal(preview.trackCost, 0);
+  assert.ok(preview.routeDetails.trackIds.length > 0);
 });

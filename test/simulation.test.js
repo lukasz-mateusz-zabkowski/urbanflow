@@ -31,6 +31,14 @@ test('weighted routing prefers a faster train over a slow direct bus', () => {
   assert.equal(findRoute(graph, 'a', 'c')[0].lineId, 'fast');
 });
 
+test('a saved line marked unavailable is excluded from passenger service and has no active frequency', () => {
+  const line = makeLine('unavailable', 'bus', ['a', 'b'], { routingUnavailable: 'No legal road path' });
+  const graph = buildTransportGraph([line], points, 720);
+  assert.equal(graph.has('a'), false);
+  assert.equal(lineMetrics(line, { points }, 720).effectiveFrequency, 0);
+  assert.equal(lineMetrics(line, { points }, 720).capacityPerHour, 0);
+});
+
 test('cohorts take travel time, change vehicles, conserve people and count final arrivals once', () => {
   const state = makeState([makeLine('first', 'bus', ['a', 'b']), makeLine('second', 'tram', ['b', 'c'])]);
   seed(state, 'a', 'c', 12);

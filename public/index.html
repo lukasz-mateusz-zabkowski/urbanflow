@@ -156,6 +156,13 @@
             </div>
             <p id="tramDraftHint" role="status"></p>
             <button type="button" class="secondary-button" data-action="clear-tram-controls">Wyczyść punkty ręczne</button>
+            <div class="tram-control-actions" role="group" aria-label="Edycja punktów kontrolnych torowiska">
+              <button type="button" data-action="undo-tram-control" aria-label="Cofnij operację punktu">Cofnij</button>
+              <button type="button" data-action="redo-tram-control" aria-label="Ponów operację punktu">Ponów</button>
+              <button type="button" data-action="remove-tram-control" aria-label="Usuń wybrany punkt">Usuń punkt</button>
+              <button type="button" data-action="restore-tram-controls">Przywróć zatwierdzony przebieg</button>
+            </div>
+            <p class="tram-control-help">Punkty kontrolne nie są przystankami. Przeciągnij ponumerowany uchwyt; Delete usuwa zaznaczony punkt, Ctrl+Z cofa, Escape anuluje edycję linii.</p>
           </div>
           <div class="draft-card">
             <div class="draft-header"><span>Przebieg trasy</span><span id="draftStopCount">0 przystanków</span></div>

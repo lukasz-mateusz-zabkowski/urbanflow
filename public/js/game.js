@@ -11,7 +11,7 @@ import { ensureMobilityState } from './mobility.js?v=11';
 import { chooseStartScenario, starterRoutesFor } from './cities.js?v=11';
 import { getRoutingGraphStatus, routeLine, routeLineDetails, routingMode } from './routing.js?v=14';
 import { ensureFleet, fleetStatus, missingFleetCost } from './fleet.js?v=10';
-import { createTramInfrastructure, planTrackSegments, commitTrackPlan, buildManualTramGeometry } from './tramway.js?v=1';
+import { createTramInfrastructure, planTrackSegments, commitTrackPlan, buildManualTramGeometry, routeOnPlayerTramTracks } from './tramway.js?v=1';
 import { ensureCityEvolution, evolveCityWeek } from './city-evolution.js?v=2';
 import { advanceInvestmentProjects, approveInvestment, cancelInvestment, createInvestmentState, planInvestment, recordInvestmentWeek } from './investments.js?v=1';
 import {
@@ -22,10 +22,13 @@ import {
 const fail = message => ({ ok: false, message });
 const blankStats = () => createLineStats();
 const signature = stops => [stops.join('|'), [...stops].reverse().join('|')].sort()[0];
+const geometrySignature = geometry => Array.isArray(geometry) ? geometry.map(point =>
+  Array.isArray(point) ? point.map(value => Math.round(Number(value) * 1e6)).join(',') : '').join(';') : '';
 
 export class UrbanFlowGame {
   constructor(city, events = {}, savedState = null) {
     this.city = city; this.events = events;
+    this.tramControlUndo = []; this.tramControlRedo = [];
     const savedStart = savedState?.startScenarioId || (savedState ? 'wieliczka' : null);
     this.startScenario = chooseStartScenario(events.random || Math.random, events.startScenarioId || savedStart);
     this.starterRoutes = starterRoutesFor(this.startScenario);
@@ -87,7 +90,8 @@ export class UrbanFlowGame {
   setTramBuildMode(mode) {
     if (!['street', 'manual', 'existing'].includes(mode)) return fail('Nieznany sposób budowy torowiska.');
     if (!this.availableTypes().includes('tram') || this.state.status !== 'playing') return fail('Budowa tramwaju nie jest dostępna.');
-    this.state.tramBuildMode = mode; this.state.tramControlPoints = []; this.state.selectedType = 'tram'; this.changed();
+    this.state.tramBuildMode = mode; this.state.tramControlPoints = []; this.state.tramSelectedControlIndex = -1;
+    this.tramControlUndo = []; this.tramControlRedo = []; this.state.selectedType = 'tram'; this.changed();
     return { ok: true };
   }
   addTramControlPoint(lat, lng) {
@@ -95,9 +99,54 @@ export class UrbanFlowGame {
     if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180 || this.state.tramControlPoints.length >= 300) return fail('Nieprawidłowy punkt przebiegu.');
     const point = [Number(lat), Number(lng)], previous = this.state.tramControlPoints.at(-1);
     if (previous && Math.hypot((point[0] - previous[0]) * 111, (point[1] - previous[1]) * 70) < 0.005) return fail('Punkt jest zbyt blisko poprzedniego.');
-    this.state.tramControlPoints.push(point); this.changed(); return { ok: true };
+    this.rememberTramControlEdit(); this.state.tramControlPoints.push(point); this.state.tramSelectedControlIndex = this.state.tramControlPoints.length - 1;
+    this.changed(); return { ok: true };
   }
-  clearTramControlPoints() { this.state.tramControlPoints = []; this.changed(); return { ok: true }; }
+  rememberTramControlEdit() {
+    this.tramControlUndo.push(structuredClone(this.state.tramControlPoints || []));
+    if (this.tramControlUndo.length > 50) this.tramControlUndo.shift();
+    this.tramControlRedo = [];
+  }
+  moveTramControlPoint(index, lat, lng) {
+    if (this.state.status !== 'playing' || this.state.selectedType !== 'tram' || this.state.tramBuildMode !== 'manual'
+      || !Number.isInteger(index) || index < 0 || index >= this.state.tramControlPoints.length
+      || !Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180) return fail('Nieprawidłowa edycja punktu torowiska.');
+    const point = [Number(lat), Number(lng)], previous = this.state.tramControlPoints[index];
+    if (Math.hypot((point[0] - previous[0]) * 111, (point[1] - previous[1]) * 70) < 0.003) return { ok: true, unchanged: true };
+    this.rememberTramControlEdit(); this.state.tramControlPoints[index] = point; this.state.tramSelectedControlIndex = index;
+    this.changed(); return { ok: true };
+  }
+  selectTramControlPoint(index) {
+    if (!Number.isInteger(index) || index < 0 || index >= this.state.tramControlPoints.length) return fail('Nieznany punkt kontrolny.');
+    this.state.tramSelectedControlIndex = index; this.events.onChange?.(); return { ok: true };
+  }
+  removeTramControlPoint(index = this.state.tramSelectedControlIndex) {
+    if (this.state.status !== 'playing' || !Number.isInteger(index) || index < 0 || index >= this.state.tramControlPoints.length) return fail('Wybierz punkt kontrolny do usunięcia.');
+    this.rememberTramControlEdit(); this.state.tramControlPoints.splice(index, 1);
+    this.state.tramSelectedControlIndex = this.state.tramControlPoints.length ? Math.min(index, this.state.tramControlPoints.length - 1) : -1;
+    this.changed(); return { ok: true };
+  }
+  undoTramControlEdit() {
+    if (!this.tramControlUndo.length) return fail('Brak operacji do cofnięcia.');
+    this.tramControlRedo.push(structuredClone(this.state.tramControlPoints || []));
+    this.state.tramControlPoints = this.tramControlUndo.pop(); this.state.tramSelectedControlIndex = -1; this.changed(); return { ok: true };
+  }
+  redoTramControlEdit() {
+    if (!this.tramControlRedo.length) return fail('Brak operacji do ponowienia.');
+    this.tramControlUndo.push(structuredClone(this.state.tramControlPoints || []));
+    this.state.tramControlPoints = this.tramControlRedo.pop(); this.state.tramSelectedControlIndex = -1; this.changed(); return { ok: true };
+  }
+  restoreTramControlPoints() {
+    const line = this.state.lines.find(item => item.id === this.state.editingLineId && item.type === 'tram');
+    if (!line) return fail('Najpierw wybierz istniejącą linię tramwajową do edycji.');
+    this.state.tramControlPoints = structuredClone(line.tramControlPoints || []);
+    this.state.tramBuildMode = line.tramBuildMode || 'street';
+    this.tramControlUndo = []; this.tramControlRedo = []; this.state.tramSelectedControlIndex = -1; this.changed(); return { ok: true };
+  }
+  clearTramControlPoints() {
+    if (this.state.tramControlPoints.length) this.rememberTramControlEdit();
+    this.state.tramControlPoints = []; this.state.tramSelectedControlIndex = -1; this.changed(); return { ok: true };
+  }
   changed() { this.events.onSave?.(this.state); this.events.onChange?.(); }
   pointName(id) { return this.city.points.find(point => point.id === id)?.name || id; }
   visiblePoints() {
@@ -164,6 +213,10 @@ export class UrbanFlowGame {
       routeDetails = { ...street, vehicleCoordinates: coordinates, coordinates, source: `${street.source} + torowisko budowane przez gracza`,
         algorithm: `${street.algorithm} + budowa toru`, reason: 'Torowisko zostanie zbudowane wzdłuż lokalnie wyznaczonego przebiegu autobusowego.',
         valid: trackPlan.valid, trackPlan, mode: 'tramway' };
+    } else if (type === 'tram' && this.state.tramBuildMode === 'existing') {
+      const playerRoute = routeOnPlayerTramTracks(this.state.tramInfrastructure, stops, this.city);
+      if (playerRoute.valid) routeDetails = playerRoute;
+      else routeDetails.reason = `${routeDetails.reason || ''} ${playerRoute.reason}`.trim();
     }
     const containsRealStop = stops.some(id => this.city.points.find(point => point.id === id)?.type === 'stop');
     const localSurfaceGraphLoaded = ['bus', 'tram'].includes(type) && getRoutingGraphStatus(this.city.id).loaded;
@@ -173,7 +226,10 @@ export class UrbanFlowGame {
     const distanceKm = Math.max(0.1, routeDetails.distanceKm);
     let infrastructureCost = lineCost(type, distanceKm, stops, this.city);
     const old = this.state.lines.find(l => l.id === editingId);
-    const unchanged = old && signature(old.stops) === signature(stops);
+    const unchanged = old && signature(old.stops) === signature(stops)
+      && geometrySignature(old.routeGeometry) === geometrySignature(routeGeometry)
+      && (type !== 'tram' || (old.tramBuildMode || 'street') === this.state.tramBuildMode
+        && JSON.stringify(old.tramTrackIds || []) === JSON.stringify(trackPlan?.segmentIds || routeDetails.trackIds || old.tramTrackIds || []));
     const fleetPurchase = old ? { missing: 0, cost: 0 } : missingFleetCost(this.state, type, 2);
     if (type === 'tram' && this.state.tramBuildMode !== 'existing' && !trackPlan) {
       const trackGeometry = routeDetails.vehicleCoordinates || routeDetails.roadCoordinates || routeDetails.coordinates;
@@ -191,15 +247,20 @@ export class UrbanFlowGame {
     }
     const trackCost = type === 'tram' ? infrastructureCost : 0;
     // No refunds for removing infrastructure; changes carry the existing rebuilding charge.
-    const rebuildCost = old ? (unchanged ? 0 : Math.round(Math.max(0, infrastructureCost - (old.infrastructureCost ?? lineCost(old.type, old.distanceKm, old.stops, this.city))) + infrastructureCost * .12)) : infrastructureCost;
+    const baseConstructionCost = lineCost(type, distanceKm, stops, this.city);
+    const rebuildCost = old ? (unchanged ? 0 : Math.round(Math.max(0, infrastructureCost
+      - (old.infrastructureCost ?? lineCost(old.type, old.distanceKm, old.stops, this.city)))
+      + (type === 'tram' ? baseConstructionCost : infrastructureCost) * .12)) : infrastructureCost;
     const cost = rebuildCost + fleetPurchase.cost;
-    const metrics = lineMetrics({ type, stops, distanceKm, vehicles: old?.vehicles ?? 2, frequency: old?.frequency ?? 3 }, this.city,
+    const metrics = lineMetrics({ type, stops, distanceKm, routeGeometry, vehicles: old?.vehicles ?? 2, frequency: old?.frequency ?? 3 }, this.city,
       gameClock(this.state.elapsedMinutes, this.state.calendar).minuteOfDay, {
         events: this.state.cityEvents, elapsedMinutes: this.state.elapsedMinutes,
         serviceDayType: gameClock(this.state.elapsedMinutes, this.state.calendar).dayType
       });
     return { ok: true, cost, infrastructureCost, fleetCost: fleetPurchase.cost, trackCost, trackPlan, vehiclesToBuy: fleetPurchase.missing,
-      distanceKm, routeGeometry, routeDetails, routingMode: routingMode(type), metrics, affordable: this.state.budget >= cost };
+      distanceKm, routeGeometry, routeDetails, routingMode: routingMode(type), tramBuildMode: type === 'tram' ? this.state.tramBuildMode : undefined,
+      tramControlPoints: type === 'tram' ? structuredClone(this.state.tramControlPoints || []) : undefined,
+      metrics, affordable: this.state.budget >= cost };
   }
   addLine(type, stops, _legacyForcedCost = null, name = null) {
     const preview = this.previewLine(type, stops, null);
@@ -211,7 +272,9 @@ export class UrbanFlowGame {
     if (preview.vehiclesToBuy) this.state.fleet[type].owned += preview.vehiclesToBuy;
     const line = { id: `line-${id}`, type, stops: [...stops], distanceKm: preview.distanceKm, cost: preview.cost,
       routeGeometry: preview.routeGeometry, routingMode: preview.routingMode, infrastructureCost: preview.infrastructureCost,
-      ...(trackPlan ? { tramTrackIds: trackPlan.segmentIds } : {}),
+      ...(trackPlan ? { tramTrackIds: [...new Set(trackPlan.segmentIds)] }
+        : (preview.routeDetails.trackIds || preview.routeDetails.playerTrackIds)?.length ? { tramTrackIds: [...new Set(preview.routeDetails.trackIds || preview.routeDetails.playerTrackIds)] } : {}),
+      ...(type === 'tram' ? { tramBuildMode: this.state.tramBuildMode, tramControlPoints: structuredClone(this.state.tramControlPoints || []) } : {}),
       name: name || `${TRANSPORT_TYPES[type].short}${id}`, color: TRANSPORT_TYPES[type].color,
       vehicles: 2, frequency: 3, timetable: createWeeklyTimetable('balanced', TRANSPORT_TYPES[type].maxFrequency),
       ageMinutes: 0, stats: blankStats() };
@@ -225,7 +288,13 @@ export class UrbanFlowGame {
   beginEditLine(id) {
     const line = this.state.lines.find(l => l.id === id);
     if (!line || this.state.status !== 'playing') return fail('Nie można edytować tej linii.');
-    this.state.editingLineId = id; this.state.selectedType = line.type; this.state.selectedNodes = [...line.stops]; this.changed(); return { ok: true };
+    this.state.editingLineId = id; this.state.selectedType = line.type; this.state.selectedNodes = [...line.stops];
+    if (line.type === 'tram') {
+      this.state.tramBuildMode = ['street', 'manual', 'existing'].includes(line.tramBuildMode) ? line.tramBuildMode : 'street';
+      this.state.tramControlPoints = Array.isArray(line.tramControlPoints) ? structuredClone(line.tramControlPoints) : [];
+      this.state.tramSelectedControlIndex = -1; this.tramControlUndo = []; this.tramControlRedo = [];
+    }
+    this.changed(); return { ok: true };
   }
   stageStopInsertion(lineId, segmentIndex, stopId) {
     const line = this.state.lines.find(item => item.id === lineId);
@@ -238,22 +307,39 @@ export class UrbanFlowGame {
     this.changed();
     return { ok: true, preview: this.previewLine() };
   }
-  cancelEdit() { this.state.selectedNodes = []; this.state.editingLineId = null; this.changed(); }
+  cancelEdit() {
+    const line = this.state.lines.find(item => item.id === this.state.editingLineId && item.type === 'tram');
+    if (line) { this.state.tramBuildMode = line.tramBuildMode || 'street'; this.state.tramControlPoints = structuredClone(line.tramControlPoints || []); }
+    else this.state.tramControlPoints = [];
+    this.state.tramSelectedControlIndex = -1; this.tramControlUndo = []; this.tramControlRedo = [];
+    this.state.selectedNodes = []; this.state.editingLineId = null; this.changed();
+  }
   editLine(id, stops) {
     const line = this.state.lines.find(l => l.id === id);
     if (!line) return fail('Nieznana linia.');
     const preview = this.previewLine(line.type, stops, id);
     if (!preview.ok) return preview;
     if (!preview.affordable) return fail(`Brakuje ${Math.ceil(preview.cost - this.state.budget).toLocaleString('pl-PL')} zł na przebudowę.`);
-    if (signature(line.stops) !== signature(stops)) {
+    const routeChanged = signature(line.stops) !== signature(stops)
+      || geometrySignature(line.routeGeometry) !== geometrySignature(preview.routeGeometry)
+      || line.routingMode !== preview.routingMode
+      || (line.type === 'tram' && ((line.tramBuildMode || 'street') !== this.state.tramBuildMode
+        || JSON.stringify(line.tramTrackIds || []) !== JSON.stringify(preview.trackPlan?.segmentIds || preview.routeDetails?.trackIds || line.tramTrackIds || [])));
+    if (routeChanged) {
       if (preview.trackPlan && !commitTrackPlan(this.state.tramInfrastructure, preview.trackPlan, this.state.elapsedMinutes)) return fail('Nie udało się atomowo zatwierdzić budowy torowiska.');
       line.stops = [...stops]; line.distanceKm = preview.distanceKm; line.cost += preview.cost;
       line.routeGeometry = preview.routeGeometry; line.routingMode = preview.routingMode; line.infrastructureCost = preview.infrastructureCost;
-      if (preview.trackPlan) line.tramTrackIds = preview.trackPlan.segmentIds;
+      if (preview.trackPlan) line.tramTrackIds = [...new Set(preview.trackPlan.segmentIds)];
+      else if (preview.routeDetails?.trackIds) line.tramTrackIds = [...new Set(preview.routeDetails.trackIds)];
+      if (line.type === 'tram') { line.tramBuildMode = this.state.tramBuildMode; line.tramControlPoints = structuredClone(this.state.tramControlPoints || []); }
       // Edited routes must demonstrate useful service again before counting toward unlocks.
       line.ageMinutes = 0; line.stats = blankStats(); line.history = []; line.accounting = [];
       this.state.budget -= preview.cost; this.state.networkVersion++;
       this.revealStops(line.stops, { maxCorridor: 10, maxRing: 4 });
+    }
+    if (line.routingUnavailable) {
+      delete line.routingUnavailable;
+      if (!routeChanged) this.state.networkVersion++;
     }
     this.state.selectedNodes = []; this.state.editingLineId = null;
     this.events.onLineEdited?.(line); this.changed(); return { ok: true, line };

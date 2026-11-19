@@ -5,6 +5,8 @@ import { gunzipSync } from 'node:zlib';
 import { attachStops, CITIES, KRAKOW_STARTS } from '../public/js/cities.js';
 import { decodeRoutingGraphBinary, diagnoseOsmRoute, registerRoutingGraph, routeLineDetails } from '../public/js/routing.js?v=14';
 import { UrbanFlowGame } from '../public/js/game.js';
+import { lineMetrics } from '../public/js/transport.js';
+import { buildTransportGraph } from '../public/js/passengers.js';
 
 const manifest = JSON.parse(await readFile(new URL('../public/data/routing/krakow.json', import.meta.url), 'utf8'));
 const compressedGraphBytes = await readFile(new URL('../public/data/routing/krakow-road-graph.bin.gz', import.meta.url));
@@ -117,4 +119,25 @@ test('an unreachable starter area is reported before construction instead of sav
   assert.equal(game.createSelectedLine().ok, false);
   assert.equal(game.state.lines.length, 0);
   assert.equal(game.state.budget, budget);
+});
+
+test('unroutable legacy bus geometry is preserved, marked unavailable and removed from service without rebuilding cost', () => {
+  registerRoutingGraph('krakow', manifest, graphBytes);
+  const city = { ...CITIES.krakow, points: CITIES.krakow.points.map(point => ({ ...point })), stopsAttached: false };
+  attachStops(city, stopsData);
+  const game = new UrbanFlowGame(city, { startScenarioId: 'wieliczka' });
+  const oldGeometry = [[50.0912, 20.2611], [50.091, 20.26], [50.086, 20.02]];
+  const line = { id: 'legacy-igolomia', type: 'bus', stops: ['igolomia', 'dworzec'], distanceKm: 20,
+    routeGeometry: oldGeometry, routingMode: 'road', vehicles: 2, frequency: 3, ageMinutes: 240,
+    timetable: undefined, stats: { carried: 7, revenue: 0, expenses: 0 } };
+  game.state.lines.push(line);
+  const budget = game.state.budget, campaign = structuredClone(game.state.campaign);
+  const refresh = game.refreshRoutesFromGraph('bus');
+  assert.deepEqual(refresh.unavailable.map(item => item.lineId), [line.id]);
+  assert.deepEqual(line.routeGeometry, oldGeometry);
+  assert.match(line.routingUnavailable, /dop|graf|połącz/i);
+  assert.equal(game.state.budget, budget);
+  assert.deepEqual(game.state.campaign, campaign);
+  assert.equal(lineMetrics(line, city, 720).effectiveFrequency, 0);
+  assert.equal(buildTransportGraph(game.state.lines, city.points, 720, city).size, 0);
 });

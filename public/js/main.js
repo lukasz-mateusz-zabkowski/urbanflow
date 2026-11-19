@@ -96,6 +96,12 @@ async function startCity(savedState = null) {
     else ui.toast(result.preview?.message || 'Podgląd trasy wymaga sprawdzenia.', 'warn');
     document.getElementById('buildSection').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   });
+  gameMap.setTramControlHandlers({
+    move: (index, latlng) => game.moveTramControlPoint(index, latlng.lat, latlng.lng),
+    select: index => game.selectTramControlPoint(index),
+    remove: index => game.removeTramControlPoint(index),
+    cancel: () => game.events.onChange?.()
+  });
   gameMap.setMapClickHandler(latlng => {
     if (game.state.selectedType !== 'tram' || game.state.tramBuildMode !== 'manual') return;
     const result = game.addTramControlPoint(latlng.lat, latlng.lng);

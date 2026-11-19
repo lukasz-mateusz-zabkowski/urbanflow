@@ -87,6 +87,9 @@ export class UI {
       if (button.dataset.tramMode) {
         const mode = button.dataset.tramMode;
         if (mode === 'existing') {
+          if (this.game.state.tramInfrastructure?.segments?.length) {
+            this.checkResult(this.game.setTramBuildMode(mode)); return;
+          }
           button.disabled = true;
           loadRoutingGraph(this.game.city.id, 'tram').then(() => {
             this.checkResult(this.game.setTramBuildMode(mode)); this.render();
@@ -96,6 +99,10 @@ export class UI {
         return;
       }
       if (action === 'clear-tram-controls') { this.checkResult(this.game.clearTramControlPoints()); return; }
+      if (action === 'undo-tram-control') { this.checkResult(this.game.undoTramControlEdit()); return; }
+      if (action === 'redo-tram-control') { this.checkResult(this.game.redoTramControlEdit()); return; }
+      if (action === 'remove-tram-control') { this.checkResult(this.game.removeTramControlPoint()); return; }
+      if (action === 'restore-tram-controls') { this.checkResult(this.game.restoreTramControlPoints()); return; }
       if (type) {
         this.checkResult(this.game.setTransport(type));
         return;
@@ -259,6 +266,20 @@ export class UI {
       }
     }, { signal });
     document.addEventListener('keydown', event => {
+      const target = event.target;
+      const typing = target instanceof HTMLElement && (target.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName));
+      if (this.game.state.selectedType === 'tram' && this.game.state.tramBuildMode === 'manual' && !typing) {
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
+          event.preventDefault(); this.checkResult(event.shiftKey ? this.game.redoTramControlEdit() : this.game.undoTramControlEdit()); return;
+        }
+        if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') { event.preventDefault(); this.checkResult(this.game.redoTramControlEdit()); return; }
+        if (event.key === 'Delete' && Number.isInteger(this.game.state.tramSelectedControlIndex)) {
+          event.preventDefault(); this.checkResult(this.game.removeTramControlPoint()); return;
+        }
+      }
+      if (event.key === 'Escape' && this.game.state.editingLineId && !document.querySelector('dialog[open]')) {
+        this.game.cancelEdit(); return;
+      }
       if (event.key === 'Escape') this.closePanel();
     }, { signal });
     const panel = $('#buildPanel');
@@ -462,9 +483,18 @@ export class UI {
       button.setAttribute('aria-pressed', String(button.dataset.tramMode === state.tramBuildMode));
     });
     this.setText('tramDraftHint', state.tramBuildMode === 'manual'
-      ? `Ręczny przebieg: ${state.tramControlPoints.length} punktów pośrednich. Klikaj mapę, aby dodać punkty między pierwszym i ostatnim przystankiem.`
-      : state.tramBuildMode === 'existing' ? 'Przebieg użyje lokalnych torowisk OSM; dobudowa brakujących odcinków nie jest w tym trybie planowana.'
+      ? `Ręczny przebieg: ${state.tramControlPoints.length} punktów pośrednich. Kliknij mapę, aby dodać uchwyt; przeciągnij ponumerowany punkt, aby zmienić geometrię.`
+      : state.tramBuildMode === 'existing' ? 'Trasa może wykorzystać lokalne tory OSM i torowiska już zapisane w tej kampanii; bez ponownej opłaty za istniejące odcinki.'
         : 'Torowisko zostanie zbudowane wzdłuż dróg dostępnych w lokalnym grafie; wspólne odcinki nie będą naliczane ponownie.');
+    const controlUndo = $('#tramBuildTools [data-action="undo-tram-control"]');
+    const controlRedo = $('#tramBuildTools [data-action="redo-tram-control"]');
+    const controlRemove = $('#tramBuildTools [data-action="remove-tram-control"]');
+    const controlRestore = $('#tramBuildTools [data-action="restore-tram-controls"]');
+    if (controlUndo) controlUndo.disabled = !this.game.tramControlUndo.length;
+    if (controlRedo) controlRedo.disabled = !this.game.tramControlRedo.length;
+    if (controlRemove) controlRemove.disabled = !Number.isInteger(state.tramSelectedControlIndex)
+      || state.tramSelectedControlIndex < 0 || state.tramSelectedControlIndex >= state.tramControlPoints.length;
+    if (controlRestore) controlRestore.disabled = !editing || !state.lines.find(line => line.id === state.editingLineId)?.tramControlPoints;
     this.setText('buildTitle', editing ? 'Edytuj przebieg linii' : 'Zaplanuj linię');
     const selected = state.selectedNodes.map(id => city.points.find(point => point.id === id)).filter(Boolean);
     this.setText('draftStopCount', `${selected.length} przystanków`);
@@ -755,7 +785,7 @@ export class UI {
     const metrics = lineMetrics(line, city, clock.minuteOfDay,
       { events: state.cityEvents || [], elapsedMinutes: state.elapsedMinutes, serviceDayType: clock.dayType });
     if (this.detailLineId !== line.id) {
-      container.innerHTML = `<div class="detail-heading"><span class="section-kicker">Szczegóły linii</span><strong data-detail="name"></strong></div><p class="detail-route" data-detail="route"></p><dl class="detail-stats"><div><dt>Długość</dt><dd data-detail="distance"></dd></div><div><dt>Przejazd w jedną stronę</dt><dd data-detail="travel"></dd></div><div><dt>Wpływy / h</dt><dd class="positive" data-detail="revenue"></dd></div><div><dt>Koszt / h</dt><dd data-detail="cost"></dd></div><div><dt>Bilans / h</dt><dd data-detail="balance"></dd></div><div><dt>Dotacja pasażerokm</dt><dd data-detail="subsidy"></dd></div><div><dt>Przewozy od przebudowy</dt><dd data-detail="carried"></dd></div><div><dt>Średni czas oczekiwania</dt><dd data-detail="wait"></dd></div><div><dt>Kolejka tej linii</dt><dd data-detail="waiting"></dd></div><div><dt>Wykorzystanie floty</dt><dd data-detail="vehicles"></dd></div></dl><div class="load-heading"><span>Wykorzystanie przepustowości</span><b data-detail="load"></b></div><div class="load-track"><i id="detailLoadBar"></i></div><p class="line-diagnosis" data-detail="diagnosis"></p><section class="timetable-control" aria-labelledby="timetableTitle"><div class="timetable-heading"><div><span class="section-kicker">Rozkład jazdy</span><strong id="timetableTitle">Częstotliwość w ciągu doby</strong></div><select data-timetable-profile data-line="${escapeHtml(line.id)}" aria-label="Gotowy profil rozkładu"></select></div><p class="timetable-current" data-current-period></p><p class="timetable-overview" data-detail="frequency"></p><div class="timetable-periods" data-timetable-periods></div><p class="timetable-capacity" data-timetable-capacity></p><button type="button" class="text-button timetable-restore" data-action="restore-timetable" data-line="${escapeHtml(line.id)}">Przywróć poprzednią konfigurację</button></section><div class="fleet-line-actions"><button type="button" data-action="unassign-vehicle" data-line="${escapeHtml(line.id)}">− Do rezerwy</button><button type="button" data-action="assign-vehicle" data-line="${escapeHtml(line.id)}">＋ Z rezerwy</button></div><button class="secondary-button" type="button" data-action="buy-vehicle" data-line="${escapeHtml(line.id)}" id="buyVehicleButton"></button><div class="line-actions"><button type="button" data-action="edit-line" data-line="${escapeHtml(line.id)}">Edytuj przystanki</button><button type="button" class="danger-button" data-action="delete-line" data-line="${escapeHtml(line.id)}">Usuń linię</button></div>`;
+      container.innerHTML = `<div class="detail-heading"><span class="section-kicker">Szczegóły linii</span><strong data-detail="name"></strong></div><p class="detail-route" data-detail="route"></p><dl class="detail-stats"><div><dt>Długość</dt><dd data-detail="distance"></dd></div><div><dt>Przejazd w jedną stronę</dt><dd data-detail="travel"></dd></div><div><dt>Wpływy / h</dt><dd class="positive" data-detail="revenue"></dd></div><div><dt>Koszt / h</dt><dd data-detail="cost"></dd></div><div><dt>Bilans / h</dt><dd data-detail="balance"></dd></div><div><dt>Dotacja pasażerokm</dt><dd data-detail="subsidy"></dd></div><div><dt>Przewozy od przebudowy</dt><dd data-detail="carried"></dd></div><div><dt>Średni czas oczekiwania</dt><dd data-detail="wait"></dd></div><div><dt>Kolejka tej linii</dt><dd data-detail="waiting"></dd></div><div><dt>Wykorzystanie floty</dt><dd data-detail="vehicles"></dd></div></dl><div class="load-heading"><span>Wykorzystanie przepustowości</span><b data-detail="load"></b></div><div class="load-track"><i id="detailLoadBar"></i></div><p class="line-diagnosis" data-detail="diagnosis"></p><section class="timetable-control" aria-labelledby="timetableTitle"><div class="timetable-heading"><div><span class="section-kicker">Rozkład jazdy</span><strong id="timetableTitle">Częstotliwość w ciągu doby</strong></div><select data-timetable-profile data-line="${escapeHtml(line.id)}" aria-label="Gotowy profil rozkładu"></select></div><p class="timetable-current" data-current-period></p><p class="timetable-overview" data-detail="frequency"></p><div class="timetable-periods" data-timetable-periods></div><p class="timetable-capacity" data-timetable-capacity></p><button type="button" class="text-button timetable-restore" data-action="restore-timetable" data-line="${escapeHtml(line.id)}">Przywróć poprzednią konfigurację</button></section><div class="fleet-line-actions"><button type="button" data-action="unassign-vehicle" data-line="${escapeHtml(line.id)}">− Do rezerwy</button><button type="button" data-action="assign-vehicle" data-line="${escapeHtml(line.id)}">＋ Z rezerwy</button></div><button class="secondary-button" type="button" data-action="buy-vehicle" data-line="${escapeHtml(line.id)}" id="buyVehicleButton"></button><div class="line-actions"><button type="button" data-action="edit-line" data-line="${escapeHtml(line.id)}">${line.type === 'tram' ? 'Edytuj przebieg torów' : 'Edytuj przystanki'}</button><button type="button" class="danger-button" data-action="delete-line" data-line="${escapeHtml(line.id)}">Usuń linię</button></div>`;
       container.insertAdjacentHTML('beforeend', `<section class="line-stop-insert" aria-label="Wstaw przystanek do istniejącej linii"><strong>Wstaw przystanek na odcinku</strong><label>Odcinek<select data-edit-segment aria-label="Wybierz sąsiedni odcinek"></select></label><label>Przystanek<select data-edit-stop aria-label="Wybierz odkryty przystanek"></select></label><button type="button" class="secondary-button" data-action="insert-stop-line" data-line="${escapeHtml(line.id)}">Pokaż podgląd zmiany</button><small>Wstawienie pozostaje wersją roboczą. Koszt zostanie pobrany dopiero po zatwierdzeniu przebudowy.</small></section>`);
       this.detailLineId = line.id;
     }
@@ -876,6 +906,7 @@ export class UI {
 
   lineDiagnosis(line, metrics) {
     const stats = line.stats || {};
+    if (line.routingUnavailable) return `TRASA NIEDOSTĘPNA — ${line.routingUnavailable} Zachowano zapis geometrii; brak kursów i obsłużonych przejazdów. Edytuj lub przebuduj linię, aby przywrócić usługę.`;
     if (metrics.eventCapacityMultiplier === 0) return 'Aktywne wydarzenie wstrzymało tę linię na wskazanym odcinku. Uruchom objazd albo wzmocnij alternatywne połączenia.';
     if (metrics.eventSpeedMultiplier < .8) return 'Lokalne zakłócenie mocno spowalnia trasę. Sprawdź wydarzenia i rozważ objazd lub dodatkową linię.';
     if (line.ageMinutes < 60) return 'Nowa linia zbiera pierwszych pasażerów. Daj jej godzinę czasu miejskiego i obserwuj wyniki.';

@@ -71,6 +71,7 @@ export function buildTransportGraph(lines, points = [], minuteOfDay = 720, city 
   const graph = new Map();
   const byId = new Map(points.map(point => [point.id, point]));
   for (const line of lines) {
+    if (line.routingUnavailable) continue;
     const metrics = lineMetrics(line, city || { points }, minuteOfDay, context);
     const routeFrequency = context?.intervalMinutes ? metrics.averageEffectiveFrequency : metrics.effectiveFrequency;
     if (!line.id || (!routeFrequency && !includeInactive)) continue;
@@ -307,7 +308,7 @@ export function passengerTick(state, visiblePoints, minuteOfDay = 720, random = 
       const line = byLine.get(leg?.lineId);
       const sequenceChanged = line && leg.stopSequence && leg.stopSequence.join('|') !== line.stops
         .slice(Math.min(leg.fromIndex, leg.toIndex), Math.max(leg.fromIndex, leg.toIndex) + 1).join('|');
-      if (!line || line.stops[leg.fromIndex] !== leg.from || line.stops[leg.toIndex] !== leg.to || sequenceChanged) {
+      if (!line || line.routingUnavailable || line.stops[leg.fromIndex] !== leg.from || line.stops[leg.toIndex] !== leg.to || sequenceChanged) {
         // A removed/edited service returns its group to its last known stop.
         cohort.phase = 'waiting'; cohort.route = null; cohort.legIndex = 0;
       } else {

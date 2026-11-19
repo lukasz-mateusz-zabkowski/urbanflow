@@ -100,7 +100,7 @@ export function lineMetrics(line, city = null, minuteOfDay = 720, context = null
   const roundTripMinutes = travelMinutes * 2 + 4;
   const vehicles = Math.max(0, Math.floor(line.vehicles ?? 2));
   const serviceDayType = context?.serviceDayType || 'weekday';
-  const requestedFrequency = Math.max(0, Math.min(type.maxFrequency,
+  const requestedFrequency = line.routingUnavailable ? 0 : Math.max(0, Math.min(type.maxFrequency,
     frequencyAt(line.timetable, minuteOfDay, line.frequency ?? 3, serviceDayType)));
   const scheduledFrequency = Math.min(requestedFrequency, vehicles * 60 / roundTripMinutes);
   const effectiveFrequency = eventImpact.capacityMultiplier > 0 ? scheduledFrequency : 0;
@@ -121,7 +121,7 @@ export function lineMetrics(line, city = null, minuteOfDay = 720, context = null
     let service = 0; let capacity = 0; let cost = 0; let fleet = 0; let idleCost = 0;
     for (let minute = 0; minute < intervalMinutes; minute += 1) {
       const intervalDayType = context.intervalServiceDayTypes?.[minute] || serviceDayType;
-      const requested = Math.max(0, Math.min(type.maxFrequency,
+      const requested = line.routingUnavailable ? 0 : Math.max(0, Math.min(type.maxFrequency,
         frequencyAt(line.timetable, context.intervalStartMinuteOfDay + minute, line.frequency ?? 3, intervalDayType)));
       const scheduled = Math.min(requested, vehicles * 60 / roundTripMinutes);
       const active = scheduled * roundTripMinutes / 60;

@@ -5,7 +5,7 @@ import { activeCityEvents, upcomingCityEvents } from './city-events.js?v=10';
 import { routeLine, routeLineDetails } from './routing.js?v=14';
 import { describePlace } from './place-profiles.js?v=10';
 import { landUseDominantUse, landUseLabel } from './land-use.js?v=1';
-import { buildManualTramGeometry } from './tramway.js?v=1';
+import { buildManualTramGeometry, routeOnPlayerTramTracks } from './tramway.js?v=1';
 
 const FRAME_MS = 50;
 const MAX_VEHICLES_PER_LINE = 12;
@@ -70,7 +70,8 @@ export function vehiclePhase(ageMinutes, index, fleet, frequency, travelMinutes,
 export class GameMap {
   constructor(elementId, onPointClick, onLineClick = null, onSegmentDrop = null, onMapClick = null) {
     this.onPointClick = onPointClick; this.onLineClick = onLineClick; this.onSegmentDrop = onSegmentDrop; this.onMapClick = onMapClick;
-    this.markers = new Map(); this.lines = new Map(); this.vehicles = new Map(); this.orderMarkers = new Map();
+    this.onTramControlMove = null; this.onTramControlSelect = null; this.onTramControlDelete = null; this.onTramControlCancel = null;
+    this.markers = new Map(); this.lines = new Map(); this.vehicles = new Map(); this.orderMarkers = new Map(); this.tramControlMarkers = new Map();
     this.pointViews = new Map(); this.starterLayers = new Set(); this.effectTimers = new Set();
     this.visible = true; this.intersecting = true; this.frameId = null; this.lastFrame = 0;
     this.map = L.map(elementId, { zoomControl: false, attributionControl: true, preferCanvas: true });
@@ -119,6 +120,7 @@ export class GameMap {
     this.analysisRenderer = L.canvas({ padding: 0.4, pane: 'effects' });
     this.analysisLayer = L.layerGroup().addTo(this.map);
     this.tramTrackLayer = L.layerGroup().addTo(this.map);
+    this.tramControlLayer = L.layerGroup().addTo(this.map);
     this.eventLayer = L.layerGroup().addTo(this.map);
     this.onVisibilityChange = () => this.syncAnimation();
     document.addEventListener('visibilitychange', this.onVisibilityChange);
@@ -145,6 +147,7 @@ export class GameMap {
     this.starterLayers.forEach(layer => layer.remove());
     this.effectTimers.forEach(timer => clearTimeout(timer)); this.effectTimers.clear();
     this.markers.clear(); this.pointViews.clear(); this.lines.clear(); this.vehicles.clear(); this.orderMarkers.clear(); this.starterLayers.clear();
+    this.tramControlMarkers.clear(); this.tramControlLayer.clearLayers();
     this.analysisLayer.clearLayers(); this.eventLayer.clearLayers(); this.tramTrackLayer.clearLayers(); this.tramTrackSignature = ''; this.eventSignature = '';
     this.preview?.remove(); this.previewAccess?.remove(); this.preview = null; this.previewAccess = null;
     this.previewSignature = ''; this.selectedLineId = null;
@@ -152,6 +155,9 @@ export class GameMap {
 
   setLineClickHandler(callback) { this.onLineClick = callback; }
   setMapClickHandler(callback) { this.onMapClick = callback; }
+  setTramControlHandlers({ move, select, remove, cancel } = {}) {
+    this.onTramControlMove = move; this.onTramControlSelect = select; this.onTramControlDelete = remove; this.onTramControlCancel = cancel;
+  }
   centerCity() {
     if (!this.city) return;
     const padding = this.element.clientWidth < 500 ? [30, 80] : [70, 70];
@@ -293,10 +299,12 @@ export class GameMap {
     let markerBudget = MAX_VEHICLE_MARKERS; const vehicleIds = new Set();
     for (const line of gameState.lines) {
       const transport = TRANSPORT_TYPES[line.type]; if (!transport) continue;
-      const signature = line.stops.join('|'); const color = safeColor(line.color, transport.color);
+      const signature = `${line.stops.join('|')}|${(line.routeGeometry || []).map(point => point.join(',')).join(';')}|${line.tramBuildMode || ''}`;
+      const color = safeColor(line.color, transport.color);
       const geometry = this.lines.get(line.id)?.signature === signature ? this.lines.get(line.id).geometry
         : coordinateGeometry(line.routeGeometry?.length ? line.routeGeometry : routeLine(line.stops, line.type, this.city));
       const display = this.lines.get(line.id)?.signature === signature ? this.lines.get(line.id).display : (() => {
+        if (line.type === 'tram' || line.routingUnavailable) return { roads: [geometry.coordinates], access: [] };
         const details = routeLineDetails(line.stops, line.type, this.city);
         const roads = [];
         const connectors = new Map((details.stopConnectors || []).map(item => [item.stopId, item.roadCoordinates]));
@@ -337,7 +345,9 @@ export class GameMap {
       record.route.setStyle({ color: displayColor, weight: selected ? 8 : 6, opacity: gameState.analyticsMode === 'load' ? 0.3 : 0.96, dashArray: overloaded ? '8 5' : null });
       record.casing.setStyle({ color: overloaded ? '#d94d42' : '#10201d', weight: selected ? 13 : 10, opacity: overloaded ? 0.95 : 0.78 });
       record.route.getElement()?.classList.toggle('overloaded', overloaded); record.route.getElement()?.classList.toggle('selected', selected);
-      const title = `${line.name || transport.name} · ${Math.round((line.stats?.load || 0) * 100)}% obciążenia · ${Math.round(line.stats?.waiting || 0)} oczekuje`;
+      record.route.getElement()?.classList.toggle('routing-unavailable', Boolean(line.routingUnavailable));
+      const title = line.routingUnavailable ? `${line.name || transport.name} · TRASA NIEDOSTĘPNA · ${line.routingUnavailable}`
+        : `${line.name || transport.name} · ${Math.round((line.stats?.load || 0) * 100)}% obciążenia · ${Math.round(line.stats?.waiting || 0)} oczekuje`;
       if (record.title !== title) {
         if (record.route.getTooltip()) record.route.setTooltipContent(escapeHtml(title));
         else record.route.bindTooltip(escapeHtml(title), { sticky: true, direction: 'top' });
@@ -582,10 +592,15 @@ export class GameMap {
     const stops = gameState.selectedNodes || []; const color = TRANSPORT_TYPES[gameState.selectedType]?.color || '#ffffff';
     const manual = gameState.selectedType === 'tram' && gameState.tramBuildMode === 'manual';
     const controlSignature = JSON.stringify(gameState.tramControlPoints || []);
-    const signature = `${stops.join('|')}:${color}:${manual}:${controlSignature}`; if (signature === this.previewSignature) return;
+    const signature = `${stops.join('|')}:${color}:${gameState.tramBuildMode}:${gameState.editingLineId || ''}:${controlSignature}`;
+    if (signature === this.previewSignature) { this.renderTramControlPoints(gameState); return; }
     this.previewSignature = signature;
     const routeType = manual ? 'metro' : gameState.selectedType === 'tram' && gameState.tramBuildMode === 'street' ? 'bus' : gameState.selectedType;
-    const details = routeLineDetails(stops, routeType, this.city);
+    let details = routeLineDetails(stops, routeType, this.city);
+    if (gameState.selectedType === 'tram' && gameState.tramBuildMode === 'existing') {
+      const owned = routeOnPlayerTramTracks(gameState.tramInfrastructure, stops, this.city);
+      if (owned.valid) details = owned;
+    }
     const segments = details.segments || [];
     const manualPoints = stops.map(id => this.pointById.get(id)).filter(Boolean).map(point => [point.lat, point.lng]);
     const manualRoute = manual && manualPoints.length >= 2
@@ -605,7 +620,8 @@ export class GameMap {
     const access = segments.flatMap(segment => segment.accessSegments || [])
       .filter(path => path.length >= 2 && (path[0][0] !== path.at(-1)[0] || path[0][1] !== path.at(-1)[1]));
     if (!coordinates.length) {
-      this.preview?.remove(); this.previewAccess?.remove(); this.preview = null; this.previewAccess = null; return;
+      this.preview?.remove(); this.previewAccess?.remove(); this.preview = null; this.previewAccess = null;
+      this.renderTramControlPoints(gameState); return;
     }
     const displayColor = details.valid && (!manual || manualRoute?.valid) ? color : '#c43f38';
     if (!this.preview) this.preview = L.polyline(coordinates, { renderer: this.routeRenderer, color: displayColor, weight: 8,
@@ -616,6 +632,41 @@ export class GameMap {
         weight: 5, opacity: 0.98, dashArray: '3 5', interactive: false, className: 'route-preview-access', lineCap: 'round' }).addTo(this.map);
       else this.previewAccess.setLatLngs(access);
     } else { this.previewAccess?.remove(); this.previewAccess = null; }
+    this.renderTramControlPoints(gameState);
+  }
+
+  renderTramControlPoints(gameState) {
+    const controls = gameState.selectedType === 'tram' && gameState.tramBuildMode === 'manual' ? gameState.tramControlPoints || [] : [];
+    for (const [index, marker] of this.tramControlMarkers) if (index >= controls.length) { marker.remove(); this.tramControlMarkers.delete(index); }
+    controls.forEach((point, index) => {
+      const selected = gameState.tramSelectedControlIndex === index;
+      let marker = this.tramControlMarkers.get(index);
+      if (!marker) {
+        marker = L.marker(point, { pane: 'ui', draggable: true, keyboard: true, autoPan: false, bubblingMouseEvents: false,
+          title: `Punkt kontrolny ${index + 1}. Przeciągnij, aby zmienić przebieg. Enter wybiera, Delete usuwa.`,
+          icon: L.divIcon({ className: 'tram-control-marker', iconSize: [34, 34], iconAnchor: [17, 17],
+            html: `<span class="tram-control-handle" aria-hidden="true">${index + 1}</span>` }) }).addTo(this.tramControlLayer);
+        marker.on('click', event => { L.DomEvent.stopPropagation(event); this.onTramControlSelect?.(index); });
+        marker.on('dragstart', () => { this.tramControlDrag = { marker, index, original: marker.getLatLng() }; this.map.dragging.disable(); });
+        marker.on('dragend', event => { this.map.dragging.enable(); this.tramControlDrag = null; this.onTramControlMove?.(index, event.target.getLatLng()); });
+        marker.getElement()?.addEventListener('keydown', event => {
+          if (event.key === 'Delete' || event.key === 'Backspace') {
+            event.preventDefault(); event.stopPropagation(); this.onTramControlDelete?.(index);
+          } else if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault(); event.stopPropagation(); this.onTramControlSelect?.(index);
+          } else if (event.key === 'Escape' && this.tramControlDrag) {
+            event.preventDefault(); event.stopPropagation();
+            this.tramControlDrag.marker.setLatLng(this.tramControlDrag.original); this.map.dragging.enable(); this.tramControlDrag = null;
+            this.onTramControlCancel?.();
+          }
+        });
+        this.tramControlMarkers.set(index, marker);
+      } else marker.setLatLng(point);
+      marker.getElement()?.querySelector('.tram-control-handle')?.classList.toggle('selected', selected);
+      marker.options.title = `Punkt kontrolny ${index + 1}${selected ? ', wybrany' : ''}. Przeciągnij, aby zmienić przebieg.`;
+      marker.getElement()?.setAttribute('aria-label', marker.options.title);
+      marker.getElement()?.setAttribute('title', marker.options.title);
+    });
   }
 
   renderTramInfrastructure(infrastructure) {
