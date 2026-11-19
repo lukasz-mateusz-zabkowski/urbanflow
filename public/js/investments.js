@@ -55,6 +55,7 @@ export function planInvestment(state, districtId, type) {
 }
 
 export function approveInvestment(state, projectId) {
+  if (state.status !== 'playing') return { ok: false, message: 'Projektu nie można zatwierdzić po zakończeniu kampanii.' };
   const project = state.investments?.projects.find(item => item.id === projectId);
   if (!project || project.status !== 'planned') return { ok: false, message: 'Projekt nie jest już dostępny do zatwierdzenia.' };
   const check = districtCanInvest(state, project.districtId, project.type, project.id);
@@ -152,7 +153,7 @@ export function advanceInvestmentProjects(state) {
       transportHandling: state.hubCapacityByPoint?.[project.districtId] || 1 };
     investments.history.push({ id: project.id, type: project.type, districtId: project.districtId,
       status: project.status, cost: 0, refund: 0, at: project.completedAt,
-      week: Math.max(1, Math.ceil(project.completedAt / INVESTMENT_LIMITS.durationWeekMinutes)), result: project.result });
+      week: Math.max(1, Math.ceil(project.completedAt / INVESTMENT_LIMITS.durationWeekMinutes)), expected: project.expected, result: project.result });
     completed.push(project);
   }
   investments.projects = investments.projects.filter(project => !['cancelled', 'completed'].includes(project.status));
@@ -210,16 +211,24 @@ export function validateInvestmentState(value, city, state) {
     ids.add(project.id);
     highestUsedId = Math.max(highestUsedId, Number(project.id.slice('investment-'.length)));
   }
-  for (const item of value.history) if (!isObject(item) || typeof item.id !== 'string' || !INVESTMENT_CATALOG[item.type]
-    || !/^investment-[1-9]\d*$/.test(item.id)
-    || !districtIds.has(item.districtId) || !['approved', 'completed', 'cancelled'].includes(item.status)
-    || !Number.isSafeInteger(item.cost) || item.cost < 0 || item.cost > INVESTMENT_CATALOG[item.type].cost
-    || !Number.isSafeInteger(item.refund) || item.refund < 0 || item.refund > INVESTMENT_CATALOG[item.type].cost
-    || !Number.isSafeInteger(item.at) || item.at < 0 || !Number.isSafeInteger(item.week) || item.week < 1
-    || (item.status === 'approved' && (item.cost !== INVESTMENT_CATALOG[item.type].cost || item.refund !== 0))
-    || (item.status === 'completed' && (item.cost !== 0 || item.refund !== 0))
-    || (item.status === 'cancelled' && item.cost !== 0)) return false;
-  else highestUsedId = Math.max(highestUsedId, Number(item.id.slice('investment-'.length)));
+  for (const item of value.history) {
+    if (!isObject(item) || typeof item.id !== 'string' || !INVESTMENT_CATALOG[item.type]
+      || !/^investment-[1-9]\d*$/.test(item.id)
+      || !districtIds.has(item.districtId) || !['approved', 'completed', 'cancelled'].includes(item.status)
+      || !Number.isSafeInteger(item.cost) || item.cost < 0 || item.cost > INVESTMENT_CATALOG[item.type].cost
+      || !Number.isSafeInteger(item.refund) || item.refund < 0 || item.refund > INVESTMENT_CATALOG[item.type].cost
+      || !Number.isSafeInteger(item.at) || item.at < 0 || !Number.isSafeInteger(item.week) || item.week < 1
+      || (item.status === 'approved' && (item.cost !== INVESTMENT_CATALOG[item.type].cost || item.refund !== 0))
+      || (item.status === 'completed' && (item.cost !== 0 || item.refund !== 0))
+      || (item.status === 'cancelled' && item.cost !== 0)) return false;
+    if (item.expected !== undefined && (!isObject(item.expected)
+      || !['residentsCapacity', 'jobsCapacity', 'transportHandling'].every(key => finite(item.expected[key]) && item.expected[key] >= 0))) return false;
+    if (item.status === 'completed' && (!isObject(item.result)
+      || !['residents', 'jobs', 'residentsCapacity', 'jobsCapacity', 'transportHandling']
+        .every(key => finite(item.result[key]) && item.result[key] >= 0)
+      || item.result.transportHandling < 1 || item.result.transportHandling > 2)) return false;
+    highestUsedId = Math.max(highestUsedId, Number(item.id.slice('investment-'.length)));
+  }
   if (value.nextId <= highestUsedId) return false;
   const weeks = new Set();
   for (const item of value.weekly) if (!isObject(item) || !Number.isSafeInteger(item.week) || item.week < 1 || weeks.has(item.week)

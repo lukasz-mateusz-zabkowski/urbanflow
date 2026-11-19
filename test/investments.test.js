@@ -5,7 +5,7 @@ import { createCityEvolutionState } from '../public/js/city-evolution.js';
 import { evolveCityWeek } from '../public/js/city-evolution.js';
 import { landUseDemandFactor } from '../public/js/land-use.js';
 import { approveInvestment, advanceInvestmentProjects, cancelInvestment, createInvestmentState,
-  planInvestment, recordInvestmentWeek, validateInvestmentState } from '../public/js/investments.js';
+  planInvestment, recordInvestmentWeek, validateInvestmentState, INVESTMENT_LIMITS } from '../public/js/investments.js';
 
 const city = CITIES.krakow;
 function gameState() {
@@ -75,11 +75,62 @@ test('canceling an unapproved plan costs nothing; a terminal campaign rejects ne
   assert.equal(planInvestment(state, 'bronowice', 'housing').ok, false);
 });
 
+test('approving a planned project after campaign loss is rejected without charging or starting it', () => {
+  const state = gameState();
+  const planned = planInvestment(state, 'bronowice', 'housing').project;
+  const budget = state.budget;
+  state.status = 'lost';
+  const result = approveInvestment(state, planned.id);
+  assert.equal(result.ok, false);
+  assert.equal(planned.status, 'planned');
+  assert.equal(planned.charged, false);
+  assert.equal(state.budget, budget);
+  assert.equal(state.investments.totalSpent, 0);
+});
+
 test('two projects cannot reserve the same remaining land reserve', () => {
   const state = gameState();
   assert.equal(planInvestment(state, 'nowa-huta', 'economic').ok, true);
   assert.equal(planInvestment(state, 'nowa-huta', 'economic').ok, false,
     'the eight point industrial reserve cannot fund two six point projects');
+});
+
+test('two simultaneous projects in a medium district complete once without exceeding the intensity cap', () => {
+  const state = gameState();
+  const zone = state.cityEvolution.districts.kurdwanow;
+  const startingJobsCapacity = zone.capacity.jobs;
+  assert.equal(zone.landUse.intensity, 'medium');
+  const startingOffice = zone.landUse.shares.office;
+  const first = planInvestment(state, 'kurdwanow', 'economic').project;
+  const second = planInvestment(state, 'kurdwanow', 'economic').project;
+  assert.equal(approveInvestment(state, first.id).ok, true);
+  assert.equal(approveInvestment(state, second.id).ok, true);
+  state.elapsedMinutes = first.completesAt;
+  assert.equal(advanceInvestmentProjects(state).length, 2);
+  assert.equal(advanceInvestmentProjects(state).length, 0);
+  assert.equal(zone.landUse.intensity, 'high');
+  assert.ok(zone.capacity.jobs > startingJobsCapacity);
+  assert.equal(zone.landUse.shares.reserve, 5);
+  assert.equal(zone.landUse.shares.office, startingOffice + 12);
+  assert.equal(state.investments.history.filter(item => item.status === 'completed').length, 2);
+  assert.equal(Object.values(zone.landUse.shares).reduce((sum, share) => sum + share, 0), 100);
+});
+
+test('district reserve edits and cancellation release only the canceled project reservation', () => {
+  const state = gameState();
+  const zone = state.cityEvolution.districts.kurdwanow;
+  const first = planInvestment(state, 'kurdwanow', 'economic').project;
+  const second = planInvestment(state, 'kurdwanow', 'housing').project;
+  zone.landUse.shares.reserve -= 6;
+  zone.landUse.shares.office += 6;
+  assert.equal(cancelInvestment(state, second.id).refund, 0);
+  const before = state.budget;
+  assert.equal(approveInvestment(state, first.id).ok, true);
+  assert.equal(state.budget, before - first.cost);
+  assert.equal(zone.landUse.shares.reserve + zone.landUse.shares.residential + zone.landUse.shares.retail
+    + zone.landUse.shares.office + zone.landUse.shares.industrial + zone.landUse.shares.public + zone.landUse.shares.green, 100);
+  assert.equal(approveInvestment(state, first.id).ok, false);
+  assert.equal(state.budget, before - first.cost);
 });
 
 test('hub modernization requires active service and increases queue handling only once', () => {
@@ -102,6 +153,22 @@ test('hub modernization requires active service and increases queue handling onl
   assert.equal(validateInvestmentState(state.investments, city, state), true);
 });
 
+test('an approved hub project finishes after service removal and retains upkeep as a city asset', () => {
+  const state = gameState();
+  state.lines.push({ id: 'line-1', stops: ['lagiewniki', 'centrum'] });
+  const project = planInvestment(state, 'lagiewniki', 'hub').project;
+  approveInvestment(state, project.id);
+  state.lines = [];
+  state.elapsedMinutes = project.completesAt;
+  assert.equal(advanceInvestmentProjects(state).length, 1);
+  assert.equal(state.hubCapacityByPoint.lagiewniki, 1.5);
+  assert.equal(advanceInvestmentProjects(state).length, 0);
+  assert.equal(recordInvestmentWeek(state, 2).maintenance, 0, 'completion at the week boundary is not charged retroactively');
+  assert.equal(recordInvestmentWeek(state, 3).maintenance, 400,
+    'completed city infrastructure remains maintained even when no current line serves it');
+  assert.equal(state.investments.assets.length, 1);
+});
+
 test('project and weekly ledgers are bounded, deterministic and validated', () => {
   const state = gameState();
   const project = planInvestment(state, 'bronowice', 'housing').project;
@@ -114,6 +181,20 @@ test('project and weekly ledgers are bounded, deterministic and validated', () =
   state.investments.projects[0].cost = Infinity;
   assert.equal(validateInvestmentState(state.investments, city, state), false);
   assert.ok(project.id);
+});
+
+test('completed results validate, remain readable from older schema-10 ledgers, and reject invalid values', () => {
+  const state = gameState();
+  const project = planInvestment(state, 'bronowice', 'housing').project;
+  approveInvestment(state, project.id);
+  state.elapsedMinutes = project.completesAt;
+  advanceInvestmentProjects(state);
+  const completed = state.investments.history.find(item => item.status === 'completed');
+  assert.equal(validateInvestmentState(state.investments, city, state), true);
+  delete completed.expected;
+  assert.equal(validateInvestmentState(state.investments, city, state), true, 'old schema-10 histories do not contain the comparison baseline');
+  completed.result.residentsCapacity = Number.NaN;
+  assert.equal(validateInvestmentState(state.investments, city, state), false);
 });
 
 test('save validation rejects a next-id counter that could reuse an investment id', () => {
@@ -150,6 +231,31 @@ test('52-week project and city-growth campaign is deterministic and bounded', ()
     return state;
   };
   assert.deepEqual(simulate(), simulate());
+});
+
+test('4- and 12-week project horizons preserve bounded city growth and separate ledgers', () => {
+  for (const horizon of [4, 12]) {
+    const state = gameState();
+    const housing = planInvestment(state, 'bronowice', 'housing').project;
+    const economic = planInvestment(state, 'nowa-huta', 'economic').project;
+    assert.equal(approveInvestment(state, housing.id).ok, true);
+    assert.equal(approveInvestment(state, economic.id).ok, true);
+    for (let week = 1; week <= horizon; week += 1) {
+      state.elapsedMinutes = week * INVESTMENT_LIMITS.durationWeekMinutes;
+      advanceInvestmentProjects(state);
+      recordInvestmentWeek(state, week);
+      evolveCityWeek(state, city);
+    }
+    assert.equal(state.investments.weekly.length, horizon);
+    assert.equal(state.investments.history.filter(item => item.status === 'completed').length, 2);
+    assert.equal(state.investments.totalSpent, housing.cost + economic.cost);
+    assert.equal(state.revenue, undefined, 'city projects do not fabricate carrier revenue');
+    for (const zone of Object.values(state.cityEvolution.districts)) {
+      assert.ok(zone.residents >= 0 && zone.residents <= zone.capacity.residents);
+      assert.ok(zone.jobs >= 0 && zone.jobs <= zone.capacity.jobs);
+      assert.equal(Object.values(zone.landUse.shares).reduce((sum, share) => sum + share, 0), 100);
+    }
+  }
 });
 
 test('52-week hub upkeep is deterministic, prorated, and stops at the two-level cap', () => {

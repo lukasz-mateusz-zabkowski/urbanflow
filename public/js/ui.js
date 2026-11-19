@@ -659,7 +659,7 @@ export class UI {
     const options = [
       ['housing', 'Rozwój mieszkaniowy', 'Zużywa 6 pp. rezerwy i zwiększa pojemność mieszkaniową. Zasiedlenie pozostaje stopniowe i zależy od warunków miasta.'],
       ['economic', 'Rozwój gospodarczy', 'Zużywa 6 pp. rezerwy na biura, zwiększa pojemność pracy i przyszły popyt dojazdowy.'],
-      ['hub', 'Modernizacja węzła', 'Zwiększa lokalny limit kolejki o 50% za poziom (maks. 2×, globalny limit 1 200 osób); wymaga linii obsługującej obszar i kosztuje 400 zł/tydzień za poziom.']
+      ['hub', 'Modernizacja węzła', 'Zwiększa lokalny limit kolejki o 50% za poziom (maks. 2×, globalny limit 1 200 osób); wymaga obsługującej linii i kosztuje 400 zł/tydzień za poziom także po późniejszym usunięciu tej linii.']
     ];
     this.setHtml('investmentCatalog', options.map(([type, label, effect]) => {
       const item = INVESTMENT_CATALOG[type];
@@ -676,7 +676,14 @@ export class UI {
     });
     const completed = [...state.investments.history].filter(project => project.status === 'completed' || project.status === 'cancelled').reverse().slice(0, 4).map(project => {
       const definition = INVESTMENT_CATALOG[project.type];
-      return `<li><span><b>${escapeHtml(definition.label)}</b><br>${escapeHtml(state.cityEvolution.districts[project.districtId]?.name || project.districtId)} · ${project.status === 'completed' ? 'ukończono' : `anulowano · zwrot ${money(project.refund)}`}</span><span>${project.status === 'completed' ? `koszt ${money(project.cost)}` : ''}</span></li>`;
+      const result = project.result;
+      const expected = project.expected;
+      const resultText = project.status !== 'completed' || !result ? '' : project.type === 'housing'
+        ? `Mieszkańcy ${formatNumber(result.residents)} · pojemność mieszkaniowa ${formatNumber(result.residentsCapacity)}${expected ? ` (Δ ${formatNumber(result.residentsCapacity - expected.residentsCapacity)})` : ''}`
+        : project.type === 'economic'
+          ? `Miejsca pracy ${formatNumber(result.jobs)} · pojemność pracy ${formatNumber(result.jobsCapacity)}${expected ? ` (Δ ${formatNumber(result.jobsCapacity - expected.jobsCapacity)})` : ''}`
+          : `Obsługa kolejki ×${decimal(result.transportHandling)}${expected ? ` (przed ×${decimal(expected.transportHandling)})` : ''}`;
+      return `<li><span><b>${escapeHtml(definition.label)}</b><br>${escapeHtml(state.cityEvolution.districts[project.districtId]?.name || project.districtId)} · ${project.status === 'completed' ? `ukończono · ${resultText}` : `anulowano · zwrot ${money(project.refund)}`}</span><span>${project.status === 'completed' ? `koszt ${money(project.cost)}` : ''}</span></li>`;
     });
     this.setHtml('investmentProjectList', [...current, ...completed].join('') || '<li class="empty-mini">Brak zaplanowanych projektów.</li>');
     const week = state.investments.weekly.at(-1);

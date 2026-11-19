@@ -55,3 +55,57 @@ test('investment project lifecycle touch mobile 390x844', async ({ browser }) =>
   try { await lifecycle(await context.newPage(), { width: 390, height: 844 }, true); }
   finally { await context.close(); }
 });
+
+test('completed project panel shows saved modeled results after campaign reload', async ({ page }) => {
+  await page.setViewportSize({ width: 1366, height: 768 });
+  await page.addInitScript(() => {
+    if (!sessionStorage.getItem('urbanflow-test-fresh')) {
+      localStorage.clear();
+      sessionStorage.setItem('urbanflow-test-fresh', '1');
+    }
+    Math.random = () => 0.1;
+  });
+  await page.route('https://tile.openstreetmap.org/**', route => route.fulfill({ status: 200, contentType: 'image/svg+xml', body: tile }));
+  const errors = [];
+  page.on('pageerror', error => errors.push(error.message));
+  await page.goto('http://127.0.0.1:3100/', { waitUntil: 'domcontentloaded' });
+  await page.locator('#startKrakow').click();
+  await expect(page.locator('#map')).toBeVisible();
+  await page.locator('[data-mode="investments"]').click();
+  await expect(page.locator('#investmentsPanel')).toBeVisible();
+  const firstArea = await page.locator('#investmentDistrict option').first().getAttribute('value');
+  await page.locator('#investmentDistrict').selectOption(firstArea);
+  await page.locator('[data-action="plan-investment"][data-investment-type="housing"]').click();
+  await page.locator('[data-action="approve-investment"]').click();
+  await page.locator('#pauseButton').click();
+
+  await page.evaluate(() => {
+    const save = JSON.parse(localStorage.getItem('urbanflow.krakow.v2'));
+    const state = save.state;
+    state.investments.nextId = 101;
+    state.investments.history.push({ id: 'investment-100', type: 'housing', districtId: state.investments.projects[0].districtId,
+      status: 'completed', cost: 0, refund: 0, at: state.elapsedMinutes, week: 1,
+      expected: { residentsCapacity: 12000, jobsCapacity: 5000, transportHandling: 1 },
+      result: { residents: 11800, jobs: 5100, residentsCapacity: 14500, jobsCapacity: 5300, transportHandling: 1 } });
+    localStorage.setItem('urbanflow.krakow.v2', JSON.stringify(save));
+  });
+  const resumedPage = await page.context().newPage();
+  await resumedPage.setViewportSize({ width: 1366, height: 768 });
+  await resumedPage.route('https://tile.openstreetmap.org/**', route => route.fulfill({ status: 200, contentType: 'image/svg+xml', body: tile }));
+  const resumedErrors = [];
+  resumedPage.on('pageerror', error => resumedErrors.push(error.message));
+  await resumedPage.goto('http://127.0.0.1:3100/', { waitUntil: 'domcontentloaded' });
+  const restoredHistory = await resumedPage.evaluate(() => JSON.parse(localStorage.getItem('urbanflow.krakow.v2')).state.investments.history);
+  expect(restoredHistory.some(item => item.id === 'investment-100')).toBe(true);
+  const storageError = await resumedPage.evaluate(async () => {
+    const [{ loadGame }, { CITIES }] = await Promise.all([import('/js/storage.js?v=12'), import('/js/cities.js?v=10')]);
+    return loadGame(localStorage, CITIES.krakow).error;
+  });
+  expect(storageError).toBe(null);
+  await expect(resumedPage.locator('#map')).toBeVisible({ timeout: 60_000 });
+  await resumedPage.locator('[data-mode="investments"]').click();
+  await expect(resumedPage.locator('#investmentProjectList')).toContainText(/pojemność mieszkaniowa\s+14.?500/);
+  await expect(resumedPage.locator('#investmentProjectList')).toContainText(/Δ\s+2500/);
+  expect(errors).toEqual([]);
+  expect(resumedErrors).toEqual([]);
+});

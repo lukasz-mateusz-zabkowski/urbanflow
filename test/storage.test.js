@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { CITIES } from '../public/js/cities.js';
 import { UrbanFlowGame } from '../public/js/game.js';
 import { saveGame, loadGame, clearSave, validateState, SAVE_KEY, SAVE_VERSION } from '../public/js/storage.js';
+import { advanceInvestmentProjects } from '../public/js/investments.js';
+import { SIMULATION } from '../public/js/simulation.js';
 
 const city = CITIES.krakow;
 const snapshot = value => JSON.parse(JSON.stringify(value));
@@ -76,6 +78,36 @@ test('finished campaign saves remain loadable without restarting the simulation'
     restored.tick(() => 0.5);
     assert.deepEqual(snapshot(restored.state), before);
   }
+});
+
+test('investment completed exactly at a week boundary stays charged and applied once after save/resume', () => {
+  const game = activeGame();
+  game.state.elapsedMinutes = 7 * 24 * 60 - SIMULATION.startMinute;
+  const project = game.planInvestment('bronowice', 'housing').project;
+  assert.equal(game.approveInvestment(project.id).ok, true);
+  const paidBudget = game.state.budget;
+  const paidTotal = game.state.investments.totalSpent;
+  game.state.elapsedMinutes = project.completesAt - SIMULATION.minutesPerTick;
+  game.tick(() => 0.5);
+  assert.equal(game.state.elapsedMinutes, project.completesAt);
+  assert.equal(project.status, 'completed');
+  assert.equal(game.state.investments.history.filter(item => item.id === project.id && item.status === 'completed').length, 1);
+  const completedBudget = game.state.budget;
+  const completedShares = snapshot(game.state.cityEvolution.districts.bronowice.landUse.shares);
+  assert.equal(game.state.investments.totalSpent, paidTotal);
+  assert.equal(game.state.investments.weekly.at(-1).week, 4);
+
+  const storage = memoryStorage();
+  assert.equal(saveGame(storage, game.state).ok, true);
+  const restored = new UrbanFlowGame(city, {}, loadGame(storage, city).state);
+  assert.equal(restored.state.budget, completedBudget);
+  assert.equal(restored.state.investments.totalSpent, paidTotal);
+  assert.deepEqual(restored.state.cityEvolution.districts.bronowice.landUse.shares, completedShares);
+  assert.equal(advanceInvestmentProjects(restored.state).length, 0);
+  assert.equal(restored.state.budget, completedBudget);
+  assert.equal(restored.state.investments.totalSpent, paidTotal);
+  assert.equal(restored.state.investments.history.filter(item => item.id === project.id && item.status === 'completed').length, 1);
+  assert.notEqual(completedBudget, paidBudget);
 });
 
 test('empty storage is a clean start and clearing a save does not touch unrelated values', () => {

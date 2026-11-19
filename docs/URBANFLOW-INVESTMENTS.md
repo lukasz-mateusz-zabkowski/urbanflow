@@ -16,6 +16,8 @@ Catalog values are explicit provisional gameplay parameters:
 
 The refund for canceling a construction project is 50% of its paid capital cost; the remainder is a sunk cost. Canceling a plan before approval costs nothing. Projects are charged once when approved. Effects are applied once at completion. Land reserve is held while housing/economic projects are planned or in construction, so autonomous Land Use development cannot consume the same reserve before completion.
 
+Approvals are disabled after the campaign is won or lost; an already planned but unapproved project stays uncharged and can still be canceled. If a hub project was approved while its stop was served and the player later removes all lines serving it, construction still completes. The upgraded stop is treated as a persistent city asset, so its maintenance remains payable even while temporarily unserved. The player can restore service or account for that continuing cost.
+
 These values are alpha tuning parameters, not construction estimates. The model intentionally allows a weakly connected housing project to add capacity and demand pressure without immediately creating residents or a guaranteed return. Hub modernization only applies to a district represented in an existing line.
 
 ## Simulation and weekly reporting

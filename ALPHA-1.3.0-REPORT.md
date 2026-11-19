@@ -24,11 +24,12 @@
 Pełna walidacja lokalna i zdalna:
 
 - `npm ci`: zaliczone (bez nowych zależności; 0 podatności podczas instalacji).
-- `npm test`: 191/191 zaliczone.
-- `npm run test:browser`: 14/14 na końcowym kodzie; cykl inwestycyjny sprawdzony na desktopie 1366×768 i dotykowym telefonie 390×844. Dodatkowe powtórzenie po korekcie kadrowania zrzutów: 2/2.
+- `npm test`: 198/198 zaliczone po końcowym audycie inwestycji.
+- `npm run test:browser`: 15/15 zaliczone, w tym ponowne wczytanie zapisanej kampanii i prezentacja rezultatu ukończonej inwestycji.
 - `npm run audit:all`: 0 podatności.
 - `npm run audit:production`: 0 podatności.
 - 52-tygodniowe testy deterministyczności, wzrostu, kosztów utrzymania, ograniczeń pojemności i zapisu/wznowienia znajdują się w `test/investments.test.js`.
+- Regresje końcowe: zatwierdzanie po przegranej kampanii jest blokowane bez obciążenia budżetu; równoległe projekty respektują rezerwę i limit intensywności; modernizacja węzła kończy się i utrzymuje po usunięciu linii; ukończenie na granicy tygodnia pozostaje idempotentne po zapisie i wznowieniu.
 - Wizualne artefakty Playwright: `%TEMP%\urbanflow-alpha-1.3.0-visual-qa\investments-1366x768.png` oraz `investments-390x844.png` (nie są dodawane do repozytorium).
 
 ### Benchmark względem 1.2.1
