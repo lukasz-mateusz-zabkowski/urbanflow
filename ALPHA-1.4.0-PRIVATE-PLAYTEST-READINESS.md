@@ -2,9 +2,9 @@
 
 ## Status
 
-**GO warunkowe dla prywatnego pakietu testowego.** Dokumentacja, profil Compose, testy izolacji i scenariusze znajdują się na osobnej gałęzi. To nie oznacza uruchomienia instancji ani zaproszenia testerów. Nie skonfigurowano publicznego hosta ani usługi zewnętrznej. Przed pierwszą sesją potrzebny jest niezależny host i zatwierdzona prywatna metoda dostępu.
+**GO dla przygotowanego pakietu prywatnego playtestu.** Kod, scenariusze i izolowany profil przeszły walidację lokalną oraz CI. To nie oznacza uruchomienia instancji ani zaproszenia testerów. Nie skonfigurowano publicznego hosta ani zewnętrznej usługi. Przed pierwszą sesją nadal wymagany jest niezależny host i zatwierdzona prywatna metoda dostępu.
 
-Decyzja wdrożeniowa dla sesji: **GO albo NO GO zależy od zielonego CI oraz potwierdzenia niezależnego hosta i zatwierdzonego prywatnego dostępu.**
+Uruchom pojedynczą sesję dopiero po sprawdzeniu SHA na niezależnym hoście i potwierdzeniu, że dostęp testera jest prywatny oraz autoryzowany. Ten raport nie publikuje adresu ani nie konfiguruje takiego hosta.
 
 ## Repozytorium i wersja
 
@@ -12,7 +12,9 @@ Decyzja wdrożeniowa dla sesji: **GO albo NO GO zależy od zielonego CI oraz pot
 - Baza: commit `346bcbe9880d8719d4c8cf8a3d8b26a6e89b2491`; `origin/main` pozostał na tym SHA w chwili rozpoczęcia prac.
 - Tag `v1.4.0-alpha` istnieje jako anotowany tag wskazujący bazowy commit.
 - Gałąź robocza: `feature/alpha-1.4.0-private-playtest`.
-- Końcowy SHA gałęzi oraz workflow będą potwierdzone po pushu; raport identyfikuje bazę oraz dokumentuje wynik walidacji.
+- Zweryfikowany commit pakietu: `238d027190cb0fc0da39518516a21f715158d89a`.
+- CI dla tego commita: [GitHub Actions run #81](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44606407056), wszystkie sześć zadań zakończyło się sukcesem.
+- Raport jest dokumentacyjnym uaktualnieniem; końcowy HEAD po jego wypchnięciu zostanie podany w przekazaniu końcowym.
 - Produkcja oraz Raspberry Pi nie były używane ani zmieniane.
 
 ## Izolacja i warunki bezpiecznego uruchomienia
@@ -50,12 +52,15 @@ Zatrzymaj profil poleceniem `docker compose ... down --remove-orphans`. Nie ma s
 - `git diff --check`: zaliczony.
 - `docker compose ... config` z jawnym bazowym SHA: zaliczony; konfiguracja potwierdza bind `127.0.0.1:3101`, brak wolumenów, read-only, bez capabilities, `no-new-privileges` i restart wyłączony.
 - Docker Desktop Linux engine: na tym komputerze obecnie niedostępny (`dockerDesktopLinuxEngine` pipe nie istnieje). Lokalny start/restart/rollback kontenera nie został potwierdzony.
-- GitHub Actions na końcowym SHA: oczekuje na push; workflow obejmuje build, health, loopback binding, brak mountów, stronę, Leaflet, restart, ponowną walidację wersji/SHA i zatrzymanie profilu alpha.
+- GitHub Actions run #81: **6/6 success** — Node 18, Node 20, Node 22, browser test, security audit i container health.
+- Container health: build i uruchomienie release image przeszły; profil alpha potwierdził health/version/SHA, bind `127.0.0.1:3101`, brak mountów, stronę i Leaflet, restart, ponowny health/version/SHA oraz zatrzymanie.
 
 ## Ryzyka i decyzja
 
+Końcowa rekomendacja: **GO** dla pakietu i rozpoczęcia małego prywatnego playtestu po uruchomieniu na niezależnym hoście; **NO GO** dla każdej konfiguracji publicznej lub hosta bez potwierdzonej izolacji i zatwierdzonej kontroli dostępu.
+
 - Nie istnieje przygotowany ani uruchomiony prywatny host. Dostęp testerów musi zostać skonfigurowany przez właściciela na niezależnej infrastrukturze; nie wykonano zaproszeń.
-- Lokalne Docker Desktop jest niedostępne; tę część weryfikuje dopiero izolowany workflow CI po pushu.
+- Nie wykonano lokalnego startu ani rollbacku, ponieważ Docker Desktop Linux engine nie działał. Start/restart/stop profilu jest potwierdzony w izolowanym runnerze GitHub Actions.
 - Zapis w przeglądarce nie cofa się razem z kontenerem. Zachowaj wersjonowane, oddzielne profile przeglądarki.
 - Mapa korzysta z zewnętrznych kafelków OpenStreetMap.
-- Końcowa gałąź wymaga zielonego GitHub Actions, w tym restartu kontenera i walidacji `/health` po restarcie, zanim rozpocznie się sesja z zaproszonymi osobami.
+- Po wypchnięciu aktualizacji raportu workflow uruchomi się ponownie dla aktualnego HEAD. Nie rozpoczynaj sesji, jeżeli końcowe CI nie przejdzie.

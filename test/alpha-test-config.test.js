@@ -47,7 +47,7 @@ test('private playtest kit defines invite-only access, independent origin, rollb
 
 test('playtest readiness report records validation limits without claiming a local Docker run unless performed', async () => {
   const report = await read('ALPHA-1.4.0-PRIVATE-PLAYTEST-READINESS.md');
-  for (const phrase of ['GO albo NO GO', '360×800', 'Playwright', 'audit:production', 'GitHub Actions', 'Raspberry Pi', 'zaproszonych']) {
+  for (const phrase of ['GO', 'NO GO', '360×800', 'Playwright', 'audit:production', 'GitHub Actions', 'Raspberry Pi', 'zaproszonych']) {
     assert.ok(report.toLocaleLowerCase('pl-PL').includes(phrase.toLocaleLowerCase('pl-PL')), `missing readiness evidence: ${phrase}`);
   }
 });
