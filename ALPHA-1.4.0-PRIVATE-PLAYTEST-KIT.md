@@ -5,7 +5,7 @@
 - Testuj wyłącznie na osobnym, zatwierdzonym hoście. Nie używaj Raspberry Pi, hosta produkcyjnego ani produkcyjnego originu.
 - Wersja aplikacji i commit muszą pochodzić z jednego, jawnego SHA. Host musi mieć checkout dokładnie tego commita przed budowaniem obrazu.
 - Compose publikuje port wyłącznie na `127.0.0.1:3101`; nie otwieraj go w firewallu, nie dodawaj DNS ani publicznego reverse proxy.
-- Kontener jest podłączony wyłącznie do wewnętrznej sieci Docker (`internal: true`), bez wyjścia do sieci hosta/produkcji. Przeglądarka testera niezależnie pobiera istniejące kafelki OSM; patrz uwaga o OSM niżej.
+- Compose publishes the app only on `127.0.0.1:3101` so the host owner can serve an approved SSH tunnel. The container uses Docker's standard bridge network; outbound connections from the container are possible. The app does not transmit saves or feedback; the tester's browser fetches OSM tiles directly.
 - Zaproszonych testerów wpuszczaj tylko istniejącą, zatwierdzoną prywatną ścieżką dostępu. Przykładem jest indywidualnie autoryzowany tunel SSH do hosta testowego:
 
   ```powershell
@@ -23,6 +23,8 @@
 Tag `v1.4.0-alpha` wskazuje bazowy build gry (SHA `346bcbe9880d8719d4c8cf8a3d8b26a6e89b2491`). Nie zawiera profilu prywatnego testu. Profil i guard pojawiły się później na gałęzi `feature/alpha-1.4.0-private-playtest`. **Nie checkoutuj tagu jako źródła hardened playtestu.** Użyj wyłącznie pełnego, zatwierdzonego SHA końcowego commita tej gałęzi. Wpisz ten sam SHA do `.env.alpha-test`; skrypt przed budowaniem porównuje go z rzeczywistym `git rev-parse HEAD`, odrzuca różnicę, zmodyfikowane pliki śledzone i obce pliki nieśledzone. Dozwolony jest wyłącznie lokalny `.env.alpha-test`.
 
 ### Windows + Docker Desktop
+
+> Aktualny Docker Desktop z Linux containers; nie uruchamiaj portu przez publiczny firewall ani proxy. Kontener ma standardowy bridge, wi?c ruch wychodzacy jest mozliwy.
 
 Na niezależnym komputerze Windows z uruchomionym Docker Desktop (Linux containers), Git, Node 18+ i dostępem tylko dla właściciela hosta:
 
@@ -46,6 +48,8 @@ npm.cmd run alpha-test -- stop
 Po `start` użyj `Invoke-RestMethod http://127.0.0.1:3101/health` i sprawdź `version`, `commit` i `environment`. Skrypt wykonuje też te kontrole automatycznie, sprawdza revision label obrazu, użytkownika `node`, loopback binding, brak mountów, read-only root, capabilities, `no-new-privileges`, politykę restartu, stronę i zasób Leaflet.
 
 ### Linux + Docker Engine
+
+> Wymagaj Docker Engine 28.0.0+ dla izolacji publikowanego portu loopback. Kontener ma standardowy bridge, wiec ruch wychodzacy jest mozliwy; firewall hosta nadal nie moze dopuszczac publicznego portu.
 
 Na odrębnym, nieprodukcyjnym hoście Linux z Docker Engine i pluginem Compose:
 

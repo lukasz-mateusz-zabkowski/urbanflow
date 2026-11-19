@@ -16,7 +16,7 @@ test('alpha test compose is isolated, loopback-only and pins version metadata to
   assert.match(compose, /read_only:\s*true/);
   assert.match(compose, /cap_drop:/);
   assert.match(compose, /no-new-privileges:true/);
-  assert.match(compose, /alpha-private:\s*\n\s+internal:\s*true/);
+  assert.doesNotMatch(compose, /internal:\s*true/);
   assert.match(dockerfile, /h\.version===version/);
   assert.match(dockerfile, /h\.commit===expected/);
   assert.match(docs, /hardened instructions/i);
@@ -43,7 +43,7 @@ test('container-health CI starts and stops the isolated alpha compose profile', 
   assert.match(script, /no-new-privileges/);
   assert.match(script, /Tmpfs\?\.\['\/tmp'\]/);
   assert.match(script, /network', 'inspect'/);
-  assert.match(script, /no external egress/i);
+  assert.match(script, /standard bridge network so the host can reach its loopback-only published port/i);
   assert.match(script, /lastError\?\.cause\?\.message/);
   assert.match(script, /logs', '--tail=40/);
 });

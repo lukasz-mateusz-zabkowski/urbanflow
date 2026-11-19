@@ -56,7 +56,7 @@ function docker(args, cwd = ROOT, { capture = false } = {}) {
 }
 
 function compose(args, cwd) {
-  return docker(['compose', '--env-file', ENV_FILE, '-p', COMPOSE_PROJECT, '-f', COMPOSE_FILE, ...args], cwd, { capture: args[0] === 'port' || args[0] === 'ps' });
+  return docker(['compose', '--env-file', ENV_FILE, '-p', COMPOSE_PROJECT, '-f', COMPOSE_FILE, ...args], cwd, { capture: ['port', 'ps', 'logs'].includes(args[0]) });
 }
 
 function assertContainerConfiguration(containerId, expectedSha, cwd) {
@@ -78,8 +78,10 @@ function assertContainerConfiguration(containerId, expectedSha, cwd) {
   if (host.RestartPolicy?.Name !== 'no') throw new Error('Alpha playtest container must not restart automatically.');
   if (!host.Tmpfs?.['/tmp']) throw new Error('Alpha playtest container must use the configured temporary filesystem for /tmp.');
   const networks = Object.keys(inspect.NetworkSettings?.Networks ?? {});
-  if (networks.length !== 1 || docker(['network', 'inspect', '--format={{.Internal}}', networks[0]], cwd, { capture: true }) !== 'true') {
-    throw new Error('Alpha playtest must use exactly one Docker internal network with no external egress.');
+  if (networks.length !== 1) throw new Error('Alpha playtest container must use exactly one bridge network.');
+  const networkInfo = JSON.parse(docker(['network', 'inspect', '--format={{json .}}', networks[0]], cwd, { capture: true }));
+  if (networkInfo.Driver !== 'bridge' || networkInfo.Internal) {
+    throw new Error('Alpha playtest requires a standard bridge network so the host can reach its loopback-only published port.');
   }
 }
 

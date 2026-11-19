@@ -19,7 +19,7 @@
 
 `npm run alpha-test -- verify` checks the real `git rev-parse HEAD` against `.env.alpha-test`, requires a 40-character SHA, and rejects modified tracked files or untracked build inputs. Only `.env.alpha-test` is allowed to be untracked. The guard's tests use temporary Git repositories and demonstrate that it accepts a matching checkout and rejects a mismatched SHA, dirty source, unexpected untracked inputs, and malformed SHA values.
 
-The cross-platform Node wrapper offers `verify`, `start`, `restart`, `status`, `stop`, and `rollback`. Before starting or restarting, it checks the SHA; after launch/restart/status it checks app version, exact commit, alpha environment, image revision, `/health`, page and Leaflet asset, loopback binding, `node` user, read-only root, zero mounts, dropped capabilities, `no-new-privileges`, no automatic restart, `/tmp` tmpfs and exactly one Docker internal network. Compose binds only `127.0.0.1:3101`; its internal network has no external egress. No production mounts, secrets, or saves are configured.
+The cross-platform Node wrapper offers `verify`, `start`, `restart`, `status`, `stop`, and `rollback`. Before starting or restarting, it checks the SHA; after launch/restart/status it checks app version, exact commit, alpha environment, image revision, `/health`, page and Leaflet asset, loopback binding, `node` user, read-only root, zero mounts, dropped capabilities, `no-new-privileges`, no automatic restart, `/tmp` tmpfs and exactly one standard Docker bridge network. Compose binds only `127.0.0.1:3101`; outbound container traffic is possible on that bridge, while inbound app access remains loopback-only. No production mounts, secrets, or saves are configured.
 
 For a small invited group, the kit documents a non-administrative tunnel-only OS account and per-person SSH keys through an already authorized private path. Each tester uses a local SSH tunnel to reach `127.0.0.1:3101`; they receive no repository, Docker, production, or admin access. The host owner must create/restrict these accounts under their approved access process; none were created here.
 
@@ -40,7 +40,7 @@ The old [ALPHA-1.4.0-PLAYTEST.md](ALPHA-1.4.0-PLAYTEST.md) now directs operators
 - Additional 360×800 mobile repeat: **3/3 pass**.
 - `npm run audit:all`: **0 vulnerabilities**.
 - `npm run audit:production`: **0 vulnerabilities**.
-- `docker compose -f compose.alpha-test.yml config` with explicit SHA: **pass**; rendered config confirms `127.0.0.1:3101`, internal network, no volumes, read-only, dropped capabilities, `no-new-privileges`, tmpfs and `restart: no`.
+- `docker compose -f compose.alpha-test.yml config` with explicit SHA: **pass**; rendered config confirms `127.0.0.1:3101`, standard bridge network, no volumes, read-only, dropped capabilities, `no-new-privileges`, tmpfs and `restart: no`.
 - `git diff --check`: pass.
 - Docker Engine check failed because `dockerDesktopLinuxEngine` named pipe is absent. Therefore host-side startup, restart, invitee tunnel, stop and rollback are **not locally verified**.
 
