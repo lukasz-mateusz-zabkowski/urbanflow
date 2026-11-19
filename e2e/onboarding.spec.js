@@ -5,7 +5,7 @@ import { join } from 'node:path';
 
 const artifacts = join(tmpdir(), 'urbanflow-alpha-1.4.0-visual-qa');
 const tile = '<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect width="256" height="256" fill="#e9eee4"/><path d="M0 220 110 110 256 35M0 40 256 210" fill="none" stroke="#fffefa" stroke-width="12"/></svg>';
-async function touchCenter(page, locator) { await locator.evaluate(element => element.scrollIntoView({ block: 'center', inline: 'nearest' })); await page.waitForTimeout(60); const box = await locator.boundingBox(); await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2); }
+async function touch(locator) { await locator.tap({ timeout: 10000 }); }
 
 async function openFreshGame(page, viewport, mobile) {
   await page.setViewportSize(viewport);
@@ -62,7 +62,7 @@ for (const scenario of [
 
     if (scenario.mobile) await activePage.locator('#buildPanel').evaluate(panel => { panel.scrollTop = panel.scrollHeight; });
     await activePage.locator('#feedbackButton').scrollIntoViewIfNeeded();
-    if (scenario.mobile) await touchCenter(activePage, activePage.locator('#feedbackButton')); else await activePage.locator('#feedbackButton').click();
+    if (scenario.mobile) await touch(activePage.locator('#feedbackButton')); else await activePage.locator('#feedbackButton').click();
     await activePage.locator('#feedbackForm [name="category"]').selectOption('Ocena pierwszej rozgrywki');
     await activePage.locator('#feedbackForm [name="rating"]').selectOption('5');
     await activePage.locator('#feedbackForm [name="description"]').fill('Pierwsza sesja jest zrozumiała.');
@@ -183,14 +183,14 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 360, height: 800 }
       await page.locator('#mobilePanelButton').tap();
       await expect(page.locator('#buildPanel')).toHaveClass(/open/);
       const budgetBeforeCancel = await page.locator('#budgetStat').innerText();
-      await touchCenter(page, page.locator('#fleetList [data-action="purchase-fleet"]').first());
+      await touch(page.locator('#fleetList [data-action="purchase-fleet"]').first());
       await expect(page.locator('dialog.confirm-dialog')).toBeVisible();
       await page.locator('dialog.confirm-dialog .secondary-button').tap();
       await expect(page.locator('dialog.confirm-dialog')).toHaveCount(0);
       expect(await page.locator('#budgetStat').innerText()).toBe(budgetBeforeCancel);
       const lineRow = page.locator('#lineList .line-item').first();
-      if (await lineRow.getAttribute('aria-expanded') === 'true') await touchCenter(page, lineRow);
-      await touchCenter(page, lineRow);
+      if (await lineRow.getAttribute('aria-expanded') === 'true') await touch(lineRow);
+      await touch(lineRow);
       await expect(page.locator('#lineDetail')).toBeVisible();
       await assertNoOverflow(page, viewport.width);
       const toastLayout = await page.evaluate(() => {
