@@ -119,5 +119,24 @@ jobs:
           test "$(docker inspect --format '{{len .Mounts}}' "$container")" = 0
           curl --fail --silent http://127.0.0.1:3101/ -o /dev/null
           curl --fail --silent http://127.0.0.1:3101/vendor/leaflet/leaflet.js -o /dev/null
+          "${compose[@]}" restart urbanflow-alpha-test
+          rm -f /tmp/urbanflow-alpha-test-health-after-restart.json
+          restarted=false
+          for attempt in $(seq 1 30); do
+            if curl --fail --silent http://127.0.0.1:3101/health -o /tmp/urbanflow-alpha-test-health-after-restart.json; then
+              restarted=true
+              break
+            fi
+            sleep 1
+          done
+          test "$restarted" = true
+          EXPECTED_VERSION="$(node -p "require('./package.json').version")" EXPECTED_COMMIT="$GITHUB_SHA" node -e '
+            const fs = require("node:fs");
+            const health = JSON.parse(fs.readFileSync("/tmp/urbanflow-alpha-test-health-after-restart.json", "utf8"));
+            if (health.status !== "ok" || health.version !== process.env.EXPECTED_VERSION || health.commit !== process.env.EXPECTED_COMMIT || health.environment !== "alpha-test") {
+              throw new Error(`Unexpected alpha-test health payload after restart: ${JSON.stringify(health)}`);
+            }
+          '
+          echo "Alpha-test health verified after restart"
           "${compose[@]}" stop urbanflow-alpha-test
           test "$(docker inspect --format '{{.State.Status}}' "$container")" = exited
