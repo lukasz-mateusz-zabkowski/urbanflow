@@ -49,6 +49,6 @@ Zrzuty są odkładane w katalogu tymczasowym systemu, nie w repozytorium. UI uż
 
 ## GitHub
 
-- Push gałęzi: potwierdzony; zdalny HEAD odpowiada SHA raportu.
+- Push gałęzi: potwierdzony; kod i raport są na `feature/alpha-1.3.0`, a zdalny HEAD został sprawdzony po pushu.
 - Actions dla SHA `2c2f3b9dcc0e4d8469ed066bad45f3e821a8a78f`: SUCCESS, 6/6 jobs.
 - Merge, tag i release: nie wykonano.
