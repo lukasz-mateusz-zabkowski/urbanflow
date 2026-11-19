@@ -2,10 +2,12 @@
 
 ## Status
 
-**W trakcie — walidacja lokalna zakończona pozytywnie; integracja i CI na `main` oczekują.** Nie wykonano jeszcze integracji, tagowania ani wdrożenia.
+**GO — poprawki zintegrowane fast-forward do `main`; walidacja lokalna i GitHub Actions na SHA `e8876f1c17713f8fd355252e000f5ddb4b307fe6` są zielone.** Końcowy tag zostanie utworzony po walidacji commita dokumentującego ten raport.
 
 - Początkowy `main`: `17cd2b35d858690a986fe7bebbe167c480082dca`.
 - Początkowy kandydat `feature/alpha-1.3.0`: `b645c61505e7cac3776e7a9059a7122ac8aafbbf`.
+- Commit poprawek: `e8876f1c17713f8fd355252e000f5ddb4b307fe6`.
+- `main` został zaktualizowany fast-forward; zdalny i lokalny SHA wynosiły `e8876f1c17713f8fd355252e000f5ddb4b307fe6` po integracji.
 - Kandydat obejmuje `main` jako przodka; zdalne porównanie wykazało 4 commity do przodu i 0 do tyłu.
 - Reguły: API zwróciło pustą listę rulesetów i `protected: false` dla gałęzi `main`; odczyt szczegółowego endpointu ochrony gałęzi zwrócił 403 integracji. Samo 403 nie jest dowodem obowiązkowego PR.
 
@@ -28,6 +30,7 @@ Nie zmieniono stawek ani ogólnego balansu. CAPEX, zwroty i utrzymanie nadal są
 - `npm run audit:all`: **0 podatności**.
 - `npm run audit:production`: **0 podatności**.
 - `git diff --check`: PASS.
+- GitHub Actions dla zintegrowanego `main`: **SUCCESS, 6/6** — [run 44506742219](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44506742219). Jobs: `container-health`, `security-audit`, `test (18)`, `test (20)`, `test (22)`, `browser-test`.
 - Zrzuty UI: `%TEMP%\urbanflow-alpha-1.3.0-visual-qa\investments-1366x768.png` i `%TEMP%\urbanflow-alpha-1.3.0-visual-qa\investments-390x844.png` (poza repozytorium).
 
 ## Zapisy i ograniczenia
@@ -36,4 +39,4 @@ Nie zmieniono schematu 10. Stare ukończone rekordy bez pola `expected` pozostaj
 
 ## Integracja i CI
 
-Do uzupełnienia po commicie poprawek: SHA kandydata, push, wszystkie 6 zadań Actions na końcowym `main`, SHA końcowego `main`, status tagu `v1.3.0-alpha` oraz ostateczne GO/NO GO. Merge fast-forward i tag są warunkowe na zielonym CI dla wynikowego `main`.
+`v1.3.0-alpha` nie istniał w chwili weryfikacji; nie nadpisano żadnego tagu. Ten raport będzie ostatnim, dokumentacyjnym commitem na gałęzi integracyjnej. Po pozytywnym CI dla tego commita anotowany tag zostanie skierowany na jego SHA, równy końcowemu `main`. GitHub Release, Raspberry Pi i wdrożenie nie były uruchamiane. Dwa nieśledzone dokumenty użytkownika pozostały nietknięte.
