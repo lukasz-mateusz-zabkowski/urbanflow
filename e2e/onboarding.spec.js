@@ -115,8 +115,11 @@ test('a first-time player completes all 12 tutorial steps through the game inter
   expect(await page.locator('#previewCost').innerText()).not.toBe('—');
   expect(await page.locator('#budgetStat').innerText()).toBe(budgetBeforePlan);
 
+  await page.locator('#pauseButton').click();
+  await expect(page.locator('#trafficStatus')).toContainText('Pauza');
   await page.locator('#createLineButton').click();
   await expect(progress).toHaveAttribute('aria-valuenow', '5');
+  await page.locator('#pauseButton').click();
   await page.locator('#speedButton').click();
   await page.locator('#speedButton').click();
   await expect.poll(async () => Number((await page.locator('#timeStat').innerText()).match(/\d+/)?.[0] || 0), { timeout: 15000 }).toBeGreaterThan(0);
@@ -172,11 +175,13 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 360, height: 800 }
       await page.locator('#lineDecisionSummary').scrollIntoViewIfNeeded();
       await expect(page.locator('#tutorialProgress')).toHaveAttribute('aria-valuenow', '4');
       expect(await page.locator('#budgetStat').innerText()).toBe(budgetBeforePlan);
+      await page.locator('#pauseButton').tap();
+      await expect(page.locator('#trafficStatus')).toContainText('Pauza');
       await page.locator('#createLineButton').tap();
       await expect(page.locator('#tutorialProgress')).toHaveAttribute('aria-valuenow', '5');
+      await expect.poll(() => page.locator('#lineList .line-item').count()).toBe(1);
       await page.locator('#mobilePanelButton').tap();
       await expect(page.locator('#buildPanel')).toHaveClass(/open/);
-      await page.locator('#pauseButton').tap();
       const budgetBeforeCancel = await page.locator('#budgetStat').innerText();
       await touchCenter(page, page.locator('#fleetList [data-action="purchase-fleet"]').first());
       await expect(page.locator('dialog.confirm-dialog')).toBeVisible();

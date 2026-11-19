@@ -104,6 +104,8 @@ async function selectSevenStops(page, mobile = false) {
   await expect(page.locator('#previewTime')).not.toBeEmpty();
   await expect(page.locator('#previewRoutingReason')).not.toBeEmpty();
   await expect(page.locator('#createLineButton')).toBeEnabled();
+  await page.locator('#createLineButton').scrollIntoViewIfNeeded();
+  await expect(page.locator('#createLineButton')).toBeInViewport();
   await expect(page.locator('#map .route-preview-road')).toHaveCount(1);
   await expect.poll(() => page.locator('#map .route-preview-access').count()).toBeGreaterThan(0);
   expect(await page.locator('#map .route-preview-access').evaluateAll(paths => paths.every(path => Boolean(path.getAttribute('stroke-dasharray'))))).toBe(true);
@@ -116,7 +118,7 @@ test('standard desktop game builds the ordered seven-stop OSM route, safely edit
   await selectSevenStops(page);
   const startBudget = await page.locator('#budgetStat').innerText();
   await screenshot(page, 'standard-seven-stop-desktop-preview.png');
-  await page.locator('#createLineButton').click({ force: true });
+  await page.locator('#createLineButton').click();
   await screenshot(page, 'standard-seven-stop-built-desktop.png');
   const lineId = await page.evaluate(() => JSON.parse(localStorage.getItem('urbanflow.krakow.v2')).state.lines.find(line => line.stops.length === 7).id);
   const roadGeometry = page.locator(`#map .route-road-geometry[data-line-id="${lineId}"]`);
@@ -159,7 +161,9 @@ test('standard desktop game builds the ordered seven-stop OSM route, safely edit
   await page.locator('#lineDetail [data-edit-segment]').selectOption('0');
   await page.locator('#lineDetail [data-action="insert-stop-line"]').click({ force: true });
   const previewText = await page.locator('#createLineButton').innerText();
-  await page.locator('#createLineButton').click({ force: true });
+  await page.locator('#createLineButton').scrollIntoViewIfNeeded();
+  await expect(page.locator('#createLineButton')).toBeInViewport();
+  await page.locator('#createLineButton').click();
   const finalSave = await page.evaluate(() => JSON.parse(localStorage.getItem('urbanflow.krakow.v2')));
   const finalLine = finalSave.state.lines.find(line => line.id === lineId);
   expect(finalLine.stops).toEqual([routeIds[0], targetId, ...routeIds.slice(1)]);
