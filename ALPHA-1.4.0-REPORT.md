@@ -2,7 +2,7 @@
 
 ## Status
 
-**GO for technical review and integration.** The final onboarding and route-editor browser checks pass locally, and GitHub Actions run [#72](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44593036174) passed all six jobs on implementation commit `72e3b79c55014f272d50e3cf144fc4aeacb3a3a8`. The feature branch remains separate from `main`; no tag, release, production deployment, or Raspberry Pi operation was made.
+**GO for technical review and integration.** Local Node (232/232) and Playwright (25/25) checks pass, and GitHub Actions run [#73](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44595450462) passed all six jobs on commit `6d04364dd238f06b20f0bef88d17454892ebd7e2`. The feature branch remains separate from `main`; no tag, release, production deployment, or Raspberry Pi operation was made.
 
 ## Repository
 
@@ -10,7 +10,8 @@
 - Base `main`: `22abeccf742908c6a1262a6c1853662a7a488922` (unchanged)
 - Branch: `feature/alpha-1.4.0`
 - Tested feature implementation commit: `a8bd0830a4cdb745daced247149e0407a97ec0b7`
-- Final browser-regression commit: `72e3b79c55014f272d50e3cf144fc4aeacb3a3a8`
+- Browser-regression commit: `72e3b79c55014f272d50e3cf144fc4aeacb3a3a8`
+- Final mobile notification fix and regression checks: `6d04364dd238f06b20f0bef88d17454892ebd7e2`
 - The feature branch was pushed and its remote head was verified equal to the local head.
 - Two unrelated, untracked user documents remain untouched: `URBANFLOW-1.0.1-RELEASE-HARDENING.md` and `URBANFLOW-RELEASE-INTEGRATION-1.0.0.md`.
 
@@ -60,6 +61,8 @@ Fresh schema-11 saves use a small versioned set of action flags for steps that c
 - GitHub Actions [run #70](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44589545144): **all six jobs succeeded** (Node 18, 20 and 22; browser test; security audit; container health). The container-health job also ran the isolated alpha Compose profile successfully.
 - A subsequent run [#71](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44590155053) exposed a timing-sensitive tutorial assertion: simulation time advanced while the test expected exactly step 5. The browser test now pauses the simulation around line creation and verifies the saved line before resuming. The route-editor test also now scrolls the panel's actual CTA into view, asserts its visibility, and clicks normally rather than using a forced off-screen click.
 - Final branch run [#72](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44593036174) on `72e3b79c55014f272d50e3cf144fc4aeacb3a3a8`: **all six jobs succeeded**: Node 18, 20 and 22, browser test, security audit, and container health.
+- Visual review of the generated mobile screenshots found that three simultaneous toasts could cover the purchase action and line details. On mobile, notifications now replace older ones; opening the sheet clears stale toasts and places any current notification in the free band above the sheet. Added Playwright assertions for a single notification and no toast/panel overlap, alongside the existing real touch purchase-cancellation check. The refreshed 390×844 and 360×800 screenshots show the line detail unobscured.
+- After this fix, local `npm ci`, `npm test` (**232 passed**), `npm run test:browser` (**25 passed**), `npm run audit:all` (**0 vulnerabilities**), and `npm run audit:production` (**0 vulnerabilities**) all passed. Final branch run [#73](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44595450462) on `6d04364dd238f06b20f0bef88d17454892ebd7e2`: **all six jobs succeeded** (Node 18, 20, 22; browser test; security audit; container health).
 
 ## Isolated alpha test profile
 
