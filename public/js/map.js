@@ -2,9 +2,10 @@ import { TRANSPORT_TYPES, haversineKm, lineMetrics } from './transport.js?v=10';
 import { SIMULATION, gameClock } from './simulation.js?v=10';
 import { DISTRICT_PROFILES, inferProfile, latentDemand } from './demand.js?v=10';
 import { activeCityEvents, upcomingCityEvents } from './city-events.js?v=10';
-import { routeLine, routeLineDetails } from './routing.js?v=13';
+import { routeLine, routeLineDetails } from './routing.js?v=14';
 import { describePlace } from './place-profiles.js?v=10';
 import { landUseDominantUse, landUseLabel } from './land-use.js?v=1';
+import { buildManualTramGeometry } from './tramway.js?v=1';
 
 const FRAME_MS = 50;
 const MAX_VEHICLES_PER_LINE = 12;
@@ -67,12 +68,13 @@ export function vehiclePhase(ageMinutes, index, fleet, frequency, travelMinutes,
 }
 
 export class GameMap {
-  constructor(elementId, onPointClick, onLineClick = null, onSegmentDrop = null) {
-    this.onPointClick = onPointClick; this.onLineClick = onLineClick; this.onSegmentDrop = onSegmentDrop;
+  constructor(elementId, onPointClick, onLineClick = null, onSegmentDrop = null, onMapClick = null) {
+    this.onPointClick = onPointClick; this.onLineClick = onLineClick; this.onSegmentDrop = onSegmentDrop; this.onMapClick = onMapClick;
     this.markers = new Map(); this.lines = new Map(); this.vehicles = new Map(); this.orderMarkers = new Map();
     this.pointViews = new Map(); this.starterLayers = new Set(); this.effectTimers = new Set();
     this.visible = true; this.intersecting = true; this.frameId = null; this.lastFrame = 0;
     this.map = L.map(elementId, { zoomControl: false, attributionControl: true, preferCanvas: true });
+    this.map.on('click', event => this.onMapClick?.(event.latlng));
     this.map.on('zoomend', () => { if (this.currentPoints && this.currentGameState) this.renderPoints(this.currentPoints, this.currentGameState); });
     this.dragMove = event => this.moveSegmentDrag(event.latlng);
     this.documentDragMove = event => {
@@ -116,6 +118,7 @@ export class GameMap {
     }).addTo(this.map);
     this.analysisRenderer = L.canvas({ padding: 0.4, pane: 'effects' });
     this.analysisLayer = L.layerGroup().addTo(this.map);
+    this.tramTrackLayer = L.layerGroup().addTo(this.map);
     this.eventLayer = L.layerGroup().addTo(this.map);
     this.onVisibilityChange = () => this.syncAnimation();
     document.addEventListener('visibilitychange', this.onVisibilityChange);
@@ -142,12 +145,13 @@ export class GameMap {
     this.starterLayers.forEach(layer => layer.remove());
     this.effectTimers.forEach(timer => clearTimeout(timer)); this.effectTimers.clear();
     this.markers.clear(); this.pointViews.clear(); this.lines.clear(); this.vehicles.clear(); this.orderMarkers.clear(); this.starterLayers.clear();
-    this.analysisLayer.clearLayers(); this.eventLayer.clearLayers(); this.eventSignature = '';
+    this.analysisLayer.clearLayers(); this.eventLayer.clearLayers(); this.tramTrackLayer.clearLayers(); this.tramTrackSignature = ''; this.eventSignature = '';
     this.preview?.remove(); this.previewAccess?.remove(); this.preview = null; this.previewAccess = null;
     this.previewSignature = ''; this.selectedLineId = null;
   }
 
   setLineClickHandler(callback) { this.onLineClick = callback; }
+  setMapClickHandler(callback) { this.onMapClick = callback; }
   centerCity() {
     if (!this.city) return;
     const padding = this.element.clientWidth < 500 ? [30, 80] : [70, 70];
@@ -182,7 +186,8 @@ export class GameMap {
     const rush = (clock.hour >= 7 && clock.hour < 10) || (clock.hour >= 16 && clock.hour < 19);
     this.wrapper?.classList.toggle('is-night', night); this.wrapper?.classList.toggle('is-rush-hour', rush);
     if (this.wrapper) { this.wrapper.dataset.timePeriod = night ? 'night' : rush ? 'rush' : 'day'; this.wrapper.dataset.analytics = gameState.analyticsMode || 'off'; }
-    this.renderPoints(points, gameState); this.renderLines(gameState, clock.minuteOfDay); this.renderAnalytics(points, gameState, clock.minuteOfDay);
+    this.renderPoints(points, gameState); this.renderLines(gameState, clock.minuteOfDay); this.renderTramInfrastructure(gameState.tramInfrastructure);
+    this.renderAnalytics(points, gameState, clock.minuteOfDay);
     this.renderEvents(gameState); this.renderPreview(gameState);
     this.drawVehicles(performance.now()); this.syncAnimation();
   }
@@ -293,8 +298,14 @@ export class GameMap {
         : coordinateGeometry(line.routeGeometry?.length ? line.routeGeometry : routeLine(line.stops, line.type, this.city));
       const display = this.lines.get(line.id)?.signature === signature ? this.lines.get(line.id).display : (() => {
         const details = routeLineDetails(line.stops, line.type, this.city);
-        const roads = details.segments.map(segment => segment.roadCoordinates?.length >= 2 ? segment.roadCoordinates : segment.coordinates)
-          .filter(path => path?.length >= 2);
+        const roads = [];
+        const connectors = new Map((details.stopConnectors || []).map(item => [item.stopId, item.roadCoordinates]));
+        if (details.valid) details.segments.forEach((segment, index) => {
+          const path = segment.roadCoordinates?.length >= 2 ? segment.roadCoordinates : segment.coordinates;
+          if (path?.length >= 2) roads.push(path);
+          const connector = connectors.get(line.stops[index + 1]);
+          if (connector?.length >= 2) roads.push(connector);
+        });
         const fallback = roads.length ? roads : [geometry.coordinates];
         const access = details.segments.flatMap(segment => segment.accessSegments || [])
           .filter(path => path.length >= 2 && (path[0][0] !== path.at(-1)[0] || path[0][1] !== path.at(-1)[1]));
@@ -336,7 +347,7 @@ export class GameMap {
         { events: gameState.cityEvents || [], elapsedMinutes: gameState.elapsedMinutes, serviceDayType: gameClock(gameState.elapsedMinutes, gameState.calendar).dayType });
       const frequency = record.metrics.effectiveFrequency || 0; const fleet = record.metrics.vehicles;
       record.activeFleet = frequency > 0 ? Math.min(fleet, Math.max(1, Math.ceil(record.metrics.roundTripMinutes * frequency / 60 - 0.000001))) : 0;
-      const count = Math.min(record.activeFleet, MAX_VEHICLES_PER_LINE, markerBudget); markerBudget -= count;
+      const count = line.routingUnavailable ? 0 : Math.min(record.activeFleet, MAX_VEHICLES_PER_LINE, markerBudget); markerBudget -= count;
       for (let index = 0; index < count; index += 1) {
         const key = `${line.id}:${index}`; vehicleIds.add(key);
         let vehicle = this.vehicles.get(key); const iconSignature = `${line.type}|${color}`;
@@ -569,19 +580,34 @@ export class GameMap {
 
   renderPreview(gameState) {
     const stops = gameState.selectedNodes || []; const color = TRANSPORT_TYPES[gameState.selectedType]?.color || '#ffffff';
-    const signature = `${stops.join('|')}:${color}`; if (signature === this.previewSignature) return;
+    const manual = gameState.selectedType === 'tram' && gameState.tramBuildMode === 'manual';
+    const controlSignature = JSON.stringify(gameState.tramControlPoints || []);
+    const signature = `${stops.join('|')}:${color}:${manual}:${controlSignature}`; if (signature === this.previewSignature) return;
     this.previewSignature = signature;
-    const details = routeLineDetails(stops, gameState.selectedType, this.city);
+    const routeType = manual ? 'metro' : gameState.selectedType === 'tram' && gameState.tramBuildMode === 'street' ? 'bus' : gameState.selectedType;
+    const details = routeLineDetails(stops, routeType, this.city);
     const segments = details.segments || [];
-    const roads = segments.map(segment => segment.roadCoordinates?.length >= 2 ? segment.roadCoordinates : segment.coordinates)
-      .filter(path => path?.length >= 2);
+    const manualPoints = stops.map(id => this.pointById.get(id)).filter(Boolean).map(point => [point.lat, point.lng]);
+    const manualRoute = manual && manualPoints.length >= 2
+      ? buildManualTramGeometry(manualPoints, [manualPoints[0], ...(gameState.tramControlPoints || []), manualPoints.at(-1)]) : null;
+    const manualCoordinates = manualRoute?.valid ? manualRoute.coordinates : [];
+    const roads = manual ? (manualCoordinates.length >= 2 ? [manualCoordinates] : []) : [];
+    if (!manual) {
+      const connectors = new Map((details.stopConnectors || []).map(item => [item.stopId, item.roadCoordinates]));
+      segments.forEach((segment, index) => {
+        const path = segment.roadCoordinates?.length >= 2 ? segment.roadCoordinates : segment.coordinates;
+        if (path?.length >= 2) roads.push(path);
+        const connector = connectors.get(stops[index + 1]);
+        if (connector?.length >= 2) roads.push(connector);
+      });
+    }
     const coordinates = roads.length ? roads : details.coordinates.length >= 2 ? [details.coordinates] : [];
     const access = segments.flatMap(segment => segment.accessSegments || [])
       .filter(path => path.length >= 2 && (path[0][0] !== path.at(-1)[0] || path[0][1] !== path.at(-1)[1]));
     if (!coordinates.length) {
       this.preview?.remove(); this.previewAccess?.remove(); this.preview = null; this.previewAccess = null; return;
     }
-    const displayColor = details.valid ? color : '#c43f38';
+    const displayColor = details.valid && (!manual || manualRoute?.valid) ? color : '#c43f38';
     if (!this.preview) this.preview = L.polyline(coordinates, { renderer: this.routeRenderer, color: displayColor, weight: 8,
       opacity: 0.9, dashArray: '5 11', interactive: false, className: 'route-preview route-preview-road', lineCap: 'round' }).addTo(this.map);
     else this.preview.setLatLngs(coordinates).setStyle({ color: displayColor });
@@ -590,6 +616,16 @@ export class GameMap {
         weight: 5, opacity: 0.98, dashArray: '3 5', interactive: false, className: 'route-preview-access', lineCap: 'round' }).addTo(this.map);
       else this.previewAccess.setLatLngs(access);
     } else { this.previewAccess?.remove(); this.previewAccess = null; }
+  }
+
+  renderTramInfrastructure(infrastructure) {
+    const segments = infrastructure?.segments || [];
+    const signature = segments.map(segment => segment.id).join('|');
+    if (signature === this.tramTrackSignature) return;
+    this.tramTrackSignature = signature;
+    this.tramTrackLayer.clearLayers();
+    for (const segment of segments) L.polyline([segment.from, segment.to], { renderer: this.routeRenderer, pane: 'routes', color: '#b44b9c', weight: 5,
+      opacity: 0.68, dashArray: segment.mode === 'manual' ? '7 4' : null, interactive: false, className: 'built-tram-track' }).addTo(this.tramTrackLayer);
   }
 
   shouldAnimate() {

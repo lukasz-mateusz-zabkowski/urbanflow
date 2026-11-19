@@ -3,14 +3,15 @@ import { recordNetworkHistory } from './analytics.js?v=12';
 import { airportUnlocked, haversineKm, lineCost, lineMetrics, unlockedTypes, TRANSPORT_TYPES } from './transport.js?v=10';
 import { createLineStats, createPassengerState, passengerTick, totalWaiting } from './passengers.js?v=11';
 import { SIMULATION, calendarTickContext, createSimulationCalendar, gameClock, setSpecialDay } from './simulation.js?v=10';
-import { createCampaign, updateCampaign } from './campaign.js?v=10';
+import { createCampaign, updateCampaign } from './campaign.js?v=11';
 import { pickStopsToReveal } from './stops.js?v=11';
 import { CITY_EVENT_DEFINITIONS, createCityEvent } from './city-events.js?v=10';
 import { ensureDiagnostics } from './analytics.js?v=11';
 import { ensureMobilityState } from './mobility.js?v=11';
-import { chooseStartScenario, starterRoutesFor } from './cities.js?v=10';
-import { getRoutingGraphStatus, routeLine, routeLineDetails, routingMode } from './routing.js?v=13';
+import { chooseStartScenario, starterRoutesFor } from './cities.js?v=11';
+import { getRoutingGraphStatus, routeLine, routeLineDetails, routingMode } from './routing.js?v=14';
 import { ensureFleet, fleetStatus, missingFleetCost } from './fleet.js?v=10';
+import { createTramInfrastructure, planTrackSegments, commitTrackPlan, buildManualTramGeometry } from './tramway.js?v=1';
 import { ensureCityEvolution, evolveCityWeek } from './city-evolution.js?v=2';
 import { advanceInvestmentProjects, approveInvestment, cancelInvestment, createInvestmentState, planInvestment, recordInvestmentWeek } from './investments.js?v=1';
 import {
@@ -38,7 +39,8 @@ export class UrbanFlowGame {
       cityEvents: [], nextEventId: 1, analyticsMode: 'off', networkHistory: [], networkDailyHistory: [], networkWeeklyHistory: [], startScenarioId: this.startScenario.id,
       campaign: createCampaign(), status: 'playing', lossReason: '', lowQualityMinutes: 0,
       preferences: { tutorialCollapsed: false, goalsCollapsed: true }, nextLineId: 1, networkVersion: 0,
-      investments: createInvestmentState(), hubCapacityByPoint: {}
+      investments: createInvestmentState(), hubCapacityByPoint: {}, tramInfrastructure: createTramInfrastructure(),
+      tramBuildMode: 'street', tramControlPoints: []
     };
     this.state.revealedStops ||= [];
     this.state.calendar ||= createSimulationCalendar();
@@ -48,6 +50,7 @@ export class UrbanFlowGame {
     this.state.subsidies ||= 0; this.state.passengerKm ||= 0; this.state.stressDemandMultiplier ||= 1;
     this.state.fleetPurchases ||= 0;
     this.state.investments ||= createInvestmentState(); this.state.hubCapacityByPoint ||= {};
+    this.state.tramInfrastructure ||= createTramInfrastructure(); this.state.tramBuildMode ||= 'street'; this.state.tramControlPoints ||= [];
     this.state.cityEvents ||= []; this.state.nextEventId ||= 1; this.state.analyticsMode ||= 'off';
     this.state.networkHistory ||= []; this.state.networkDailyHistory ||= []; this.state.networkWeeklyHistory ||= [];
     this.state.preferences = { tutorialCollapsed: false, goalsCollapsed: true, ...(this.state.preferences || {}) };
@@ -73,22 +76,38 @@ export class UrbanFlowGame {
       if (line.type !== type) continue;
       const details = routeLineDetails(line.stops, line.type, this.city, this.events.routingProvider,
         gameClock(this.state.elapsedMinutes, this.state.calendar).minuteOfDay);
-      if (!details.valid) { unavailable.push({ lineId: line.id, reason: details.reason }); continue; }
-      line.routeGeometry = details.coordinates; line.distanceKm = details.distanceKm; line.routingMode = routingMode(line.type);
+      if (!details.valid) { line.routingUnavailable = String(details.reason || 'Brak wiarygodnej trasy.').slice(0, 500); unavailable.push({ lineId: line.id, reason: line.routingUnavailable }); continue; }
+      delete line.routingUnavailable;
+      line.routeGeometry = details.vehicleCoordinates?.length >= 2 ? details.vehicleCoordinates : details.coordinates;
+      line.distanceKm = details.distanceKm; line.routingMode = routingMode(line.type);
       updated.push(line.id);
     }
     return { updated, unavailable };
   }
+  setTramBuildMode(mode) {
+    if (!['street', 'manual', 'existing'].includes(mode)) return fail('Nieznany sposób budowy torowiska.');
+    if (!this.availableTypes().includes('tram') || this.state.status !== 'playing') return fail('Budowa tramwaju nie jest dostępna.');
+    this.state.tramBuildMode = mode; this.state.tramControlPoints = []; this.state.selectedType = 'tram'; this.changed();
+    return { ok: true };
+  }
+  addTramControlPoint(lat, lng) {
+    if (this.state.selectedType !== 'tram' || this.state.tramBuildMode !== 'manual' || this.state.status !== 'playing') return fail('Wybierz ręczny przebieg tramwaju przed wskazaniem punktów.');
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180 || this.state.tramControlPoints.length >= 300) return fail('Nieprawidłowy punkt przebiegu.');
+    const point = [Number(lat), Number(lng)], previous = this.state.tramControlPoints.at(-1);
+    if (previous && Math.hypot((point[0] - previous[0]) * 111, (point[1] - previous[1]) * 70) < 0.005) return fail('Punkt jest zbyt blisko poprzedniego.');
+    this.state.tramControlPoints.push(point); this.changed(); return { ok: true };
+  }
+  clearTramControlPoints() { this.state.tramControlPoints = []; this.changed(); return { ok: true }; }
   changed() { this.events.onSave?.(this.state); this.events.onChange?.(); }
   pointName(id) { return this.city.points.find(point => point.id === id)?.name || id; }
   visiblePoints() {
     const revealed = new Set(this.state.revealedStops);
     const opening = new Set([this.startScenario.id, this.startScenario.localHubId, this.startScenario.centerId]);
-    return this.city.points.filter(p => p.type === 'stop' ? revealed.has(p.id)
+    return this.city.points.filter(p => !p.legacyOnly && (p.type === 'stop' ? revealed.has(p.id)
       : p.type === 'airport' ? this.state.airportUnlocked
         : opening.has(p.id) ? true
           : p.startScenario ? p.startScenario === this.state.startScenarioId || this.state.unlockedPointLevel >= 2
-          : p.unlock <= this.state.unlockedPointLevel);
+          : p.unlock <= this.state.unlockedPointLevel));
   }
   // Każda budowa odsłania nowe przystanki wzdłuż trasy i wokół jej końców.
   revealStops(stopIds, opts) {
@@ -106,8 +125,7 @@ export class UrbanFlowGame {
     if (id === 'loop-center' || id === 'loop-station') {
       this.startScenario = chooseStartScenario(Math.random, 'wieliczka'); this.state.startScenarioId = 'wieliczka';
       this.starterRoutes = starterRoutesFor(this.startScenario);
-      route = { id, label: id === 'loop-center' ? 'Pętla Centrum' : 'Pętla Dworzec',
-        stops: ['wieliczka', 'biezanow', id === 'loop-center' ? 'centrum' : 'dworzec'] };
+      route = { id, label: 'Pętla Dworzec', stops: ['wieliczka', 'biezanow', 'dworzec'] };
     } else route = this.starterRoutes.find(r => r.id === id);
     if (!route) return fail('Nieznana trasa.');
     this.state.selectedType = 'bus'; this.state.selectedNodes = [...route.stops]; this.changed(); return this.previewLine();
@@ -119,42 +137,81 @@ export class UrbanFlowGame {
     if (!Array.isArray(stops) || stops.length < 2) return fail('Wybierz co najmniej dwa przystanki na mapie.');
     if (stops.length > this.city.points.length || new Set(stops).size !== stops.length) return fail('Każdy przystanek może wystąpić na trasie tylko raz.');
     const visible = new Set(this.visiblePoints().map(p => p.id));
-    if (stops.some(id => !visible.has(id))) return fail('Jeden z przystanków nie jest jeszcze dostępny.');
-    const legacyStarter = this.state.startScenarioId === 'wieliczka' && [['wieliczka', 'biezanow', 'centrum'], ['wieliczka', 'biezanow', 'dworzec']]
-      .some(route => signature(route) === signature(stops));
+    const oldLine = this.state.lines.find(line => line.id === editingId);
+    const legacyUnchanged = oldLine?.stops.includes('centrum') && signature(oldLine.stops) === signature(stops);
+    if (stops.some(id => !visible.has(id) && !(id === 'centrum' && legacyUnchanged))) return fail('Jeden z przystanków nie jest jeszcze dostępny.');
+    if (stops.includes('centrum') && !legacyUnchanged) return fail('Centrum jest punktem historycznym i nie można dodawać go do nowych tras.');
+    const legacyStarter = this.state.startScenarioId === 'wieliczka' && signature(['wieliczka', 'biezanow', 'dworzec']) === signature(stops);
     if (!this.state.lines.length && !legacyStarter && !this.starterRoutes.some(r => signature(r.stops) === signature(stops))) return fail(`Zacznij od połączenia ${this.startScenario.name} z lokalnym węzłem.`);
     if (this.state.lines.some(l => l.id !== editingId && l.type === type && signature(l.stops) === signature(stops))) return fail('Taka linia już działa, także w przeciwnym kierunku.');
-    const routeDetails = routeLineDetails(stops, type, this.city, this.events.routingProvider,
+    let routeDetails = routeLineDetails(stops, type, this.city, this.events.routingProvider,
       gameClock(this.state.elapsedMinutes).minuteOfDay);
+    let trackPlan = null;
+    if (type === 'tram' && this.state.tramBuildMode === 'manual') {
+      const stopPoints = stops.map(id => this.city.points.find(point => point.id === id)).filter(Boolean).map(point => [point.lat, point.lng]);
+      const manualControls = [stopPoints[0], ...this.state.tramControlPoints, stopPoints.at(-1)];
+      const manual = buildManualTramGeometry(stopPoints, manualControls);
+      if (!manual.valid) return { ...fail(manual.reason), routeDetails: { ...routeDetails, valid: false, reason: manual.reason } };
+      const coordinates = manual.coordinates;
+      trackPlan = planTrackSegments(this.state.tramInfrastructure, coordinates.map(point => point), { mode: 'manual' });
+      routeDetails = { ...routeDetails, coordinates, vehicleCoordinates: coordinates, distanceKm: manual.lengthKm, valid: trackPlan.valid,
+        source: 'Punkty kontrolne wskazane przez gracza', algorithm: 'Tramwajowe torowisko ręczne', reason: manual.reason, segments: [] };
+    } else if (type === 'tram' && this.state.tramBuildMode === 'street') {
+      const street = routeLineDetails(stops, 'bus', this.city, null, gameClock(this.state.elapsedMinutes).minuteOfDay);
+      if (!street.valid) return { ...fail(`Nie można wyznaczyć przebiegu torowiska po drogach: ${street.reason}`), routeDetails: street };
+      const coordinates = street.vehicleCoordinates?.length >= 2 ? street.vehicleCoordinates : street.coordinates;
+      trackPlan = planTrackSegments(this.state.tramInfrastructure, coordinates, { mode: 'street' });
+      routeDetails = { ...street, vehicleCoordinates: coordinates, coordinates, source: `${street.source} + torowisko budowane przez gracza`,
+        algorithm: `${street.algorithm} + budowa toru`, reason: 'Torowisko zostanie zbudowane wzdłuż lokalnie wyznaczonego przebiegu autobusowego.',
+        valid: trackPlan.valid, trackPlan, mode: 'tramway' };
+    }
     const containsRealStop = stops.some(id => this.city.points.find(point => point.id === id)?.type === 'stop');
     const localSurfaceGraphLoaded = ['bus', 'tram'].includes(type) && getRoutingGraphStatus(this.city.id).loaded;
-    if (!routeDetails.valid && (containsRealStop || localSurfaceGraphLoaded)) return { ...fail(`Nie można zatwierdzić niewiarygodnej geometrii. ${routeDetails.reason}`),
+    if (!routeDetails.valid && (containsRealStop || localSurfaceGraphLoaded || (type === 'bus' && typeof window !== 'undefined'))) return { ...fail(`Nie można zatwierdzić niewiarygodnej geometrii. ${routeDetails.reason}`),
       routeDetails, distanceKm: routeDetails.distanceKm, routeGeometry: routeDetails.coordinates };
-    const routeGeometry = routeDetails.coordinates;
+    const routeGeometry = routeDetails.vehicleCoordinates?.length >= 2 ? routeDetails.vehicleCoordinates : routeDetails.coordinates;
     const distanceKm = Math.max(0.1, routeDetails.distanceKm);
-    const infrastructureCost = lineCost(type, distanceKm, stops, this.city);
+    let infrastructureCost = lineCost(type, distanceKm, stops, this.city);
     const old = this.state.lines.find(l => l.id === editingId);
     const unchanged = old && signature(old.stops) === signature(stops);
-    // No refunds for removing infrastructure; changes carry a rebuilding charge.
-    const rebuildCost = old ? (unchanged ? 0 : Math.round(Math.max(0, infrastructureCost - (old.infrastructureCost ?? lineCost(old.type, old.distanceKm, old.stops, this.city))) + infrastructureCost * .12)) : infrastructureCost;
     const fleetPurchase = old ? { missing: 0, cost: 0 } : missingFleetCost(this.state, type, 2);
+    if (type === 'tram' && this.state.tramBuildMode !== 'existing' && !trackPlan) {
+      const trackGeometry = routeDetails.vehicleCoordinates || routeDetails.roadCoordinates || routeDetails.coordinates;
+      trackPlan = planTrackSegments(this.state.tramInfrastructure, trackGeometry, { mode: this.state.tramBuildMode });
+    }
+    if (type === 'tram' && trackPlan && !trackPlan.valid) return fail(trackPlan.reason);
+    if (type === 'tram') {
+      if (this.state.tramBuildMode === 'existing') infrastructureCost = 0;
+      else if (trackPlan) {
+        const newLengthKm = trackPlan.newSegments.reduce((sum, segment) => sum + segment.lengthKm, 0);
+        // Share the existing line-construction rate across newly laid track only.
+        // Track already in service is never charged again.
+        infrastructureCost = trackPlan.lengthKm > 0 ? Math.round(infrastructureCost * newLengthKm / trackPlan.lengthKm) : 0;
+      }
+    }
+    const trackCost = type === 'tram' ? infrastructureCost : 0;
+    // No refunds for removing infrastructure; changes carry the existing rebuilding charge.
+    const rebuildCost = old ? (unchanged ? 0 : Math.round(Math.max(0, infrastructureCost - (old.infrastructureCost ?? lineCost(old.type, old.distanceKm, old.stops, this.city))) + infrastructureCost * .12)) : infrastructureCost;
     const cost = rebuildCost + fleetPurchase.cost;
     const metrics = lineMetrics({ type, stops, distanceKm, vehicles: old?.vehicles ?? 2, frequency: old?.frequency ?? 3 }, this.city,
       gameClock(this.state.elapsedMinutes, this.state.calendar).minuteOfDay, {
         events: this.state.cityEvents, elapsedMinutes: this.state.elapsedMinutes,
         serviceDayType: gameClock(this.state.elapsedMinutes, this.state.calendar).dayType
       });
-    return { ok: true, cost, infrastructureCost, fleetCost: fleetPurchase.cost, vehiclesToBuy: fleetPurchase.missing,
+    return { ok: true, cost, infrastructureCost, fleetCost: fleetPurchase.cost, trackCost, trackPlan, vehiclesToBuy: fleetPurchase.missing,
       distanceKm, routeGeometry, routeDetails, routingMode: routingMode(type), metrics, affordable: this.state.budget >= cost };
   }
   addLine(type, stops, _legacyForcedCost = null, name = null) {
     const preview = this.previewLine(type, stops, null);
     if (!preview.ok) return preview;
     if (!preview.affordable) return fail(`Brakuje ${Math.ceil(preview.cost - this.state.budget).toLocaleString('pl-PL')} zł. Koszt budowy: ${preview.cost.toLocaleString('pl-PL')} zł.`);
+    const trackPlan = preview.trackPlan;
+    if (trackPlan && !commitTrackPlan(this.state.tramInfrastructure, trackPlan, this.state.elapsedMinutes)) return fail('Nie udało się atomowo zatwierdzić budowy torowiska.');
     const id = this.state.nextLineId++;
     if (preview.vehiclesToBuy) this.state.fleet[type].owned += preview.vehiclesToBuy;
     const line = { id: `line-${id}`, type, stops: [...stops], distanceKm: preview.distanceKm, cost: preview.cost,
       routeGeometry: preview.routeGeometry, routingMode: preview.routingMode, infrastructureCost: preview.infrastructureCost,
+      ...(trackPlan ? { tramTrackIds: trackPlan.segmentIds } : {}),
       name: name || `${TRANSPORT_TYPES[type].short}${id}`, color: TRANSPORT_TYPES[type].color,
       vehicles: 2, frequency: 3, timetable: createWeeklyTimetable('balanced', TRANSPORT_TYPES[type].maxFrequency),
       ageMinutes: 0, stats: blankStats() };
@@ -189,8 +246,10 @@ export class UrbanFlowGame {
     if (!preview.ok) return preview;
     if (!preview.affordable) return fail(`Brakuje ${Math.ceil(preview.cost - this.state.budget).toLocaleString('pl-PL')} zł na przebudowę.`);
     if (signature(line.stops) !== signature(stops)) {
+      if (preview.trackPlan && !commitTrackPlan(this.state.tramInfrastructure, preview.trackPlan, this.state.elapsedMinutes)) return fail('Nie udało się atomowo zatwierdzić budowy torowiska.');
       line.stops = [...stops]; line.distanceKm = preview.distanceKm; line.cost += preview.cost;
       line.routeGeometry = preview.routeGeometry; line.routingMode = preview.routingMode; line.infrastructureCost = preview.infrastructureCost;
+      if (preview.trackPlan) line.tramTrackIds = preview.trackPlan.segmentIds;
       // Edited routes must demonstrate useful service again before counting toward unlocks.
       line.ageMinutes = 0; line.stats = blankStats(); line.history = []; line.accounting = [];
       this.state.budget -= preview.cost; this.state.networkVersion++;

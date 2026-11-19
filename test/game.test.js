@@ -25,10 +25,29 @@ test('starter preview changes no infrastructure or money and its displayed cost 
   assert.equal(game.state.elapsedMinutes, 0, 'the opening waits for the first confirmed service');
   const result = game.createSelectedLine();
   assert.equal(result.ok, true);
-  assert.deepEqual(result.line.stops, ['wieliczka', 'biezanow', 'centrum']);
+  assert.deepEqual(result.line.stops, ['wieliczka', 'biezanow', 'dworzec']);
   assert.equal(result.line.cost, preview.cost);
   assert.equal(game.state.budget, city.startingBudget - preview.cost + 130000);
   assert.deepEqual(game.state.campaign.completed, ['gateway', 'center']);
+});
+
+test('new campaigns hide the legacy Centrum node and reject it in new line drafts', () => {
+  const game = new UrbanFlowGame(city);
+  assert.equal(game.visiblePoints().some(point => point.id === 'centrum'), false);
+  assert.equal(game.previewLine('bus', ['wieliczka', 'centrum']).ok, false);
+  assert.equal(game.chooseStarterRoute('loop-station').ok, true);
+  assert.equal(game.state.lines[0].stops.includes('centrum'), false);
+});
+
+test('historic lines keep their legacy Centrum stop but cannot add it to a new route', () => {
+  const original = startedGame();
+  const line = original.state.lines[0];
+  line.stops = ['wieliczka', 'biezanow', 'centrum'];
+  const resumed = new UrbanFlowGame(city, {}, original.state);
+  assert.equal(resumed.visiblePoints().some(point => point.id === 'centrum'), false);
+  assert.deepEqual(resumed.state.lines[0].stops, ['wieliczka', 'biezanow', 'centrum']);
+  assert.equal(resumed.previewLine('bus', line.stops, line.id).ok, true);
+  assert.equal(resumed.previewLine('bus', ['wieliczka', 'centrum'], line.id).ok, false);
 });
 
 test('invalid, hidden and unaffordable routes cannot mutate the network or bypass cost', () => {
@@ -40,7 +59,7 @@ test('invalid, hidden and unaffordable routes cannot mutate the network or bypas
     assert.equal(JSON.stringify(game.state), previous);
   }
   game.state.budget = 1;
-  const result = game.addLine('bus', ['centrum', 'ruczaj'], 0);
+  const result = game.addLine('bus', ['ruczaj', 'dworzec'], 0);
   assert.equal(result.ok, false);
   assert.match(result.message, /Brakuje/);
   assert.equal(game.state.lines.length, 1);
@@ -63,12 +82,12 @@ test('multi-stop editing supports extend, reorder and remove with preview-matche
   assert.equal(game.beginEditLine(line.id).ok, true);
   game.selectNode('ruczaj');
   game.moveSelectedStop(3, -1);
-  assert.deepEqual(game.state.selectedNodes, ['wieliczka', 'biezanow', 'ruczaj', 'centrum']);
+  assert.deepEqual(game.state.selectedNodes, ['wieliczka', 'biezanow', 'ruczaj', 'dworzec']);
   const extension = game.previewLine();
   const before = game.state.budget;
   assert.equal(game.createSelectedLine().ok, true);
   assert.equal(game.state.budget, before - extension.cost);
-  assert.deepEqual(line.stops, ['wieliczka', 'biezanow', 'ruczaj', 'centrum']);
+  assert.deepEqual(line.stops, ['wieliczka', 'biezanow', 'ruczaj', 'dworzec']);
   assert.equal(line.ageMinutes, 0, 'a materially changed service must earn its progression credit again');
   assert.equal(line.stats.carried, 0);
   game.beginEditLine(line.id);
@@ -78,7 +97,7 @@ test('multi-stop editing supports extend, reorder and remove with preview-matche
   const afterExtension = game.state.budget;
   assert.equal(game.createSelectedLine().ok, true);
   assert.equal(game.state.budget, afterExtension - shortening.cost);
-  assert.deepEqual(line.stops, ['wieliczka', 'biezanow', 'centrum']);
+  assert.deepEqual(line.stops, ['wieliczka', 'biezanow', 'dworzec']);
   game.beginEditLine(line.id);
   assert.equal(game.previewLine().cost, 0);
   game.cancelEdit();
@@ -97,7 +116,7 @@ test('staging a stop insertion targets the selected adjacent segment and cancell
   const oldRoute = [...line.stops];
   assert.equal(typeof game.stageStopInsertion, 'function');
   assert.equal(game.stageStopInsertion(line.id, 1, 's-edit-target').ok, true);
-  assert.deepEqual(game.state.selectedNodes, ['wieliczka', 'biezanow', 's-edit-target', 'centrum']);
+  assert.deepEqual(game.state.selectedNodes, ['wieliczka', 'biezanow', 's-edit-target', 'dworzec']);
   assert.ok(game.previewLine().cost > 0);
   assert.equal(game.state.budget, budget);
   game.cancelEdit();
@@ -129,12 +148,12 @@ test('the seven-stop downtown route is rejected before any construction cost is 
 test('unaffordable and duplicate edits leave paid infrastructure and service history intact', () => {
   const game = startedGame();
   const first = game.state.lines[0];
-  const second = game.addLine('bus', ['ruczaj', 'centrum']).line;
+  const second = game.addLine('bus', ['ruczaj', 'dworzec']).line;
   mature(second);
   assert.equal(game.editLine(second.id, [...first.stops].reverse()).ok, false);
   game.state.budget = 0;
   const oldLine = JSON.stringify(second);
-  assert.equal(game.editLine(second.id, ['ruczaj', 'centrum', 'dworzec']).ok, false);
+  assert.equal(game.editLine(second.id, ['ruczaj', 'dworzec', 'bronowice']).ok, false);
   assert.equal(JSON.stringify(second), oldLine);
   assert.equal(game.state.budget, 0);
 });
@@ -158,7 +177,7 @@ test('vehicle purchase and timetable controls respect prices, fleet limits and i
 
 test('two useful bus services unlock trams only after service and satisfaction requirements', () => {
   const game = startedGame();
-  game.addLine('bus', ['ruczaj', 'centrum']);
+  game.addLine('bus', ['ruczaj', 'dworzec']);
   assert.deepEqual(unlockedTypes(game.state.lines), ['bus']);
   game.state.lines.forEach(mature);
   game.state.satisfaction = 40;
@@ -171,7 +190,7 @@ test('two useful bus services unlock trams only after service and satisfaction r
 
 test('deleted lines cannot satisfy an unearned transport unlock or campaign grant', () => {
   const game = startedGame();
-  const second = game.addLine('bus', ['ruczaj', 'centrum']).line;
+  const second = game.addLine('bus', ['bronowice', 'dworzec']).line;
   game.state.lines.forEach(mature);
   game.beginEditLine(second.id);
   assert.equal(game.deleteLine(second.id).ok, true);
@@ -266,7 +285,7 @@ test('bankruptcy ends the game once debt exceeds its limit, with a persisted fin
 
 test('abandoning a revealed network can cause sustained low-quality defeat without artificial satisfaction overrides', () => {
   const game = startedGame();
-  game.addLine('bus', ['ruczaj', 'centrum']);
+  game.addLine('bus', ['ruczaj', 'dworzec']);
   game.tick(() => 0.65);
   for (const line of [...game.state.lines]) game.deleteLine(line.id);
   for (let tick = 0; tick < 1000 && game.state.status === 'playing'; tick += 1) game.tick(() => 0.65);

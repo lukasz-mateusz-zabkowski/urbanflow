@@ -309,8 +309,8 @@ export function routeOnOsmGraph(a, b, graph, { strategy = 'balanced', candidateL
     ? `Połączenie jest osiągalne po drogach OSM, lecz objazd ×${detourRatio.toFixed(2)} przekracza próg ostrzegawczy${path.bridgeCount ? `; trasa zawiera ${path.bridgeCount} odcinków mostowych` : ''}. Sprawdź przebieg przed zatwierdzeniem.`
     : 'Połączenie znaleziono w lokalnym grafie OSM; krótki dostęp do jezdni pokazano osobno.')
     : `Odrzucono trasę: odsunięcie ${maxSnapDistanceKm.toFixed(3)} km, objazd ×${detourRatio.toFixed(2)}; nie wykryto przeprawy mostowej.`;
-  return { valid, coordinates: valid ? coordinates : [], roadCoordinates, roadDistanceKm,
-    distanceKm: routeDistanceKm,
+  return { valid, coordinates: valid ? coordinates : [], vehicleCoordinates: valid ? roadCoordinates : [], roadCoordinates, roadDistanceKm,
+    accessDistanceKm: path.start.accessKm + path.target.accessKm, distanceKm: routeDistanceKm,
     directDistanceKm: directKm, detourRatio, maxSnapDistanceKm,
     snappedDistanceKm: path.start.distanceKm + path.target.distanceKm,
     accessSegments: [startAccess, endAccess], source: 'Geofabrik OSM regional extract (lokalny graf ODbL)',

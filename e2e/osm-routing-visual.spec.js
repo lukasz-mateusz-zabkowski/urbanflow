@@ -17,7 +17,7 @@ for (const viewport of [{ width: 1280, height: 720, name: 'desktop-1280x720' }, 
     const results = await page.evaluate(async ids => {
       const manifest = await (await fetch('/data/routing/krakow.json')).json();
       const response = await fetch(`/data/routing/${manifest.metadata.roadUrl}`);
-      const { decodeRoutingGraphBinary, routeOnOsmGraph } = await import('/js/routing-osm.js?v=2');
+      const { decodeRoutingGraphBinary, routeOnOsmGraph } = await import('/js/routing-osm.js?v=3');
       const graph = decodeRoutingGraphBinary(await response.arrayBuffer(), manifest.bounds);
       const stops = (await (await fetch('/data/krakow-stops.json')).json()).stops;
       const points = ids.map(id => stops.find(stop => stop.id === id));

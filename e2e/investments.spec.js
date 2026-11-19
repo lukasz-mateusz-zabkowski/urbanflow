@@ -98,7 +98,7 @@ test('completed project panel shows saved modeled results after campaign reload'
   const restoredHistory = await resumedPage.evaluate(() => JSON.parse(localStorage.getItem('urbanflow.krakow.v2')).state.investments.history);
   expect(restoredHistory.some(item => item.id === 'investment-100')).toBe(true);
   const storageError = await resumedPage.evaluate(async () => {
-    const [{ loadGame }, { CITIES }] = await Promise.all([import('/js/storage.js?v=12'), import('/js/cities.js?v=10')]);
+    const [{ loadGame }, { CITIES }] = await Promise.all([import('/js/storage.js?v=13'), import('/js/cities.js?v=11')]);
     return loadGame(localStorage, CITIES.krakow).error;
   });
   expect(storageError).toBe(null);

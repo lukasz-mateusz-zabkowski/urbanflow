@@ -8,7 +8,7 @@
   <title>UrbanFlow — Kraków w ruchu</title>
   <link rel="preconnect" href="https://tile.openstreetmap.org">
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css?v=1.9.4">
-  <link rel="stylesheet" href="styles.css?v=13">
+  <link rel="stylesheet" href="styles.css?v=14">
 </head>
 <body>
   <section class="city-screen" id="cityScreen" aria-labelledby="gameTitle">
@@ -147,6 +147,16 @@
           <div class="section-title"><h3 id="buildTitle">Zaplanuj linię</h3><span id="selectionLabel">Autobus</span></div>
           <div class="transport-list" id="transportList" role="group" aria-label="Rodzaj transportu"></div>
           <p class="transport-description" id="transportDescription"></p>
+          <div class="tram-build-tools is-hidden" id="tramBuildTools" aria-label="Sposób budowy torowiska">
+            <p><strong>Projektowanie tramwaju</strong> — wybierz sposób wyznaczenia toru. Koszt liczy się tylko dla nowych odcinków.</p>
+            <div class="tram-mode-list" role="group" aria-label="Sposób wyznaczenia torowiska">
+              <button type="button" data-tram-mode="street">Wzdłuż dróg</button>
+              <button type="button" data-tram-mode="manual">Ręczne punkty</button>
+              <button type="button" data-tram-mode="existing">Istniejące tory OSM</button>
+            </div>
+            <p id="tramDraftHint" role="status"></p>
+            <button type="button" class="secondary-button" data-action="clear-tram-controls">Wyczyść punkty ręczne</button>
+          </div>
           <div class="draft-card">
             <div class="draft-header"><span>Przebieg trasy</span><span id="draftStopCount">0 przystanków</span></div>
             <ol class="draft-stops" id="draftStopList"></ol>
@@ -208,6 +218,6 @@
   </dialog>
   <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="false"></div>
   <script src="vendor/leaflet/leaflet.js?v=1.9.4"></script>
-  <script type="module" src="js/main.js?v=20"></script>
+  <script type="module" src="js/main.js?v=21"></script>
 </body>
 </html>

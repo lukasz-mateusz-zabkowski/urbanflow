@@ -36,8 +36,8 @@ test('odkryty przystanek można wykorzystać w kolejnej linii, nieodkryty nie', 
   const city = freshCity(stopsNear);
   const game = new UrbanFlowGame(city);
   game.chooseStarterRoute('loop-center');
-  assert.equal(game.previewLine('bus', ['centrum', 's-b']).ok, false);
-  assert.equal(game.previewLine('bus', ['centrum', 's-c']).ok, true);
+  assert.equal(game.previewLine('bus', ['dworzec', 's-b']).ok, false);
+  assert.equal(game.previewLine('bus', ['dworzec', 's-c']).ok, true);
 });
 
 test('pickStopsToReveal respektuje limity i nie powtarza przystanków', () => {

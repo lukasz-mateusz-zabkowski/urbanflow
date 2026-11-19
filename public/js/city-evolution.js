@@ -206,6 +206,7 @@ export function validateCityEvolutionState(evolution, city) {
   const ids = new Set(points.map(point => point.id));
   if (Object.keys(evolution.districts).length !== ids.size || Object.keys(evolution.districts).some(id => !ids.has(id))) return false;
   const finiteNonnegative = value => typeof value === 'number' && Number.isFinite(value) && value >= 0;
+  const integer = value => Number.isSafeInteger(value) && value >= 0;
   for (const [id, zone] of Object.entries(evolution.districts)) {
     if (!zone || typeof zone !== 'object' || zone.id !== id || typeof zone.name !== 'string' || zone.name.length > 120
       || typeof zone.profile !== 'string' || !['base', 'capacity', 'constraints', 'lastChange'].every(key => zone[key] && typeof zone[key] === 'object')) return false;

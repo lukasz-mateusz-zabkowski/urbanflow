@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { gunzipSync } from 'node:zlib';
 import { attachStops, CITIES, KRAKOW_STARTS } from '../public/js/cities.js';
-import { decodeRoutingGraphBinary, diagnoseOsmRoute, registerRoutingGraph, routeLineDetails } from '../public/js/routing.js?v=13';
+import { decodeRoutingGraphBinary, diagnoseOsmRoute, registerRoutingGraph, routeLineDetails } from '../public/js/routing.js?v=14';
 import { UrbanFlowGame } from '../public/js/game.js';
 
 const manifest = JSON.parse(await readFile(new URL('../public/data/routing/krakow.json', import.meta.url), 'utf8'));
@@ -21,11 +21,24 @@ test('Kraków seven-stop route keeps all six adjacent segments on the directed l
   assert.equal(result.segments.length, 6);
   assert.ok(result.segments.every(segment => segment.valid), result.segments.map(segment => segment.reason).join('\n'));
   assert.ok(result.segments.every(segment => segment.roadCoordinates?.length >= 2));
+  assert.ok(result.segments.every(segment => JSON.stringify(segment.vehicleCoordinates) === JSON.stringify(segment.roadCoordinates)),
+    'vehicle paths must contain only drivable graph geometry, excluding walking access');
+  assert.equal(result.distanceKm, result.segments.reduce((sum, segment) => sum + segment.roadDistanceKm, 0)
+    + result.stopConnectors.reduce((sum, connector) => sum + connector.roadDistanceKm, 0));
   assert.deepEqual(result.segments.map(segment => segment.coordinates[0]), routeIds.slice(0, -1).map(id => {
     const stop = city.points.find(point => point.id === id); return [stop.lat, stop.lng];
   }));
   assert.ok(result.segments.some(segment => segment.detourWarning), 'long water-side or one-way detours must remain visible as warnings');
   assert.ok(result.distanceKm > 0 && result.travelMinutes > 0);
+});
+
+test('bus routes ignore external providers and use only the registered local road graph', () => {
+  registerRoutingGraph('krakow', manifest, graphBytes);
+  const provider = { name: 'must not be used for a bus', route: () => [[50.05, 19.9], [50.06, 19.9]] };
+  const details = routeLineDetails(['s-stradom', 's-kazimierz'], 'bus', { ...CITIES.krakow, points: stopsData }, provider);
+  assert.equal(details.valid, true);
+  assert.match(details.source, /OSM/);
+  assert.doesNotMatch(details.source, /must not be used/);
 });
 
 test('three reported downtown detours compare shortest, fastest and bounded balanced routes with snap evidence', t => {

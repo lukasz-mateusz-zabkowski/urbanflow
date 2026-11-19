@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { gunzipSync } from 'node:zlib';
 import { attachStops, CITIES } from '../public/js/cities.js';
 import { UrbanFlowGame } from '../public/js/game.js';
-import { registerRoutingGraph } from '../public/js/routing.js?v=13';
+import { registerRoutingGraph } from '../public/js/routing.js?v=14';
 import { SAVE_KEY, SAVE_VERSION } from '../public/js/storage.js';
 
 const artifactDir = process.env.UF_VISUAL_QA_DIR || join(tmpdir(), 'urbanflow-alpha-1.2.1-routing-qa');

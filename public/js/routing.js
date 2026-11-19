@@ -1,7 +1,7 @@
 import { haversineKm, lineMetrics } from './transport.js?v=10';
-import { decodeRoutingGraphBinary, routeOnOsmGraph } from './routing-osm.js?v=2';
-export { decodeRoutingGraphBinary } from './routing-osm.js?v=2';
-export { diagnoseOsmRoute } from './routing-osm.js?v=2';
+import { decodeRoutingGraphBinary, routeOnOsmGraph } from './routing-osm.js?v=3';
+export { decodeRoutingGraphBinary } from './routing-osm.js?v=3';
+export { diagnoseOsmRoute } from './routing-osm.js?v=3';
 
 const SURFACE_TYPES = new Set(['bus', 'tram']);
 const RAIL_TYPES = new Set(['suburban', 'intercity']);
@@ -135,7 +135,7 @@ export function routeSegmentDetails(a, b, type, city, provider = null) {
   if (!a || !b) return { coordinates: [], distanceKm: 0, source: 'brak danych', algorithm: 'brak', reason: 'Nie wybrano obu punktów.', mode: routingMode(type), valid: false };
   const direct = [coordinate(a), coordinate(b)];
   const directDistanceKm = routeDistance(direct);
-  if (provider?.route) {
+  if (provider?.route && type !== 'bus') {
     const coordinates = provider.route(a, b, type) || [];
     const valid = coordinates.length >= 2;
     const distanceKm = routeDistance(coordinates);
@@ -216,19 +216,37 @@ export function routeLineDetails(stops, type, city, provider = null, minuteOfDay
   if (points.length < 2) return { coordinates: [], distanceKm: 0, travelMinutes: 0, source: 'brak danych', algorithm: 'brak', reason: 'Potrzebne są co najmniej dwa punkty.', mode: routingMode(type), valid: false };
   const segments = points.slice(1).map((point, index) => routeSegmentDetails(points[index], point, type, city, provider));
   const coordinates = segments.reduce((all, item) => all.concat(all.length ? item.coordinates.slice(1) : item.coordinates), []);
+  const vehiclePaths = segments.map(item => item.vehicleCoordinates || item.roadCoordinates || item.coordinates);
+  const stopConnectors = [];
+  let discontinuity = null;
+  const graph = graphRegistry.get(city?.id)?.[type === 'tram' ? 'tram' : 'road'];
+  const vehicleCoordinates = vehiclePaths.reduce((all, path, index) => {
+    if (!all.length) return [...path];
+    const gapKm = path.length ? haversineKm({ lat: all.at(-1)[0], lng: all.at(-1)[1] }, { lat: path[0][0], lng: path[0][1] }) : Infinity;
+    let connector = null;
+    if (gapKm > 0.001 && graph) connector = routeOnOsmGraph(
+      { lat: all.at(-1)[0], lng: all.at(-1)[1] }, { lat: path[0][0], lng: path[0][1] }, graph);
+    if (gapKm > 0.001 && !connector?.valid) discontinuity ||= `Przebiegi przy przystanku ${stops[index]} nie łączą się na dopuszczalnej jezdni (przerwa ${Math.round(gapKm * 1000)} m).`;
+    if (connector?.valid && connector.roadCoordinates?.length >= 2) stopConnectors.push({ stopId: stops[index], ...connector });
+    const bridge = connector?.valid ? connector.roadCoordinates : [];
+    return all.concat(bridge.length > 1 ? bridge.slice(1, -1) : [], path.slice(gapKm <= 0.001 ? 1 : 0));
+  }, []);
   const routeModes = new Set(segments.map(item => item.mode));
   const fallback = segments.some(item => item.algorithm === 'bezpośredni fallback');
-  const valid = segments.every(item => item.valid);
+  const valid = segments.every(item => item.valid) && !discontinuity;
   const detourRatio = Math.max(...segments.map(item => item.detourRatio || 1));
   const maxSnapDistanceKm = Math.max(...segments.map(item => item.maxSnapDistanceKm || 0));
   const detail = {
-    coordinates, distanceKm: routeDistance(coordinates), source: [...new Set(segments.map(item => item.source))].join(' + '),
+    coordinates, vehicleCoordinates, stopConnectors,
+    distanceKm: segments.reduce((sum, item) => sum + (item.roadDistanceKm ?? item.distanceKm), 0)
+      + stopConnectors.reduce((sum, item) => sum + (item.roadDistanceKm || 0), 0),
+    accessDistanceKm: segments.reduce((sum, item) => sum + (item.accessDistanceKm || 0), 0), source: [...new Set(segments.map(item => item.source))].join(' + '),
     algorithm: fallback ? 'mieszany, zawiera fallback bezpośredni' : [...new Set(segments.map(item => item.algorithm))].join(' + '),
-    reason: [...new Set(segments.filter(item => !item.valid).map(item => item.reason))].join(' ') || [...new Set(segments.map(item => item.reason))].join(' '),
+    reason: discontinuity || [...new Set(segments.filter(item => !item.valid).map(item => item.reason))].join(' ') || [...new Set(segments.map(item => item.reason))].join(' '),
     mode: routeModes.size === 1 ? segments[0].mode : 'mixed', valid, detourRatio, maxSnapDistanceKm,
     snappedDistanceKm: segments.reduce((sum, item) => sum + (item.snappedDistanceKm || 0), 0), segments
   };
-  detail.travelMinutes = lineMetrics({ type, stops, routeGeometry: coordinates }, city, minuteOfDay).travelMinutes;
+  detail.travelMinutes = lineMetrics({ type, stops, routeGeometry: vehicleCoordinates.length >= 2 ? vehicleCoordinates : coordinates }, city, minuteOfDay).travelMinutes;
   return detail;
 }
 

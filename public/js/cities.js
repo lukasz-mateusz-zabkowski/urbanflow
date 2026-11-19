@@ -3,16 +3,16 @@ const point = (id, name, lat, lng, type, demand, unlock = 0, profile = null) => 
 export const KRAKOW_STARTS = [
   { id: 'michalowice', name: 'Michałowice', point: point('michalowice', 'Michałowice', 50.1587, 19.9796, 'satellite', 8, 0, 'residential'), localHubId: 'gorka-narodowa', centerId: 'dworzec', demand: 8 },
   { id: 'zielonki', name: 'Zielonki', point: point('zielonki', 'Zielonki', 50.1202, 19.9212, 'satellite', 8, 0, 'residential'), localHubId: 'krowodrza', centerId: 'dworzec', demand: 8 },
-  { id: 'skawina', name: 'Skawina', point: point('skawina', 'Skawina', 49.9750, 19.8287, 'satellite', 9, 0, 'industrial'), localHubId: 'lagiewniki', centerId: 'centrum', demand: 9 },
-  { id: 'zabierzow', name: 'Zabierzów', point: point('zabierzow', 'Zabierzów', 50.1181, 19.7970, 'satellite', 8, 0, 'residential'), localHubId: 'bronowice', centerId: 'centrum', demand: 8 },
+  { id: 'skawina', name: 'Skawina', point: point('skawina', 'Skawina', 49.9750, 19.8287, 'satellite', 9, 0, 'industrial'), localHubId: 'lagiewniki', centerId: 'dworzec', demand: 9 },
+  { id: 'zabierzow', name: 'Zabierzów', point: point('zabierzow', 'Zabierzów', 50.1181, 19.7970, 'satellite', 8, 0, 'residential'), localHubId: 'bronowice', centerId: 'dworzec', demand: 8 },
   { id: 'niepolomice', name: 'Niepołomice', point: point('niepolomice', 'Niepołomice', 50.0345, 20.2170, 'satellite', 8, 0, 'industrial'), localHubId: 'nowa-huta', centerId: 'dworzec', demand: 8 },
-  { id: 'wieliczka', name: 'Wieliczka', point: point('wieliczka', 'Wieliczka', 49.9871, 20.0648, 'satellite', 8, 0, 'tourist'), localHubId: 'biezanow', centerId: 'centrum', demand: 8 },
-  { id: 'liszki', name: 'Liszki', point: point('liszki', 'Liszki', 50.0384, 19.7682, 'satellite', 7, 0, 'residential'), localHubId: 'bronowice', centerId: 'centrum', demand: 7 },
+  { id: 'wieliczka', name: 'Wieliczka', point: point('wieliczka', 'Wieliczka', 49.9871, 20.0648, 'satellite', 8, 0, 'tourist'), localHubId: 'biezanow', centerId: 'dworzec', demand: 8 },
+  { id: 'liszki', name: 'Liszki', point: point('liszki', 'Liszki', 50.0384, 19.7682, 'satellite', 7, 0, 'residential'), localHubId: 'bronowice', centerId: 'dworzec', demand: 7 },
   { id: 'kocmyrzow', name: 'Kocmyrzów', point: point('kocmyrzow', 'Kocmyrzów', 50.1298, 20.1133, 'satellite', 7, 0, 'residential'), localHubId: 'nowa-huta', centerId: 'dworzec', demand: 7 },
   { id: 'igolomia', name: 'Igołomia', point: point('igolomia', 'Igołomia', 50.0912, 20.2611, 'satellite', 7, 0, 'industrial'), localHubId: 'nowa-huta', centerId: 'dworzec', demand: 7,
     availableForNewGame: false, availabilityReason: 'Najbliższa droga dopuszczona dla autobusu jest ok. 143 m od punktu scenariusza; limit dojścia do grafu wynosi 120 m.' },
-  { id: 'swiatniki', name: 'Świątniki Górne', point: point('swiatniki', 'Świątniki Górne', 49.9342, 19.9536, 'satellite', 7, 0, 'residential'), localHubId: 'kurdwanow', centerId: 'centrum', demand: 7 },
-  { id: 'libertow', name: 'Libertów', point: point('libertow', 'Libertów', 49.9720, 19.8946, 'satellite', 7, 0, 'residential'), localHubId: 'lagiewniki', centerId: 'centrum', demand: 7 }
+  { id: 'swiatniki', name: 'Świątniki Górne', point: point('swiatniki', 'Świątniki Górne', 49.9342, 19.9536, 'satellite', 7, 0, 'residential'), localHubId: 'kurdwanow', centerId: 'dworzec', demand: 7 },
+  { id: 'libertow', name: 'Libertów', point: point('libertow', 'Libertów', 49.9720, 19.8946, 'satellite', 7, 0, 'residential'), localHubId: 'lagiewniki', centerId: 'dworzec', demand: 7 }
 ];
 
 export function chooseStartScenario(random = Math.random, id = null) {
@@ -39,7 +39,7 @@ export const CITIES = {
       point('krowodrza', 'Krowodrza Górka', 50.0890, 19.9200, 'hub', 9, 0, 'interchange'),
       point('ruczaj', 'Ruczaj', 50.0308, 19.9028, 'district', 8, 1, 'education'),
       point('nowa-huta', 'Nowa Huta', 50.0720, 20.0377, 'district', 10, 2, 'industrial'),
-      { ...point('centrum', 'Centrum', 50.0617, 19.9373, 'hub', 13, 0, 'center'), markerOffsetY: 14 },
+      { ...point('centrum', 'Centrum', 50.0617, 19.9373, 'hub', 13, 0, 'center'), markerOffsetY: 14, legacyOnly: true },
       point('bronowice', 'Bronowice', 50.0800, 19.8932, 'district', 9, 1, 'residential'),
       { ...point('dworzec', 'Dworzec Główny', 50.0671, 19.9450, 'station', 12, 0, 'station'), markerOffsetY: -22 },
       point('balice', 'Lotnisko Kraków Balice', 50.0777, 19.7848, 'airport', 11, 99, 'airport'),

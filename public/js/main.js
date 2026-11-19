@@ -1,12 +1,12 @@
-import { getCity, loadStops } from './cities.js?v=10';
-import { UrbanFlowGame } from './game.js?v=13';
-import { GameMap } from './map.js?v=17';
-import { UI, confirmAction } from './ui.js?v=15';
+import { getCity, loadStops } from './cities.js?v=11';
+import { UrbanFlowGame } from './game.js?v=14';
+import { GameMap } from './map.js?v=18';
+import { UI, confirmAction } from './ui.js?v=16';
 import { TRANSPORT_TYPES } from './transport.js?v=10';
 import { SIMULATION } from './simulation.js?v=10';
 import { applyAtlasView } from './theme.js?v=10';
-import { loadGame, saveGame, clearSave } from './storage.js?v=12';
-import { loadRoutingGraph } from './routing.js?v=13';
+import { loadGame, saveGame, clearSave } from './storage.js?v=13';
+import { loadRoutingGraph } from './routing.js?v=14';
 
 let game, gameMap, ui, timer, removeStarterRoutes;
 let storage, storageWarningShown = false;
@@ -95,6 +95,11 @@ async function startCity(savedState = null) {
     if (result.preview?.ok) ui.toast(`Przystanek wstawiony do podglądu. Koszt przebudowy: ${Math.round(result.preview.cost).toLocaleString('pl-PL')} zł.`, 'warn');
     else ui.toast(result.preview?.message || 'Podgląd trasy wymaga sprawdzenia.', 'warn');
     document.getElementById('buildSection').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  });
+  gameMap.setMapClickHandler(latlng => {
+    if (game.state.selectedType !== 'tram' || game.state.tramBuildMode !== 'manual') return;
+    const result = game.addTramControlPoint(latlng.lat, latlng.lng);
+    if (!result.ok) ui?.toast(result.message, 'warn');
   });
   gameMap.loadCity(city);
   ui = new UI(game, gameMap, { appVersion, onNewGame: async () => {

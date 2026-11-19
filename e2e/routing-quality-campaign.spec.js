@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { gunzipSync } from 'node:zlib';
 import { attachStops, CITIES } from '../public/js/cities.js';
 import { UrbanFlowGame } from '../public/js/game.js';
-import { registerRoutingGraph } from '../public/js/routing.js?v=13';
+import { registerRoutingGraph } from '../public/js/routing.js?v=14';
 import { SAVE_KEY, SAVE_VERSION } from '../public/js/storage.js';
 
 const routeIds = ['s-stradom', 's-kazimierz', 's-plac-wolnica', 's-dietla', 's-podgorze', 's-plac-bohaterow-getta', 's-rynek-podgorski'];

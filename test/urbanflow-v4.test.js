@@ -56,7 +56,7 @@ test('map panes and enlarged invisible stop hit area keep stops above routes', (
 test('global fleet owns vehicles separately from line assignments and supports transfers', () => {
   const game = gameAt('wieliczka');
   game.chooseStarterRoute('starter-local');
-  const second = game.addLine('bus', ['biezanow', 'centrum']).line;
+  const second = game.addLine('bus', ['biezanow', 'dworzec']).line;
   let bus = fleetSnapshot(game.state).bus;
   assert.deepEqual(bus, { owned: 6, assigned: 4, reserve: 2 });
   assert.equal(game.assignVehicle(second.id).ok, true);
@@ -109,7 +109,7 @@ test('offline routing follows multi-point corridors and survives editing, saving
   game.chooseStarterRoute('starter-local');
   const line = game.state.lines[0];
   const before = JSON.stringify(line.routeGeometry);
-  assert.equal(game.editLine(line.id, ['wieliczka', 'biezanow', 'centrum']).ok, true);
+  assert.equal(game.editLine(line.id, ['wieliczka', 'biezanow', 'dworzec']).ok, true);
   assert.notEqual(JSON.stringify(line.routeGeometry), before);
   assert.equal(validateState(JSON.parse(JSON.stringify(game.state)), city), true);
   assert.equal(game.deleteLine(line.id).ok, true);

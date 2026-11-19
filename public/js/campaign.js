@@ -2,9 +2,9 @@ import { eligibleCounts, PROGRESSION } from './transport.js?v=10';
 import { buildNetwork, isConnected, totalWaiting } from './passengers.js?v=10';
 
 export const STRESS_PHASES = [
-  { id: 'morning', title: 'Poranny szczyt', duration: 420, demand: 1.55, locationId: 'centrum', localDemand: 1.25, description: 'Dojazdy do centrum gwałtownie rosną.' },
+  { id: 'morning', title: 'Poranny szczyt', duration: 420, demand: 1.55, locationId: 'dworzec', localDemand: 1.25, description: 'Dojazdy do głównego węzła gwałtownie rosną.' },
   { id: 'event', title: 'Wydarzenie masowe', duration: 360, demand: 1.2, locationId: 'nowa-huta', localDemand: 2.35, description: 'Tauron Arena wymaga dodatkowej przepustowości.' },
-  { id: 'disruption', title: 'Awaria i remont', duration: 360, demand: 1.15, locationId: 'centrum', affectedTypes: ['bus', 'tram'], speedMultiplier: 0.5, description: 'Transport naziemny przez centrum jest mocno spowolniony.' },
+  { id: 'disruption', title: 'Awaria i remont', duration: 360, demand: 1.15, locationId: 'dworzec', affectedTypes: ['bus', 'tram'], speedMultiplier: 0.5, description: 'Transport naziemny przy głównym węźle jest mocno spowolniony.' },
   { id: 'finale', title: 'Finałowe obciążenie', duration: 480, demand: 1.85, locationId: 'dworzec', localDemand: 1.7, description: 'Dworzec i całe miasto pracują pod największym obciążeniem.' }
 ];
 
@@ -21,7 +21,7 @@ const definitions = game => {
     ['passengers', 'Pierwszych 500 podróży', 'Dowieź 500 pasażerów do celu; przesiadka nie liczy się podwójnie.', 120000],
     ['buses', 'Dwie użyteczne linie', `2 linie autobusowe: min. 80 przewozów i ${PROGRESSION.minAgeMinutes / 60} godzin pracy każdej.`, 170000],
     ['tram', 'Miejski kręgosłup', `Uruchom pierwszy użyteczny tramwaj (80 przewozów, ${PROGRESSION.minAgeMinutes / 60} godzin pracy).`, 880000],
-    ['huta', 'Nowa Huta w sieci', 'Połącz Nową Hutę z Centrum; linia do Huty musi przewieźć min. 80 pasażerów.', 440000],
+    ['huta', 'Nowa Huta w sieci', 'Połącz Nową Hutę z Dworcem Głównym; linia do Huty musi przewieźć min. 80 pasażerów.', 440000],
     ['airport', 'Brama do Krakowa', 'Uruchom do Balic kolej lub metro; min. 80 przewozów tej linii.', 130000],
     ['stress', 'Egzamin metropolii', 'Przejdź krótki egzamin: szczyt, wydarzenie, zakłócenie i finał.', 0]
   ];
@@ -42,8 +42,8 @@ export function campaignObjectives(game) {
   const counts = eligibleCounts(s.lines, s.satisfaction); const network = buildNetwork(s.lines);
   const gateway = isConnected(network, scenario.id, scenario.localHubId);
   const center = gateway && isConnected(network, scenario.localHubId, scenario.centerId);
-  const huta = isConnected(network, 'nowa-huta', 'centrum') && s.lines.some(line => line.stops.includes('nowa-huta') && line.stats.carried >= 80);
-  const airport = s.airportUnlocked && isConnected(network, 'balice', 'centrum') && s.lines.some(line => ['metro', 'suburban', 'intercity'].includes(line.type) && line.stops.includes('balice') && line.stats.carried >= 80);
+  const huta = isConnected(network, 'nowa-huta', 'dworzec') && s.lines.some(line => line.stops.includes('nowa-huta') && line.stats.carried >= 80);
+  const airport = s.airportUnlocked && isConnected(network, 'balice', 'dworzec') && s.lines.some(line => ['metro', 'suburban', 'intercity'].includes(line.type) && line.stops.includes('balice') && line.stats.carried >= 80);
   const stressProgress = stress.status === 'passed' ? 1 : stress.status === 'active'
     ? (stress.phaseIndex + stress.phaseMinutes / STRESS_PHASES[stress.phaseIndex].duration) / STRESS_PHASES.length : 0;
   const values = [gateway ? 1 : 0, center ? 1 : 0, s.carried / 500,

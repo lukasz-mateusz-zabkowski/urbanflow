@@ -2,7 +2,7 @@ import { formatMoney } from './economy.js?v=10';
 import { TRANSPORT_TYPES, eligibleCounts, lineCost, unlockedTypes, lineMetrics } from './transport.js?v=10';
 import { totalWaiting, diagnoseTransitRelation } from './passengers.js?v=11';
 import { calendarAt, gameClock, demandMultiplier } from './simulation.js?v=10';
-import { campaignObjectives } from './campaign.js?v=10';
+import { campaignObjectives } from './campaign.js?v=11';
 import { diagnosticSnapshot, networkProblems, FAILURE_LABELS } from './analytics.js?v=12';
 import { activeCityEvents, upcomingCityEvents, describeEventImpact } from './city-events.js?v=10';
 import { fleetSnapshot } from './fleet.js?v=10';
@@ -84,15 +84,20 @@ export class UI {
         else { this.openPanel(); this.scrollToBuild(); }
         return;
       }
-      if (type) {
-        if (type === 'tram') {
-          button.disabled = true; this.toast('Ładowanie lokalnego grafu torowisk…');
+      if (button.dataset.tramMode) {
+        const mode = button.dataset.tramMode;
+        if (mode === 'existing') {
+          button.disabled = true;
           loadRoutingGraph(this.game.city.id, 'tram').then(() => {
-            const refresh = this.game.refreshRoutesFromGraph('tram'); this.game.changed();
-            button.disabled = false; this.checkResult(this.game.setTransport(type)); this.render();
-            if (refresh.unavailable.length) this.toast(`${refresh.unavailable.length} zapisanych tras tramwajowych nie ma połączenia w lokalnym grafie torowisk.`, 'warn');
-          }).catch(error => { button.disabled = false; this.toast(`Nie można załadować grafu tramwajowego: ${error.message}`, 'warn'); });
-        } else this.checkResult(this.game.setTransport(type));
+            this.checkResult(this.game.setTramBuildMode(mode)); this.render();
+          }).catch(error => this.toast(`Nie można załadować lokalnego grafu torowisk OSM: ${error.message}`, 'warn'))
+            .finally(() => { button.disabled = false; });
+        } else this.checkResult(this.game.setTramBuildMode(mode));
+        return;
+      }
+      if (action === 'clear-tram-controls') { this.checkResult(this.game.clearTramControlPoints()); return; }
+      if (type) {
+        this.checkResult(this.game.setTransport(type));
         return;
       }
       if (action === 'analytics-mode') { this.checkResult(this.game.setAnalyticsMode(button.dataset.mode)); return; }
@@ -450,6 +455,16 @@ export class UI {
     }).join(''));
     this.setText('selectionLabel', type.name);
     this.setText('transportDescription', type.description);
+    const tramTools = $('#tramBuildTools');
+    tramTools.classList.toggle('is-hidden', state.selectedType !== 'tram');
+    tramTools.querySelectorAll('[data-tram-mode]').forEach(button => {
+      button.classList.toggle('active', button.dataset.tramMode === state.tramBuildMode);
+      button.setAttribute('aria-pressed', String(button.dataset.tramMode === state.tramBuildMode));
+    });
+    this.setText('tramDraftHint', state.tramBuildMode === 'manual'
+      ? `Ręczny przebieg: ${state.tramControlPoints.length} punktów pośrednich. Klikaj mapę, aby dodać punkty między pierwszym i ostatnim przystankiem.`
+      : state.tramBuildMode === 'existing' ? 'Przebieg użyje lokalnych torowisk OSM; dobudowa brakujących odcinków nie jest w tym trybie planowana.'
+        : 'Torowisko zostanie zbudowane wzdłuż dróg dostępnych w lokalnym grafie; wspólne odcinki nie będą naliczane ponownie.');
     this.setText('buildTitle', editing ? 'Edytuj przebieg linii' : 'Zaplanuj linię');
     const selected = state.selectedNodes.map(id => city.points.find(point => point.id === id)).filter(Boolean);
     this.setText('draftStopCount', `${selected.length} przystanków`);
@@ -505,7 +520,7 @@ export class UI {
     const { state } = this.game;
     let step;
     if (!state.lines.length) step = ['01', `Połącz ${this.game.startScenario.name}`, `Zbuduj dowozową linię do węzła ${this.game.pointName(this.game.startScenario.localHubId)}. Przerywana linia pokazuje przebieg po drogach.`, 'Możesz zatrzymać czas przyciskiem Ⅱ i spokojnie projektować trasę.'];
-    else if (!campaignObjectives(this.game).find(goal => goal.id === 'center')?.completed) step = ['02', 'Połącz węzeł z centrum', `Doprowadź sieć z ${this.game.pointName(this.game.startScenario.localHubId)} do ${this.game.pointName(this.game.startScenario.centerId)}. Wspólny przystanek umożliwia przesiadkę.`, 'Nie musisz przedłużać pierwszej linii — możesz utworzyć drugą z dogodną przesiadką.'];
+    else if (!campaignObjectives(this.game).find(goal => goal.id === 'center')?.completed) step = ['02', 'Połącz węzeł z dworcem', `Doprowadź sieć z ${this.game.pointName(this.game.startScenario.localHubId)} do ${this.game.pointName(this.game.startScenario.centerId)}. Wspólny przystanek umożliwia przesiadkę.`, 'Nie musisz przedłużać pierwszej linii — możesz utworzyć drugą z dogodną przesiadką.'];
     else if (!unlocked.includes('tram')) step = ['03', 'Niech autobusy pracują', 'Dwie użyteczne linie autobusowe po 6 godzinach pracy odblokują tramwaj. Otwórz szczegóły linii i sprawdź jej bilans oraz kolejkę.', 'Brakuje miejsc? Dokup pojazd. Puste kursy? Zmniejsz częstotliwość.'];
     else if (!state.lines.some(line => line.type === 'tram')) step = ['04', 'Miejski kręgosłup', 'Tramwaj pomieści więcej pasażerów. Uruchom go między ruchliwymi dzielnicami i zapewnij przesiadki z autobusów.', 'Nakładające się trasy konkurują o pasażerów. Identyczne linie nie przyspieszą rozwoju.'];
     else if (!unlocked.includes('suburban')) step = ['05', 'Rozwijaj użyteczne korytarze', 'Połącz Nową Hutę i rozwijaj trzy użyteczne trasy tramwajowe. Odblokujesz metro i kolej aglomeracyjną.', 'Rozbudowę finansują bilety i nagrody za cele. Pilnuj kosztów nowych pojazdów.'];
@@ -931,4 +946,4 @@ export class UI {
   }
 }
 
-import { loadRoutingGraph } from './routing.js?v=13';
+import { loadRoutingGraph } from './routing.js?v=14';
