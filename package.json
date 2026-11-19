@@ -9,6 +9,7 @@
     "start": "node server.js",
     "test": "node --test",
     "test:browser": "playwright test",
+    "alpha-test": "node scripts/alpha-playtest.mjs",
     "routing:build": "node scripts/build-routing-graph.mjs",
     "benchmark:investments": "node --expose-gc scripts/benchmark-investments.mjs",
     "audit:all": "npm audit --audit-level=moderate",

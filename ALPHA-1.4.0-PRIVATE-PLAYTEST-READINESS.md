@@ -1,66 +1,57 @@
-# UrbanFlow ALPHA 1.4.0 — gotowość prywatnego playtestu
+# UrbanFlow ALPHA 1.4.0 — private playtest readiness
 
 ## Status
 
-**GO dla przygotowanego pakietu prywatnego playtestu.** Kod, scenariusze i izolowany profil przeszły walidację lokalną oraz CI. To nie oznacza uruchomienia instancji ani zaproszenia testerów. Nie skonfigurowano publicznego hosta ani zewnętrznej usługi. Przed pierwszą sesją nadal wymagany jest niezależny host i zatwierdzona prywatna metoda dostępu.
+- **GO for the package** after the current branch commit passes its GitHub Actions workflow.
+- **NO GO for starting a real tester session from this Surface Book:** Docker Desktop's Linux engine is unavailable and there is no independent host or authorized private access path available in this environment. CI results are not represented as testing on that host.
+- No public endpoint, external access service, tester account, production system, or Raspberry Pi was configured or contacted.
+- Nie przeprowadzono sesji ani nie zaproszono testerów.
 
-Uruchom pojedynczą sesję dopiero po sprawdzeniu SHA na niezależnym hoście i potwierdzeniu, że dostęp testera jest prywatny oraz autoryzowany. Ten raport nie publikuje adresu ani nie konfiguruje takiego hosta.
+## Version and commit identities
 
-## Repozytorium i wersja
+- Game version: `1.4.0-alpha` (`package.json`).
+- Release tag `v1.4.0-alpha` and base game code: `346bcbe9880d8719d4c8cf8a3d8b26a6e89b2491`.
+- The first private Compose profile was added later at `c2b0ea1a7241fd4bb4f545405e6547c8d4aac4fb`; this work adds a guard and operator wrapper so a value passed through the environment cannot impersonate different source code.
+- **Build SHA rule:** use one full, reviewed SHA from `feature/alpha-1.4.0-private-playtest`; the checked-out `HEAD`, `.env.alpha-test` `URBANFLOW_COMMIT_SHA`, Compose image tag and image revision label, container environment, and `/health.commit` must all equal that SHA. Do not use the old release tag as the hardened profile source.
+- Current implementation SHA, final branch HEAD, and Actions link will be inserted after push/verification.
 
-- Repozytorium: `lukasz-mateusz-zabkowski/urbanflow`.
-- Baza: commit `346bcbe9880d8719d4c8cf8a3d8b26a6e89b2491`; `origin/main` pozostał na tym SHA w chwili rozpoczęcia prac.
-- Tag `v1.4.0-alpha` istnieje jako anotowany tag wskazujący bazowy commit.
-- Gałąź robocza: `feature/alpha-1.4.0-private-playtest`.
-- Zweryfikowany commit pakietu: `238d027190cb0fc0da39518516a21f715158d89a`.
-- CI dla tego commita: [GitHub Actions run #81](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44606407056), wszystkie sześć zadań zakończyło się sukcesem.
-- Raport jest dokumentacyjnym uaktualnieniem; końcowy HEAD po jego wypchnięciu zostanie podany w przekazaniu końcowym.
-- Produkcja oraz Raspberry Pi nie były używane ani zmieniane.
+## Guard and isolation
 
-## Izolacja i warunki bezpiecznego uruchomienia
+`npm run alpha-test -- verify` checks the real `git rev-parse HEAD` against `.env.alpha-test`, requires a 40-character SHA, and rejects modified tracked files or untracked build inputs. Only `.env.alpha-test` is allowed to be untracked. The guard's tests use temporary Git repositories and demonstrate that it accepts a matching checkout and rejects a mismatched SHA, dirty source, unexpected untracked inputs, and malformed SHA values.
 
-`compose.alpha-test.yml` buduje obraz z jawnego `URBANFLOW_COMMIT_SHA`, wymaga zgodności healthchecka z wersją pakietu, publikuje usługę tylko na `127.0.0.1:3101`, nie ma wolumenów, wyłącza automatyczny restart i nie otrzymuje sekretów produkcyjnych. Kontener działa jako użytkownik nie-root, z root filesystem tylko do odczytu, bez Linux capabilities i z `no-new-privileges`.
+The cross-platform Node wrapper offers `verify`, `start`, `restart`, `status`, `stop`, and `rollback`. Before starting or restarting, it checks the SHA; after launch/restart/status it checks app version, exact commit, alpha environment, image revision, `/health`, page and Leaflet asset, loopback binding, `node` user, read-only root, zero mounts, dropped capabilities, `no-new-privileges`, no automatic restart, `/tmp` tmpfs and exactly one Docker internal network. Compose binds only `127.0.0.1:3101`; its internal network has no external egress. No production mounts, secrets, or saves are configured.
 
-Gra ma osobny origin względem produkcji, a zapisy pozostają w lokalnym profilu przeglądarki testera. Na niezależnym hoście nie wystawiaj portu gry do sieci. Dostęp zaproszonych może odbywać się istniejącą, zatwierdzoną prywatną ścieżką, np. indywidualnym tunelem SSH. Nie dodawaj publicznego DNS, reverse proxy, nowego VPN ani otwartego portu bez odrębnego zatwierdzenia.
+For a small invited group, the kit documents a non-administrative tunnel-only OS account and per-person SSH keys through an already authorized private path. Each tester uses a local SSH tunnel to reach `127.0.0.1:3101`; they receive no repository, Docker, production, or admin access. The host owner must create/restrict these accounts under their approved access process; none were created here.
 
-Host testowy nie może być Raspberry Pi ani współdzielić sieci, wolumenów, sekretów lub danych z produkcją. Użyj osobnego profilu przeglądarki; nie importuj zapisów produkcyjnych. Wymagaj w `/health` `version: 1.4.0-alpha`, dokładnego 40-znakowego SHA oraz `environment: alpha-test`. Aplikacja ustawia `X-Robots-Tag: noindex, nofollow, noarchive`.
+The application browser requests existing OpenStreetMap tiles directly. Game saves and feedback are not sent there. If policy prohibits all external browser requests, stop before playtesting until approved offline tiles are provided.
 
-**Zewnętrzne żądanie mapy:** istniejący frontend pobiera kafelki mapy bezpośrednio z `tile.openstreetmap.org` w przeglądarce gracza. Aplikacja nie wysyła tam zgłoszeń, zapisów ani diagnostyki. Jeśli warunki prywatnego testu zakazują wszystkich połączeń zewnętrznych, test trzeba wstrzymać do przygotowania zatwierdzonych kafelków offline.
+## Host procedures and tester material
 
-## Pakiet testerów i zbieranie zgłoszeń
+[ALPHA-1.4.0-PRIVATE-PLAYTEST-KIT.md](ALPHA-1.4.0-PRIVATE-PLAYTEST-KIT.md) contains separate Windows/Docker Desktop and Linux/Docker Engine instructions using the source guard, private tunnel steps, the three sessions (first campaign, bus/tram construction, economy/investment), a manual feedback JSON export process, issue-register template, and rollback steps.
 
-Trzy kompletne scenariusze, kryteria sukcesu, pytania, przewidywane czasy i miejsca na uwagi są w [ALPHA-1.4.0-PRIVATE-PLAYTEST-KIT.md](ALPHA-1.4.0-PRIVATE-PLAYTEST-KIT.md):
+The old [ALPHA-1.4.0-PLAYTEST.md](ALPHA-1.4.0-PLAYTEST.md) now directs operators to the hardened procedure and explicitly rejects direct Compose startup that could mismatch source and metadata.
 
-1. Pierwsza kampania i 12-etapowy samouczek (20–30 min).
-2. Sieć autobusowa i tramwajowa (30–45 min).
-3. Ekonomia, rozwój miasta i inwestycje (25–35 min).
+## Local validation on Surface Book
 
-Formularz opinii generuje JSON lokalnie. Kopiowanie/pobieranie jest ręczne; niczego nie wysyła. Kontekst i diagnostyka są opcjonalne i wymagają osobnych zgód. Procedura wymaga przeglądu i anonimizacji przed przekazaniem prywatnym kanałem. Szablon rejestru grupuje P0–P3, częstotliwość i duplikaty bez zbierania zbędnych danych osobowych.
+- `npm ci`: **pass**, 0 vulnerabilities.
+- `npm test`: **236/236 pass** before final docs-only cleanup; source-guard and alpha-config tests pass independently on the current edits.
+- `npm run test:browser`: **25/25 pass** on the existing app UI, including full tutorial, feedback JSON and desktop/mobile paths. No playtest container was started locally.
+- Browser viewport coverage includes 360×800 and 390×844 touch layouts plus desktop 1920×1080, 1366×768, and 1280×720.
+- Additional 360×800 mobile repeat: **3/3 pass**.
+- `npm run audit:all`: **0 vulnerabilities**.
+- `npm run audit:production`: **0 vulnerabilities**.
+- `docker compose -f compose.alpha-test.yml config` with explicit SHA: **pass**; rendered config confirms `127.0.0.1:3101`, internal network, no volumes, read-only, dropped capabilities, `no-new-privileges`, tmpfs and `restart: no`.
+- `git diff --check`: pass.
+- Docker Engine check failed because `dockerDesktopLinuxEngine` named pipe is absent. Therefore host-side startup, restart, invitee tunnel, stop and rollback are **not locally verified**.
 
-## Wycofanie
+## GitHub Actions
 
-Zatrzymaj profil poleceniem `docker compose ... down --remove-orphans`. Nie ma serwerowego wolumenu. W celu rollbacku checkoutuj wcześniej sprawdzony SHA na niezależnym hoście, sprawdź `git rev-parse HEAD`, ustaw ten sam SHA w `.env.alpha-test`, przebuduj i potwierdź `/health`. Nie uruchamiaj starej gry na profilu przeglądarki, w którym nowsza wersja mogła zmigrować zapis; użyj świeżego profilu/originu albo przygotuj kopię zapisu. Szczegółowe komendy są w pakiecie playtestowym.
+The previous workflow runs #81 and #82 predate the SHA-guard and internal-network changes, so they are not evidence for this revision. The current branch push must pass six jobs: Node 18, Node 20, Node 22, Playwright, security audit, and container health. The updated container-health job verifies checkout SHA, deliberately tests a mismatched SHA rejection, then runs the wrapper through start, health/config inspection, restart, status and stop. Its result will be recorded after it runs on the current commit.
 
-## Walidacja
+## Actual-run decision and risks
 
-- `npm ci`: zaliczony; 0 podatności z audytu instalacji.
-- `npm test`: **234/234 zaliczone**.
-- `npm run test:browser`: **25/25 zaliczone**; obejmuje desktop/mobile, lokalny feedback JSON, rzeczywisty 12-etapowy samouczek, inwestycje, tramwaje i route editor.
-- Pełny samouczek: 12/12 etapów, zapis i wznowienie potwierdzone przez Playwright.
-- Powtórzony test 360×800: **3/3 zaliczone**.
-- `npm run audit:all` oraz `npm run audit:production`: **0 podatności**.
-- `git diff --check`: zaliczony.
-- `docker compose ... config` z jawnym bazowym SHA: zaliczony; konfiguracja potwierdza bind `127.0.0.1:3101`, brak wolumenów, read-only, bez capabilities, `no-new-privileges` i restart wyłączony.
-- Docker Desktop Linux engine: na tym komputerze obecnie niedostępny (`dockerDesktopLinuxEngine` pipe nie istnieje). Lokalny start/restart/rollback kontenera nie został potwierdzony.
-- GitHub Actions run #81: **6/6 success** — Node 18, Node 20, Node 22, browser test, security audit i container health.
-- Container health: build i uruchomienie release image przeszły; profil alpha potwierdził health/version/SHA, bind `127.0.0.1:3101`, brak mountów, stronę i Leaflet, restart, ponowny health/version/SHA oraz zatrzymanie.
-
-## Ryzyka i decyzja
-
-Końcowa rekomendacja: **GO** dla pakietu i rozpoczęcia małego prywatnego playtestu po uruchomieniu na niezależnym hoście; **NO GO** dla każdej konfiguracji publicznej lub hosta bez potwierdzonej izolacji i zatwierdzonej kontroli dostępu.
-
-- Nie istnieje przygotowany ani uruchomiony prywatny host. Dostęp testerów musi zostać skonfigurowany przez właściciela na niezależnej infrastrukturze; nie wykonano zaproszeń.
-- Nie wykonano lokalnego startu ani rollbacku, ponieważ Docker Desktop Linux engine nie działał. Start/restart/stop profilu jest potwierdzony w izolowanym runnerze GitHub Actions.
-- Zapis w przeglądarce nie cofa się razem z kontenerem. Zachowaj wersjonowane, oddzielne profile przeglądarki.
-- Mapa korzysta z zewnętrznych kafelków OpenStreetMap.
-- Po wypchnięciu aktualizacji raportu workflow uruchomi się ponownie dla aktualnego HEAD. Nie rozpoczynaj sesji, jeżeli końcowe CI nie przejdzie.
+- **Package: GO** once the current revision's six Actions jobs are green.
+- **Actual playtest session: NO GO until** a separate non-Raspberry-Pi host is chosen, its network is isolated from production, its exact SHA is checked with the wrapper, and the owner provisions the already approved private invite path. No public exposure is authorized by this report.
+- No local Docker runtime or tester SSH path was available, so CI's ephemeral runner is the only possible runtime evidence here; it must not be described as a real-host or real-tester test.
+- Browser `localStorage` survives a container rollback. Use separate browser profiles/origins for each version; rollback does not reverse schema migrations.
+- No merge, tag, GitHub Release, production change, or Raspberry Pi operation was performed.
