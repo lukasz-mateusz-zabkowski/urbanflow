@@ -158,11 +158,41 @@ Ważność: **P0** blokuje uruchomienie lub powoduje utratę danych; **P1** blok
 
 ## Wycofanie / rollback
 
-1. Zatrzymaj obecny test przez `npm.cmd run alpha-test -- stop` na Windows albo `npm run alpha-test -- stop` na Linux.
-2. Na hoście przejdź do wcześniej sprawdzonego SHA przez `git checkout --detach <APPROVED_OLD_SHA>`; skrypt odrzuci inne checkouty i zabrudzone pliki.
-3. Ustaw dokładnie ten sam SHA w `.env.alpha-test` i uruchom `npm.cmd run alpha-test -- rollback` na Windows albo `npm run alpha-test -- rollback` na Linux. Wrapper najpierw usuwa poprzedni kontener, przebudowuje obraz ze źródeł bieżącego, zweryfikowanego checkoutu i sprawdza obraz oraz `/health`.
-4. Starsza wersja powinna używać nowego profilu przeglądarki/originu. Nie uruchamiaj jej na `localStorage`, które mogła zmienić nowsza wersja; rollback kontenera nie cofa migracji zapisów.
-5. Testerzy zatrzymują swoje tunele skrótem `Ctrl+C`. Kontener nie ma automatycznego restartu ani trwałego wolumenu.
+Rollback wymaga wskazania wcześniej zatwierdzonego SHA, dla którego host nadal może pobrać kod. Użyj osobnego Git worktree dla starszego commita, aby zachować aktualny wrapper administracyjny i jego kontrolę zgodności SHA. Nie używaj starego worktree do zapisu użytkowników; każda wersja ma osobny origin/localStorage.
+
+### Windows
+
+```powershell
+$rollbackSha = '<WCZEŚNIEJ_ZATWIERDZONY_SHA>'
+$rollbackDir = Join-Path $env:TEMP 'urbanflow-alpha-rollback'
+if (Test-Path $rollbackDir) { throw "Rollback path already exists: $rollbackDir" }
+git fetch origin $rollbackSha
+git worktree add --detach $rollbackDir $rollbackSha
+Set-Content -Path (Join-Path $rollbackDir '.env.alpha-test') -Value "URBANFLOW_COMMIT_SHA=$rollbackSha" -Encoding ascii
+npm.cmd run alpha-test -- rollback --cwd $rollbackDir
+npm.cmd run alpha-test -- status --cwd $rollbackDir
+npm.cmd run alpha-test -- stop --cwd $rollbackDir
+Remove-Item (Join-Path $rollbackDir '.env.alpha-test') -Force
+git worktree remove $rollbackDir
+```
+
+### Linux
+
+```bash
+ROLLBACK_SHA='<PREVIOUSLY_APPROVED_SHA>'
+ROLLBACK_DIR="$(mktemp -d)"
+rmdir "$ROLLBACK_DIR"
+git fetch origin "$ROLLBACK_SHA"
+git worktree add --detach "$ROLLBACK_DIR" "$ROLLBACK_SHA"
+printf 'URBANFLOW_COMMIT_SHA=%s\n' "$ROLLBACK_SHA" > "$ROLLBACK_DIR/.env.alpha-test"
+npm run alpha-test -- rollback --cwd "$ROLLBACK_DIR"
+npm run alpha-test -- status --cwd "$ROLLBACK_DIR"
+npm run alpha-test -- stop --cwd "$ROLLBACK_DIR"
+rm "$ROLLBACK_DIR/.env.alpha-test"
+git worktree remove "$ROLLBACK_DIR"
+```
+
+Wrapper odrzuci SHA niezgodny z rzeczywistym HEAD worktree. Następnie zatrzyma obecną instancję, przebuduje obraz pod SHA rollbacku i zweryfikuje revision label, port loopback, `/health`, stronę oraz zasób Leaflet. Nie uruchamiaj rollbacku na zapisie `localStorage`, który mógł być zmigrowany przez nowszą wersję; kontener nie cofa migracji przeglądarkowej. Testerzy zatrzymują tunele `Ctrl+C`. Kontener nie ma automatycznego restartu ani trwałego wolumenu.
 
 ## Zakończenie sesji
 

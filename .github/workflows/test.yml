@@ -95,7 +95,16 @@ jobs:
         run: |
           set -euo pipefail
           printf 'URBANFLOW_COMMIT_SHA=%s\n' "$GITHUB_SHA" > .env.alpha-test
-          trap 'node scripts/alpha-playtest.mjs stop >/dev/null 2>&1 || true; rm -f .env.alpha-test' EXIT
+          rollback_dir=''
+          cleanup() {
+            node scripts/alpha-playtest.mjs stop >/dev/null 2>&1 || true
+            if [ -n "$rollback_dir" ]; then
+              rm -f "$rollback_dir/.env.alpha-test"
+              git worktree remove --force "$rollback_dir" >/dev/null 2>&1 || true
+            fi
+            rm -f .env.alpha-test
+          }
+          trap cleanup EXIT
           node scripts/alpha-playtest.mjs verify
           printf 'URBANFLOW_COMMIT_SHA=%040d\n' 0 > .env.alpha-test
           if node scripts/alpha-playtest.mjs verify > /tmp/urbanflow-alpha-sha-mismatch.log 2>&1; then
@@ -108,4 +117,16 @@ jobs:
           node scripts/alpha-playtest.mjs restart
           node scripts/alpha-playtest.mjs status
           node scripts/alpha-playtest.mjs stop
+          rollback_sha=c2b0ea1a7241fd4bb4f545405e6547c8d4aac4fb
+          git fetch --no-tags origin "$rollback_sha"
+          rollback_dir="$(mktemp -d)"
+          rmdir "$rollback_dir"
+          git worktree add --detach "$rollback_dir" "$rollback_sha"
+          printf 'URBANFLOW_COMMIT_SHA=%s\n' "$rollback_sha" > "$rollback_dir/.env.alpha-test"
+          env -u URBANFLOW_COMMIT_SHA node scripts/alpha-playtest.mjs rollback --cwd "$rollback_dir"
+          env -u URBANFLOW_COMMIT_SHA node scripts/alpha-playtest.mjs status --cwd "$rollback_dir"
+          env -u URBANFLOW_COMMIT_SHA node scripts/alpha-playtest.mjs stop --cwd "$rollback_dir"
+          rm -f "$rollback_dir/.env.alpha-test"
+          git worktree remove "$rollback_dir"
+          rollback_dir=''
           rm -f .env.alpha-test

@@ -32,7 +32,9 @@ test('container-health CI starts and stops the isolated alpha compose profile', 
   assert.match(packageJson, /"alpha-test":\s*"node scripts\/alpha-playtest\.mjs"/);
   assert.match(workflow, /test "\$\(git rev-parse HEAD\)" = "\$GITHUB_SHA"/);
   assert.match(workflow, /SHA guard accepted a mismatched checkout/);
-  for (const action of ['verify', 'start', 'restart', 'status', 'stop']) assert.match(workflow, new RegExp(`alpha-playtest\\.mjs ${action}`));
+  for (const action of ['verify', 'start', 'restart', 'status', 'stop', 'rollback']) assert.match(workflow, new RegExp(`alpha-playtest\\.mjs ${action}`));
+  assert.match(workflow, /git worktree add --detach/);
+  assert.match(workflow, /rollback --cwd/);
   assert.match(script, /rev-parse', '--verify', 'HEAD/);
   assert.match(script, /does not match configured SHA/);
   assert.match(script, /health\.commit !== expectedSha/);
@@ -62,6 +64,7 @@ test('private playtest kit defines invite-only access, independent origin, rollb
   assert.match(kit, /Linux \+ Docker Engine/);
   assert.match(kit, /npm\.cmd run alpha-test -- start/);
   assert.match(kit, /npm run alpha-test -- start/);
+  assert.match(kit, /rollback --cwd/);
   assert.match(kit, /<PEŁNY_ZATWIERDZONY_SHA_GAŁĘZI_PLAYTEST>/);
   assert.doesNotMatch(kit, /git checkout --detach 346bcbe9880d8719d4c8cf8a3d8b26a6e89b2491/);
 });

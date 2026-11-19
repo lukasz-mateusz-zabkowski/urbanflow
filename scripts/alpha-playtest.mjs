@@ -44,19 +44,23 @@ async function readConfiguredSha(cwd) {
   return match[1];
 }
 
-function docker(args, cwd = ROOT, { capture = false } = {}) {
+function docker(args, cwd = ROOT, { capture = false, env = process.env } = {}) {
   const result = spawnSync('docker', args, {
     cwd,
     encoding: 'utf8',
-    stdio: capture ? ['ignore', 'pipe', 'pipe'] : 'inherit'
+    stdio: capture ? ['ignore', 'pipe', 'pipe'] : 'inherit',
+    env
   });
   if (result.error) throw new Error(`Docker command failed: ${result.error.message}`);
   if (result.status !== 0) throw new Error(`docker ${args.join(' ')} exited with status ${result.status}.`);
   return result.stdout?.trim() ?? '';
 }
 
-function compose(args, cwd) {
-  return docker(['compose', '--env-file', ENV_FILE, '-p', COMPOSE_PROJECT, '-f', COMPOSE_FILE, ...args], cwd, { capture: ['port', 'ps', 'logs'].includes(args[0]) });
+function compose(args, cwd, expectedSha) {
+  return docker(['compose', '--env-file', ENV_FILE, '-p', COMPOSE_PROJECT, '-f', COMPOSE_FILE, ...args], cwd, {
+    capture: ['port', 'ps', 'logs'].includes(args[0]),
+    env: { ...process.env, URBANFLOW_COMMIT_SHA: expectedSha }
+  });
 }
 
 function assertContainerConfiguration(containerId, expectedSha, cwd) {
@@ -96,9 +100,9 @@ async function checkHealth(expectedSha, cwd) {
       if (health.status !== 'ok' || health.version !== version || health.commit !== expectedSha || health.environment !== 'alpha-test') {
         throw new Error(`Unexpected /health: ${JSON.stringify(health)}; expected version ${version}, commit ${expectedSha}, environment alpha-test.`);
       }
-      const composePort = compose(['port', 'urbanflow-alpha-test', '3000'], cwd);
+      const composePort = compose(['port', 'urbanflow-alpha-test', '3000'], cwd, expectedSha);
       if (!composePort.includes('127.0.0.1:3101')) throw new Error(`Unexpected published port: ${composePort}`);
-      const containerId = compose(['ps', '-q', 'urbanflow-alpha-test'], cwd);
+      const containerId = compose(['ps', '-q', 'urbanflow-alpha-test'], cwd, expectedSha);
       if (!containerId) throw new Error('Compose has no alpha-test container.');
       assertContainerConfiguration(containerId, expectedSha, cwd);
       for (const url of ['http://127.0.0.1:3101/', 'http://127.0.0.1:3101/vendor/leaflet/leaflet.js']) {
@@ -116,8 +120,8 @@ async function checkHealth(expectedSha, cwd) {
   let containerLogs = '';
   let containerState = '';
   try {
-    containerLogs = compose(['logs', '--tail=40', 'urbanflow-alpha-test'], cwd);
-    const containerId = compose(['ps', '-q', 'urbanflow-alpha-test'], cwd);
+    containerLogs = compose(['logs', '--tail=40', 'urbanflow-alpha-test'], cwd, expectedSha);
+    const containerId = compose(['ps', '-q', 'urbanflow-alpha-test'], cwd, expectedSha);
     if (containerId) containerState = docker(['inspect', '--format={{json .State}}', containerId], cwd, { capture: true });
   } catch (diagnosticError) {
     containerLogs = `Unable to collect Compose diagnostics: ${diagnosticError.message}`;
@@ -127,11 +131,11 @@ async function checkHealth(expectedSha, cwd) {
 
 export async function runAlphaPlaytest(action, cwd = ROOT) {
   if (!['verify', 'start', 'restart', 'status', 'stop', 'rollback'].includes(action)) {
-    throw new Error('Usage: npm run alpha-test -- <verify|start|restart|status|stop|rollback>');
+    throw new Error('Usage: npm run alpha-test -- <verify|start|restart|status|stop|rollback> [--cwd <directory>]');
   }
   const expectedSha = await readConfiguredSha(cwd);
   if (action === 'stop') {
-    compose(['down', '--remove-orphans'], cwd);
+    compose(['down', '--remove-orphans'], cwd, expectedSha);
     console.log('Alpha playtest stopped; no server-side save volume exists.');
     return;
   }
@@ -145,17 +149,30 @@ export async function runAlphaPlaytest(action, cwd = ROOT) {
     return;
   }
   if (action === 'restart') {
-    compose(['restart', 'urbanflow-alpha-test'], cwd);
+    compose(['restart', 'urbanflow-alpha-test'], cwd, expectedSha);
   } else {
-    if (action === 'rollback') compose(['down', '--remove-orphans'], cwd);
-    compose(['up', '--build', '--detach'], cwd);
+    if (action === 'rollback') compose(['down', '--remove-orphans'], cwd, expectedSha);
+    compose(['up', '--build', '--detach'], cwd, expectedSha);
   }
   await checkHealth(actualSha, cwd);
 }
 
+export function parseCliArgs(argv) {
+  const [action, ...options] = argv;
+  let cwd = ROOT;
+  for (let index = 0; index < options.length; index += 1) {
+    if (options[index] !== '--cwd') throw new Error(`Unknown option '${options[index]}'.`);
+    if (!options[index + 1]) throw new Error('--cwd requires a directory.');
+    cwd = path.resolve(options[index + 1]);
+    index += 1;
+  }
+  return { action, cwd };
+}
+
 async function main() {
   try {
-    await runAlphaPlaytest(process.argv[2]);
+    const { action, cwd } = parseCliArgs(process.argv.slice(2));
+    await runAlphaPlaytest(action, cwd);
   } catch (error) {
     console.error(error.message);
     process.exitCode = 1;

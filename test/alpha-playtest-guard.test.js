@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, unlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
-import { verifyCheckoutSha } from '../scripts/alpha-playtest.mjs';
+import { parseCliArgs, verifyCheckoutSha } from '../scripts/alpha-playtest.mjs';
 
 function git(cwd, ...args) {
   return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
@@ -43,4 +43,12 @@ test('playtest source guard rejects malformed or missing SHA values', async t =>
   assert.throws(() => verifyCheckoutSha({ cwd, expectedSha: 'not-a-sha' }), /40-character commit SHA/i);
   assert.throws(() => verifyCheckoutSha({ cwd, expectedSha: undefined }), /40-character commit SHA/i);
   assert.equal((await readFile(path.join(cwd, 'server.js'), 'utf8')).includes('version = 2'), true);
+});
+
+test('playtest wrapper can safely target a separately checked out rollback worktree', () => {
+  assert.deepEqual(parseCliArgs(['rollback', '--cwd', 'C:/approved/rollback']), {
+    action: 'rollback', cwd: path.resolve('C:/approved/rollback')
+  });
+  assert.throws(() => parseCliArgs(['rollback', '--cwd']), /requires a directory/i);
+  assert.throws(() => parseCliArgs(['start', '--unknown']), /unknown option/i);
 });
