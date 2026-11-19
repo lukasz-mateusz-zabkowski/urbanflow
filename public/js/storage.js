@@ -70,6 +70,9 @@ export function validateState(s, city) {
   if (!validStops(s.selectedNodes) || !transportType(s.selectedType) || !Array.isArray(s.unlocked) || !s.unlocked.includes('bus') || s.unlocked.some(t => !transportType(t)) || new Set(s.unlocked).size !== s.unlocked.length) return false;
   if (s.editingLineId !== null && !s.lines.some(l => l.id === s.editingLineId)) return false;
   if (!plain(s.preferences) || ['tutorialCollapsed', 'goalsCollapsed'].some(key => typeof s.preferences[key] !== 'boolean')) return false;
+  if (s.preferences.tutorialStatus !== undefined && !['active', 'skipped'].includes(s.preferences.tutorialStatus)) return false;
+  if (s.preferences.tutorialMapExplored !== undefined && typeof s.preferences.tutorialMapExplored !== 'boolean') return false;
+  if (s.preferences.tutorialDiagnosisVersion !== undefined && s.preferences.tutorialDiagnosisVersion !== null && !integer(s.preferences.tutorialDiagnosisVersion)) return false;
   if (s.analyticsMode !== undefined && !['off', 'demand', 'queues', 'load', 'profit', 'travel', 'access', 'flow', 'overload', 'unmet', 'cityEvolution', 'landUse', 'investments'].includes(s.analyticsMode)) return false;
   if (!validateCityEvolutionState(s.cityEvolution, city)) return false;
   if (!validateInvestmentState(s.investments, city, s)) return false;

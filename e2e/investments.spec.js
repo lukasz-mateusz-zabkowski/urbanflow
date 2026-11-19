@@ -5,6 +5,7 @@ import { join } from 'node:path';
 
 const artifacts = join(tmpdir(), 'urbanflow-alpha-1.3.0-visual-qa');
 const tile = '<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect width="256" height="256" fill="#e9eee4"/><path d="M0 220 110 110 256 35M0 40 256 210" fill="none" stroke="#fffefa" stroke-width="12"/></svg>';
+async function touchCenter(page, locator) { await locator.evaluate(element => element.scrollIntoView({ block: 'center', inline: 'nearest' })); await page.waitForTimeout(60); const box = await locator.boundingBox(); await page.touchscreen.tap(box.x + box.width / 2, box.y + box.height / 2); }
 
 async function openGame(page, viewport, mobile) {
   await page.setViewportSize(viewport);
@@ -12,12 +13,16 @@ async function openGame(page, viewport, mobile) {
   await page.route('https://tile.openstreetmap.org/**', route => route.fulfill({ status: 200, contentType: 'image/svg+xml', body: tile }));
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
-  await page.goto('http://127.0.0.1:3100/', { waitUntil: 'domcontentloaded' });
+  await page.goto('http://127.0.0.1:3140/', { waitUntil: 'domcontentloaded' });
   if (mobile) await page.locator('#startKrakow').tap(); else await page.locator('#startKrakow').click();
   await expect(page.locator('#map')).toBeVisible();
-  if (mobile) { await page.locator('#mobilePanelButton').tap(); await expect(page.locator('#buildPanel')).toHaveClass(/open/); }
+  if (mobile) { await page.locator('#mobilePanelButton').tap(); await expect(page.locator('#buildPanel')).toHaveClass(/open/); await page.waitForTimeout(300); }
   await expect(page.locator('[data-mode="investments"]')).toBeVisible();
-  if (mobile) await page.locator('[data-mode="investments"]').tap(); else await page.locator('[data-mode="investments"]').click();
+  if (mobile) {
+    await page.locator('[data-mode="investments"]').evaluate(target => target.scrollIntoView({ block: 'center', inline: 'nearest' }));
+    await page.waitForTimeout(100);
+  }
+  if (mobile) await touchCenter(page, page.locator('[data-mode="investments"]')); else await page.locator('[data-mode="investments"]').click();
   await expect(page.locator('#investmentsPanel')).toBeVisible();
   const firstArea = await page.locator('#investmentDistrict option').first().getAttribute('value');
   await page.locator('#investmentDistrict').selectOption(firstArea);
@@ -27,17 +32,27 @@ async function openGame(page, viewport, mobile) {
 async function lifecycle(page, viewport, mobile) {
     const errors = await openGame(page, viewport, mobile);
     const plan = page.locator('[data-action="plan-investment"][data-investment-type="housing"]');
-    if (mobile) await plan.tap(); else { await plan.focus(); await page.keyboard.press('Enter'); }
+    if (mobile) await touchCenter(page, plan); else { await plan.focus(); await page.keyboard.press('Enter'); }
     await expect(page.locator('#investmentProjectList')).toContainText('plan');
-    if (mobile) await page.locator('[data-action="approve-investment"]').tap();
+    const budgetBeforeConfirmation = await page.locator('#budgetStat').textContent();
+    if (mobile) await touchCenter(page, page.locator('[data-action="approve-investment"]'));
     else { await page.locator('[data-action="approve-investment"]').focus(); await page.keyboard.press('Enter'); }
+    await expect(page.locator('dialog.confirm-dialog')).toBeVisible();
+    expect(await page.locator('#budgetStat').textContent()).toBe(budgetBeforeConfirmation);
+    await page.locator('dialog.confirm-dialog .secondary-button').click();
+    await expect(page.locator('dialog.confirm-dialog')).toHaveCount(0);
+    await expect(page.locator('#investmentProjectList')).toContainText('plan');
+    if (mobile) await touchCenter(page, page.locator('[data-action="approve-investment"]'));
+    else { await page.locator('[data-action="approve-investment"]').focus(); await page.keyboard.press('Enter'); }
+    await expect(page.locator('dialog.confirm-dialog')).toBeVisible();
+    await page.locator('dialog.confirm-dialog .primary-button').click();
     await expect(page.locator('#investmentProjectList')).toContainText('realizacja');
     await expect(page.locator('#investmentProjectList')).toContainText('Anuluj');
     await mkdir(artifacts, { recursive: true });
     await expect(page.locator('#toastStack .toast')).toHaveCount(0, { timeout: 8000 });
     await page.locator('#investmentsPanel').evaluate(element => element.scrollIntoView({ block: 'start', behavior: 'instant' }));
     await page.screenshot({ path: join(artifacts, `investments-${viewport.width}x${viewport.height}.png`), fullPage: false, animations: 'disabled' });
-    if (mobile) await page.locator('[data-action="cancel-investment"]').tap();
+    if (mobile) await touchCenter(page, page.locator('[data-action="cancel-investment"]'));
     else { await page.locator('[data-action="cancel-investment"]').focus(); await page.keyboard.press('Enter'); }
     await expect(page.locator('#investmentProjectList')).toContainText('anulowano');
     const bounds = await page.evaluate(() => ({ body: document.body.scrollWidth, doc: document.documentElement.scrollWidth }));
@@ -51,7 +66,7 @@ test('investment project lifecycle desktop 1366x768', async ({ page }) => {
 });
 
 test('investment project lifecycle touch mobile 390x844', async ({ browser }) => {
-  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, screen: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   try { await lifecycle(await context.newPage(), { width: 390, height: 844 }, true); }
   finally { await context.close(); }
 });
@@ -68,7 +83,7 @@ test('completed project panel shows saved modeled results after campaign reload'
   await page.route('https://tile.openstreetmap.org/**', route => route.fulfill({ status: 200, contentType: 'image/svg+xml', body: tile }));
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
-  await page.goto('http://127.0.0.1:3100/', { waitUntil: 'domcontentloaded' });
+  await page.goto('http://127.0.0.1:3140/', { waitUntil: 'domcontentloaded' });
   await page.locator('#startKrakow').click();
   await expect(page.locator('#map')).toBeVisible();
   await page.locator('[data-mode="investments"]').click();
@@ -77,6 +92,7 @@ test('completed project panel shows saved modeled results after campaign reload'
   await page.locator('#investmentDistrict').selectOption(firstArea);
   await page.locator('[data-action="plan-investment"][data-investment-type="housing"]').click();
   await page.locator('[data-action="approve-investment"]').click();
+  await page.locator('dialog.confirm-dialog .primary-button').click();
   await page.locator('#pauseButton').click();
 
   await page.evaluate(() => {
@@ -94,7 +110,7 @@ test('completed project panel shows saved modeled results after campaign reload'
   await resumedPage.route('https://tile.openstreetmap.org/**', route => route.fulfill({ status: 200, contentType: 'image/svg+xml', body: tile }));
   const resumedErrors = [];
   resumedPage.on('pageerror', error => resumedErrors.push(error.message));
-  await resumedPage.goto('http://127.0.0.1:3100/', { waitUntil: 'domcontentloaded' });
+  await resumedPage.goto('http://127.0.0.1:3140/', { waitUntil: 'domcontentloaded' });
   const restoredHistory = await resumedPage.evaluate(() => JSON.parse(localStorage.getItem('urbanflow.krakow.v2')).state.investments.history);
   expect(restoredHistory.some(item => item.id === 'investment-100')).toBe(true);
   const storageError = await resumedPage.evaluate(async () => {

@@ -21,3 +21,23 @@ test('feedback diagnostics are attached only after explicit consent and malforme
   assert.equal(createFeedbackReport({ ...input, category: 'Dowolne', rating: 9 }, null).ok, false);
   assert.equal(createFeedbackReport({ ...input, description: '   ' }, null).ok, false);
 });
+
+test('feedback supports the six playtest categories and includes only explicitly selected context fields', async () => {
+  const { FEEDBACK_CATEGORIES: categories } = await import('../public/js/feedback.js');
+  assert.deepEqual(categories, ['Błąd', 'Niezrozumiała mechanika', 'Sugestia', 'Problem z wydajnością', 'Problem z interfejsem', 'Ocena pierwszej rozgrywki']);
+  const result = createFeedbackReport({ category: categories[5], description: 'Pierwsza sesja', rating: 4, includeContext: true },
+    { city: 'krakow', lineCount: 1, elapsedMinutes: 12, budget: 3000, save: '{secret}' },
+    { version: '1.4.0-alpha', context: { device: 'mobile', resolution: '390x844', screen: 'game', tutorialStep: 'passengers', userAgent: 'secret' } });
+  assert.equal(result.ok, true);
+  assert.deepEqual(result.report.context, { device: 'mobile', resolution: '390x844', screen: 'game', tutorialStep: 'passengers' });
+  assert.equal(result.report.diagnostics, undefined);
+  assert.equal(JSON.stringify(result.report).includes('secret'), false);
+});
+
+test('feedback never includes diagnostic data unless the separate diagnostics consent is checked', () => {
+  const result = createFeedbackReport({ category: 'Błąd', description: 'Test', rating: 3, includeContext: true },
+    { city: 'krakow', lineCount: 2, elapsedMinutes: 30, budget: 1000 });
+  assert.equal(result.ok, true);
+  assert.equal(result.report.context, undefined);
+  assert.equal(result.report.diagnostics, undefined);
+});

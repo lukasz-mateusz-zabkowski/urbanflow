@@ -32,6 +32,16 @@ test('tester feedback can be copied or downloaded and explains that diagnostics 
   assert.match(ui, /Nic nie zostało wysłane/);
 });
 
+test('onboarding is dismissible and state-backed, and line decisions reveal budget, risks and expected service', () => {
+  assert.match(html, /id="tutorialSkip"/);
+  assert.match(html, /id="tutorialRestart"/);
+  assert.match(html, /role="progressbar"[^>]+id="tutorialProgress"/);
+  assert.match(html, /id="lineDecisionSummary"/);
+  assert.match(ui, /setTutorialStatus\('skipped'\)/);
+  assert.match(ui, /lineDecisionBudget/);
+  assert.match(ui, /lineDecisionRisk/);
+});
+
 test('game UI modules load without browser globals and unknown Atlas views fall back safely', async () => {
   const { UI } = await import('../public/js/ui.js');
   assert.equal(typeof UI, 'function');

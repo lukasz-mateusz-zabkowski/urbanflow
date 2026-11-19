@@ -15,11 +15,15 @@ const city = getCity('krakow');
 applyAtlasView();
 await loadStops(city);
 let appVersion = 'unknown';
+let appCommit = '';
+let alphaTestMode = false;
 try {
   const healthResponse = await fetch('/health', { cache: 'no-store' });
   if (healthResponse.ok) {
     const health = await healthResponse.json();
     if (typeof health.version === 'string') appVersion = health.version;
+    if (typeof health.commit === 'string') appCommit = health.commit;
+    alphaTestMode = health.environment === 'alpha-test';
   }
 } catch { /* A static preview may not provide the optional server health route. */ }
 const cityScreen = document.getElementById('cityScreen');
@@ -38,6 +42,9 @@ function persist() {
 function renderCityScreen(error = null) {
   const grid = document.getElementById('cityGrid');
   grid.innerHTML = `<button class="city-card" id="startKrakow" type="button"><span class="city-number">01</span><span><strong>Kraków</strong><small>losowy start aglomeracyjny → węzły → lotnisko</small></span><i>${game ? 'Wróć do gry →' : 'Rozpocznij →'}</i></button>`;
+  const buildBadge = document.getElementById('buildBadge');
+  buildBadge.classList.toggle('is-hidden', !alphaTestMode);
+  buildBadge.textContent = alphaTestMode ? `ALPHA TEST · ${appVersion}${appCommit ? ` · ${appCommit.slice(0, 12)}` : ''}` : '';
   document.getElementById('startKrakow').addEventListener('click', async () => {
     if (game) {
       cityScreen.classList.add('is-hidden'); gameElement.classList.remove('is-hidden');
@@ -108,7 +115,7 @@ async function startCity(savedState = null) {
     if (!result.ok) ui?.toast(result.message, 'warn');
   });
   gameMap.loadCity(city);
-  ui = new UI(game, gameMap, { appVersion, onNewGame: async () => {
+  ui = new UI(game, gameMap, { appVersion, appCommit, alphaTestMode, onNewGame: async () => {
     if (!await confirmAction('Rozpocząć nową grę? Obecny zapis kampanii Krakowa zostanie zastąpiony.', 'Rozpocznij nową grę')) return;
     const result = clearSave(storage);
     if (!result.ok && storage) { ui.toast(result.message, 'warn'); return; }

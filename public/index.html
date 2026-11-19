@@ -8,7 +8,7 @@
   <title>UrbanFlow — Kraków w ruchu</title>
   <link rel="preconnect" href="https://tile.openstreetmap.org">
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css?v=1.9.4">
-  <link rel="stylesheet" href="styles.css?v=14">
+  <link rel="stylesheet" href="styles.css?v=16">
 </head>
 <body>
   <section class="city-screen" id="cityScreen" aria-labelledby="gameTitle">
@@ -17,6 +17,7 @@
       <h1 id="gameTitle"><span>Urban</span>Flow<span class="brand-period">.</span></h1>
       <p class="city-intro">Twoje linie. Rytm całego miasta.</p>
       <p class="city-description">Zacznij w losowej miejscowości aglomeracji. Zbuduj sieć przesiadkową, opanuj szczyt i doprowadź transport do lotniska.</p>
+      <p class="build-badge is-hidden" id="buildBadge" aria-label="Wersja testowa"></p>
       <div class="session-facts"><span>8 celów</span><span>12–20 minut</span><span>Automatyczny zapis</span></div>
       <div class="city-grid" id="cityGrid"></div>
       <p class="map-credit">Geografia © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">autorzy OpenStreetMap</a> · graf ulic na <a href="https://opendatacommons.org/licenses/odbl/1.0/" target="_blank" rel="noreferrer">ODbL‑1.0</a> · stwórz własny Kraków w ruchu</p>
@@ -27,6 +28,7 @@
   <main class="game is-hidden" id="game" aria-label="Gra UrbanFlow">
     <header class="statusbar">
       <button class="brand" id="backToCities" type="button" title="Ekran kampanii"><i></i>UrbanFlow<span>.</span></button>
+      <span class="build-badge is-hidden" id="gameBuildBadge"></span>
       <div class="status-stat budget-mobile"><span>Budżet</span><strong id="budgetStat">—</strong></div>
       <div class="status-stat finance-stat"><span>Bilans sieci / h</span><strong id="networkBalanceStat">—</strong></div>
       <div class="status-stat waiting-mobile"><span>Oczekuje</span><strong id="waitingStat">—</strong></div>
@@ -41,6 +43,7 @@
       <div class="map-wrap">
         <div id="map" aria-label="Mapa transportowa Krakowa. Wybieraj punkty, aby zaplanować linię."></div>
         <div class="map-context"><span class="live-dot"></span><span id="mobileTimeStat">Dzień 1 · 06:00</span><span id="weekdayMobileStat">Poniedziałek · Dzień roboczy</span><span id="trafficStatus">Ruch zwykły</span></div>
+        <section class="context-hint is-hidden" id="contextHint" aria-live="polite"><span class="context-hint-icon" aria-hidden="true">i</span><p id="contextHintText"></p><button id="contextHintDismiss" type="button" aria-label="Ukryj wskazówkę">×</button></section>
         <div class="objective" id="objective">
           <span class="objective-label">01 / Pierwsze połączenie</span>
           <strong id="objectiveTitle">Z aglomeracji do Krakowa</strong>
@@ -76,12 +79,16 @@
           <button class="collapse-heading" id="toggleGoalsButton" type="button" aria-expanded="true" aria-controls="goalsBody"><span><span class="section-kicker">Plan dla Krakowa</span><strong id="goalsTitle">Cele kampanii</strong></span><span class="heading-end"><b id="goalCount">0/8</b><i aria-hidden="true">⌃</i></span></button>
           <div class="campaign-track" id="campaignTrack" aria-hidden="true"></div>
           <p class="active-goal" id="activeGoal">Połącz Wieliczkę z Krakowem.</p>
+          <div class="campaign-overview" id="campaignOverview" aria-live="polite"></div>
           <div id="goalsBody"><ol class="goal-list" id="goalList"></ol></div>
         </section>
 
         <section class="tutorial-card" id="tutorialCard">
-          <button class="collapse-heading" id="toggleTutorialButton" type="button" aria-expanded="true" aria-controls="tutorialBody"><span><span class="step-number" id="stepNumber">01</span><strong id="tutorialTitle">Pierwsza trasa</strong></span><i aria-hidden="true">⌃</i></button>
-          <div id="tutorialBody"><p id="tutorialText">Wybierz pierwsze połączenie na mapie.</p><p class="tutorial-tip" id="tutorialTip">Klikaj punkty w kolejności przejazdu. Koszt poznasz przed budową.</p></div>
+          <button class="collapse-heading" id="toggleTutorialButton" type="button" aria-expanded="true" aria-controls="tutorialBody"><span><span class="step-number" id="stepNumber">01</span><strong id="tutorialTitle">Poznaj mapę i panel</strong></span><i aria-hidden="true">⌃</i></button>
+          <div class="tutorial-progress" role="progressbar" id="tutorialProgress" aria-label="Postęp samouczka" aria-valuemin="0" aria-valuemax="12" aria-valuenow="0"><i id="tutorialProgressBar"></i></div>
+          <p class="tutorial-progress-copy" id="tutorialProgressCopy">0 z 12 kroków</p>
+          <div id="tutorialBody" aria-live="polite"><p id="tutorialText">Wybierz punkt na mapie, aby poznać jego profil.</p><p class="tutorial-tip" id="tutorialTip">Postęp wynika z działań i stanu kampanii; możesz pominąć samouczek.</p></div>
+          <div class="tutorial-actions"><button class="text-button" id="tutorialSkip" type="button">Pomiń samouczek</button><button class="secondary-button" id="tutorialRestart" type="button" hidden>Uruchom ponownie</button></div>
         </section>
 
         <section class="analytics-section" aria-labelledby="analyticsTitle">
@@ -171,6 +178,7 @@
             <button class="map-pick-button" type="button" data-action="pick-on-map">＋ Wybierz przystanki na mapie</button>
           </div>
           <div class="preview-card" id="previewCard"><div><span>Długość</span><strong id="previewDistance">—</strong></div><div><span>Szac. czas przejazdu</span><strong id="previewTime">—</strong></div><div><span>Budowa</span><strong id="previewCost">—</strong></div></div>
+          <section class="decision-summary" id="lineDecisionSummary" aria-label="Skutki zatwierdzenia trasy" hidden><strong>Przed zatwierdzeniem</strong><p id="lineDecisionBudget"></p><p id="lineDecisionBenefit"></p><p id="lineDecisionRisk"></p></section>
           <details class="route-diagnostics"><summary>Jak wyznaczono trasę?</summary><dl><dt>Źródło danych</dt><dd id="previewRoutingSource">—</dd><dt>Algorytm</dt><dd id="previewRoutingAlgorithm">—</dd><dt>Wariant</dt><dd id="previewRoutingReason"></dd><dt>Dojazd do grafu</dt><dd id="previewRoutingSnap">—</dd></dl></details>
           <p class="inline-feedback" id="previewMessage" role="status"></p>
           <button class="primary-button" id="createLineButton" type="button" disabled>Zaznacz przystanki</button>
@@ -211,20 +219,21 @@
   </dialog>
   <dialog class="summary-dialog feedback-dialog" id="feedbackDialog" aria-labelledby="feedbackTitle">
     <button class="dialog-close" type="button" id="feedbackClose" aria-label="Zamknij formularz">×</button>
-    <p class="eyebrow">Program Alpha Testers</p><h2 id="feedbackTitle">Zgłoś uwagę</h2>
+    <p class="eyebrow">Program Alpha Testers</p><h2 id="feedbackTitle">Opinia z rozgrywki</h2>
     <form id="feedbackForm">
-      <label>Kategoria<select name="category" required><option value="">Wybierz kategorię</option><option>Błąd techniczny</option><option>Interfejs i grafika</option><option>Mechanika gry</option><option>Balans ekonomiczny</option><option>Pomysł na rozwój</option></select></label>
-      <label>Opis<textarea name="description" rows="4" maxlength="3000" required placeholder="Co się wydarzyło albo co warto poprawić?"></textarea></label>
-      <label>Ocena gry<select name="rating" required><option value="">Wybierz ocenę</option><option value="1">1 — bardzo słabo</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5 — bardzo dobrze</option></select></label>
+      <label>Rodzaj opinii<select name="category" required><option value="">Wybierz kategorię</option><option>Błąd</option><option>Niezrozumiała mechanika</option><option>Sugestia</option><option>Problem z wydajnością</option><option>Problem z interfejsem</option><option>Ocena pierwszej rozgrywki</option></select></label>
+      <label>Ocena od 1 do 5<select name="rating" required><option value="">Wybierz ocenę</option><option value="1">1 — bardzo słabo</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5 — bardzo dobrze</option></select></label>
+      <label>Co było jasne lub trudne?<textarea name="description" rows="4" maxlength="3000" required placeholder="Opisz konkretny moment z rozgrywki."></textarea></label>
       <label>Identyfikator testera (opcjonalnie)<input name="testerId" maxlength="60" autocomplete="off"></label>
-      <label class="consent-row"><input name="includeDiagnostics" type="checkbox"><span>Dołącz podstawowe dane diagnostyczne (miasto, liczba linii i czas gry).</span></label>
+      <label class="consent-row"><input name="includeContext" type="checkbox"><span>Dołącz wersję, typ urządzenia, rozdzielczość, ekran i krok samouczka.</span></label>
+      <label class="consent-row"><input name="includeDiagnostics" type="checkbox"><span>Pokaż podstawową diagnostykę kampanii (budżet, linie, oczekujący i przewiezieni pasażerowie). Dane będą widoczne poniżej przed eksportem.</span></label>
       <p class="feedback-error" id="feedbackError" role="alert"></p>
       <button class="primary-button" type="submit">Przygotuj zgłoszenie</button>
     </form>
-    <section class="feedback-export" id="feedbackExport" hidden><label id="feedbackExportLabel" for="feedbackJson">Gotowe zgłoszenie JSON</label><textarea id="feedbackJson" rows="8" readonly></textarea><div class="feedback-actions"><button class="secondary-button" type="button" id="feedbackCopy">Kopiuj JSON</button><button class="secondary-button" type="button" id="feedbackDownload">Pobierz JSON</button></div><p role="status" id="feedbackStatus"></p></section>
+    <section class="feedback-export" id="feedbackExport" hidden><label id="feedbackExportLabel" for="feedbackJson">Gotowe zgłoszenie JSON</label><p>Sprawdź zawartość. Zgłoszenie pozostaje na tym urządzeniu i nie jest wysyłane automatycznie.</p><textarea id="feedbackJson" rows="8" readonly></textarea><div class="feedback-actions"><button class="secondary-button" type="button" id="feedbackCopy">Kopiuj JSON</button><button class="secondary-button" type="button" id="feedbackDownload">Pobierz JSON</button></div><p role="status" id="feedbackStatus"></p></section>
   </dialog>
   <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="false"></div>
   <script src="vendor/leaflet/leaflet.js?v=1.9.4"></script>
-  <script type="module" src="js/main.js?v=21"></script>
+  <script type="module" src="js/main.js?v=22"></script>
 </body>
 </html>

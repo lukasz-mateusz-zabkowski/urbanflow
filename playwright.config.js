@@ -19,9 +19,9 @@ export default defineConfig({
   },
   webServer: {
     command: 'node server.js',
-    url: 'http://127.0.0.1:3100/health',
-    env: { HOST: '127.0.0.1', PORT: '3100' },
-    reuseExistingServer: !process.env.CI,
+    url: 'http://127.0.0.1:3140/health',
+    env: { HOST: '127.0.0.1', PORT: '3140', URBANFLOW_ALPHA_TEST: '1', URBANFLOW_COMMIT_SHA: process.env.URBANFLOW_COMMIT_SHA || '1111111111111111111111111111111111111111' },
+    reuseExistingServer: false,
     timeout: 30000
   }
 });

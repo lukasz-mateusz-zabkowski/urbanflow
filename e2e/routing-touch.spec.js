@@ -38,7 +38,7 @@ test('mobile finger drag inserts a stop into the selected route segment and leav
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
-  await page.goto('http://127.0.0.1:3100/', { waitUntil: 'domcontentloaded' });
+  await page.goto('http://127.0.0.1:3140/', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('#map.leaflet-container')).toBeVisible({ timeout: 30000 });
   if (await page.locator('#mobilePanelButton').getAttribute('aria-expanded') !== 'true') await page.locator('#mobilePanelButton').tap();
   const selector = page.locator('#lineList [data-action="select-line"]').first();

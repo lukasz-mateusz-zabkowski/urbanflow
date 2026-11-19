@@ -1,0 +1,15 @@
+services:
+  urbanflow-alpha-test:
+    image: urbanflow-alpha-test:${URBANFLOW_COMMIT_SHA:?Set URBANFLOW_COMMIT_SHA to the tested commit}
+    build:
+      context: .
+      args:
+        URBANFLOW_COMMIT_SHA: ${URBANFLOW_COMMIT_SHA:?Set URBANFLOW_COMMIT_SHA to the tested commit}
+    environment:
+      HOST: 0.0.0.0
+      PORT: 3000
+      URBANFLOW_COMMIT_SHA: ${URBANFLOW_COMMIT_SHA:?Set URBANFLOW_COMMIT_SHA to the tested commit}
+      URBANFLOW_ALPHA_TEST: "1"
+    ports:
+      - "127.0.0.1:3101:3000"
+    restart: "no"

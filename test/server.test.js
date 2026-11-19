@@ -6,8 +6,8 @@ import { createApp } from '../server.js';
 const packageInfo = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
 const servers = new Set();
 
-async function requestHealth(commitSha) {
-  const app = createApp({ commitSha });
+async function requestHealth(commitSha, alphaTestMode = false) {
+  const app = createApp({ commitSha, alphaTestMode });
   const server = app.listen(0, '127.0.0.1');
   servers.add(server);
   await new Promise((resolve, reject) => {
@@ -59,4 +59,12 @@ test('health includes only a valid deployment commit SHA', async () => {
     app: 'UrbanFlow',
     version: packageInfo.version
   });
+});
+
+test('alpha-test server identifies the test environment and sends noindex headers without changing production defaults', async () => {
+  const response = await requestHealth('abcdef0123456789', true);
+  assert.deepEqual(response.body, {
+    status: 'ok', app: 'UrbanFlow', version: packageInfo.version, commit: 'abcdef0123456789', environment: 'alpha-test'
+  });
+  assert.match(response.headers.get('x-robots-tag'), /noindex/);
 });

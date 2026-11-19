@@ -41,7 +41,7 @@ export class UrbanFlowGame {
       demandModifier: 1, stressDemandMultiplier: 1, nextEventAt: SIMULATION.eventIntervalMinutes, activeEventUntil: 0,
       cityEvents: [], nextEventId: 1, analyticsMode: 'off', networkHistory: [], networkDailyHistory: [], networkWeeklyHistory: [], startScenarioId: this.startScenario.id,
       campaign: createCampaign(), status: 'playing', lossReason: '', lowQualityMinutes: 0,
-      preferences: { tutorialCollapsed: false, goalsCollapsed: true }, nextLineId: 1, networkVersion: 0,
+      preferences: { tutorialCollapsed: false, goalsCollapsed: true, tutorialStatus: 'active', tutorialMapExplored: false, tutorialDiagnosisVersion: null }, nextLineId: 1, networkVersion: 0,
       investments: createInvestmentState(), hubCapacityByPoint: {}, tramInfrastructure: createTramInfrastructure(),
       tramBuildMode: 'street', tramControlPoints: []
     };
@@ -56,7 +56,7 @@ export class UrbanFlowGame {
     this.state.tramInfrastructure ||= createTramInfrastructure(); this.state.tramBuildMode ||= 'street'; this.state.tramControlPoints ||= [];
     this.state.cityEvents ||= []; this.state.nextEventId ||= 1; this.state.analyticsMode ||= 'off';
     this.state.networkHistory ||= []; this.state.networkDailyHistory ||= []; this.state.networkWeeklyHistory ||= [];
-    this.state.preferences = { tutorialCollapsed: false, goalsCollapsed: true, ...(this.state.preferences || {}) };
+    this.state.preferences = { tutorialCollapsed: false, goalsCollapsed: true, tutorialStatus: 'active', tutorialMapExplored: false, tutorialDiagnosisVersion: null, ...(this.state.preferences || {}) };
     this.state.campaign = { ...createCampaign(), ...(this.state.campaign || {}), stress: { ...createCampaign().stress, ...(this.state.campaign?.stress || {}) } };
     this.state.lines.forEach(line => {
       line.stats = { ...blankStats(), ...(line.stats || {}), segmentLoad: { ...(line.stats?.segmentLoad || {}) } };
@@ -177,6 +177,7 @@ export class UrbanFlowGame {
       route = { id, label: 'Pętla Dworzec', stops: ['wieliczka', 'biezanow', 'dworzec'] };
     } else route = this.starterRoutes.find(r => r.id === id);
     if (!route) return fail('Nieznana trasa.');
+    this.state.preferences.tutorialMapExplored = true;
     this.state.selectedType = 'bus'; this.state.selectedNodes = [...route.stops]; this.changed(); return this.previewLine();
   }
   chooseStarterRoute(id) { const result = this.selectStarterRoute(id); return result.ok ? this.createSelectedLine() : result; }
@@ -440,6 +441,7 @@ export class UrbanFlowGame {
   }
   selectNode(id) {
     if (this.state.status !== 'playing' || !this.visiblePoints().some(p => p.id === id)) return;
+    this.state.preferences.tutorialMapExplored = true;
     const selected = this.state.selectedNodes;
     this.state.selectedNodes = selected.includes(id) ? selected.filter(x => x !== id) : [...selected, id]; this.changed();
   }
@@ -456,8 +458,15 @@ export class UrbanFlowGame {
   setPaused(value) { this.state.paused = Boolean(value); this.changed(); }
   setSpeed(value) { if ([1, 2, 4].includes(value)) { this.state.speed = value; this.changed(); } }
   setPreference(key, value) { if (['tutorialCollapsed', 'goalsCollapsed'].includes(key)) { this.state.preferences[key] = Boolean(value); this.changed(); } }
+  setTutorialStatus(status) {
+    if (!['active', 'skipped'].includes(status)) return fail('Nieznany stan samouczka.');
+    this.state.preferences.tutorialStatus = status;
+    this.changed();
+    return { ok: true };
+  }
   setAnalyticsMode(mode) {
     if (!['off', 'demand', 'queues', 'load', 'profit', 'travel', 'access', 'flow', 'overload', 'unmet', 'cityEvolution', 'landUse', 'investments'].includes(mode)) return fail('Nieznany widok diagnostyczny.');
+    if (mode !== 'off' && this.state.preferences.tutorialDiagnosisVersion === null) this.state.preferences.tutorialDiagnosisVersion = this.state.networkVersion;
     this.state.analyticsMode = mode; this.changed(); return { ok: true };
   }
   planInvestment(districtId, type) {

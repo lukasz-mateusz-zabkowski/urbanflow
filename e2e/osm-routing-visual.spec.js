@@ -11,7 +11,7 @@ for (const viewport of [{ width: 1280, height: 720, name: 'desktop-1280x720' }, 
     await page.setViewportSize({ width: viewport.width, height: viewport.height });
     if (process.env.CI) await page.route('https://tile.openstreetmap.org/**', route => route.fulfill({ status: 200, contentType: 'image/svg+xml',
       body: '<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect width="256" height="256" fill="#e9eee4"/><path d="M-20 210 90 120 180 80 280 10M-20 40 100 110 270 200" fill="none" stroke="#fffefa" stroke-width="12"/><path d="M-20 210 90 120 180 80 280 10M-20 40 100 110 270 200" fill="none" stroke="#c8d3c4" stroke-width="2"/></svg>' }));
-    await page.goto('http://127.0.0.1:3100/');
+    await page.goto('http://127.0.0.1:3140/');
     await page.setContent(`<link rel="stylesheet" href="/vendor/leaflet/leaflet.css"><style>html,body,#map{height:100%;margin:0}body{font:14px system-ui;background:#e9eee4}.qa-title{position:absolute;z-index:1000;top:12px;left:52px;background:#10251e;color:white;padding:10px 14px;border-radius:8px}.route-number{display:grid;place-items:center;width:28px;height:28px;border:2px solid white;border-radius:50%;background:#207252;color:white;font-weight:800;box-shadow:0 2px 8px #10251e88}</style><div class="qa-title">UrbanFlow · lokalny graf OSM · 7 przystanków</div><div id="map"></div><script src="/vendor/leaflet/leaflet.js"></script>`);
     await expect.poll(() => page.evaluate(() => Boolean(window.L))).toBe(true);
     const results = await page.evaluate(async ids => {

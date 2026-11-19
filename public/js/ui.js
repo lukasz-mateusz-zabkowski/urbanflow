@@ -15,6 +15,7 @@ import { mobilitySnapshot } from './mobility.js?v=11';
 import { cityEvolutionSnapshot } from './city-evolution.js?v=2';
 import { LAND_USE_TYPES, landUseDominantUse, landUseDirection, landUseLabel } from './land-use.js?v=1';
 import { INVESTMENT_CATALOG } from './investments.js?v=1';
+import { contextualHints, getOnboardingStep, onboardingProgress, onboardingStatus } from './onboarding.js?v=1';
 
 const $ = selector => document.querySelector(selector);
 const formatNumber = value => new Intl.NumberFormat('pl-PL').format(Math.round(Number(value) || 0));
@@ -42,11 +43,15 @@ export function confirmAction(message, label = 'Potwierdź') {
 }
 
 export class UI {
-  constructor(game, map, { onNewGame = () => {}, appVersion = 'unknown' } = {}) {
+  constructor(game, map, { onNewGame = () => {}, appVersion = 'unknown', appCommit = '', alphaTestMode = false } = {}) {
     this.game = game;
     this.map = map;
     this.onNewGame = onNewGame;
     this.appVersion = appVersion;
+    this.appCommit = appCommit;
+    this.alphaTestMode = alphaTestMode;
+    this.dismissedHints = new Set();
+    this.activeHintId = null;
     this.selectedLineId = null;
     this.selectedServiceDayType = null;
     this.abortController = new AbortController();
@@ -114,6 +119,15 @@ export class UI {
         return;
       }
       if (action === 'approve-investment') {
+        const project = this.game.state.investments.projects.find(item => item.id === button.dataset.project);
+        if (!project) return;
+        const effect = INVESTMENT_CATALOG[project.type];
+        const currentBudget = this.game.state.budget;
+        const risk = project.type === 'hub'
+          ? `Utrzymanie wynosi ${money(effect.weeklyMaintenance)} tygodniowo i pozostaje po usunięciu linii.`
+          : `Pojemność rośnie przed rzeczywistym, stopniowym zasiedleniem; projekt zużyje ${effect.reserve} pp. rezerwy.`;
+        const confirmed = await confirmAction(`Budżet teraz: ${money(currentBudget)}. Koszt: ${money(project.cost)}. Po decyzji: ${money(currentBudget - project.cost)}. Modelowany rezultat: ${effect.effect} w ${this.game.state.cityEvolution.districts[project.districtId]?.name || project.districtId}; realizacja potrwa ${project.durationWeeks} tyg. ${risk} Możesz anulować projekt później zgodnie z zasadami zwrotu.`, 'Zatwierdź projekt');
+        if (!confirmed) return;
         const result = this.game.approveInvestment(button.dataset.project);
         if (this.checkResult(result)) this.toast('Projekt zatwierdzony. Koszt pobrano jeden raz; realizacja postępuje w czasie gry.');
         return;
@@ -167,12 +181,21 @@ export class UI {
         return;
       }
       if (action === 'buy-vehicle') {
+        const item = this.game.state.lines.find(candidate => candidate.id === line);
+        if (!item) return;
+        const cost = TRANSPORT_TYPES[item.type].vehicleCost;
+        const clock = gameClock(this.game.state.elapsedMinutes, this.game.state.calendar);
+        const metrics = lineMetrics(item, this.game.city, clock.minuteOfDay, { serviceDayType: clock.dayType });
+        if (!await confirmAction(`Budżet teraz: ${money(this.game.state.budget)}. Koszt pojazdu: ${money(cost)}. Po decyzji: ${money(this.game.state.budget - cost)}. Jeden dodatkowy pojazd może zwiększyć dostępną flotę linii; obecny rozkład wymaga ${metrics.requiredVehicles} pojazdów.`, 'Kup pojazd')) return;
         const result = this.game.buyVehicle(line);
         if (this.checkResult(result)) this.toast('Nowy pojazd dołączył do linii.');
         return;
       }
       if (action === 'purchase-fleet') {
-        const result = this.game.purchaseFleetVehicle(button.dataset.vehicleType);
+        const vehicleType = button.dataset.vehicleType;
+        const cost = TRANSPORT_TYPES[vehicleType]?.vehicleCost || 0;
+        if (!await confirmAction(`Budżet teraz: ${money(this.game.state.budget)}. Koszt: ${money(cost)}. Po decyzji: ${money(this.game.state.budget - cost)}. Pojazd trafi do rezerwy; sam zakup nie przypisze go do linii.`, 'Kup do rezerwy')) return;
+        const result = this.game.purchaseFleetVehicle(vehicleType);
         if (this.checkResult(result)) this.toast('Pojazd trafił do rezerwy.');
         return;
       }
@@ -218,6 +241,12 @@ export class UI {
         case 'speedButton': this.game.setSpeed(this.game.state.speed === 1 ? 2 : this.game.state.speed === 2 ? 4 : 1); break;
         case 'toggleGoalsButton': this.game.setPreference('goalsCollapsed', !this.game.state.preferences?.goalsCollapsed); break;
         case 'toggleTutorialButton': this.game.setPreference('tutorialCollapsed', !this.game.state.preferences?.tutorialCollapsed); break;
+        case 'tutorialSkip': this.game.setTutorialStatus('skipped'); break;
+        case 'tutorialRestart': this.game.setTutorialStatus('active'); break;
+        case 'contextHintDismiss':
+          if (this.activeHintId) this.dismissedHints.add(this.activeHintId);
+          this.renderContextHint();
+          break;
         case 'mobilePanelButton': this.openPanel(); break;
         case 'panelClose': case 'panelScrim': this.closePanel(); break;
         case 'panelCollapseButton': this.collapsePanel(); break;
@@ -392,7 +421,21 @@ export class UI {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const input = Object.fromEntries(form.entries()); input.includeDiagnostics = form.has('includeDiagnostics');
-    const result = createFeedbackReport(input, { city: this.game.city.id, lines: this.game.state.lines.length, elapsedMinutes: this.game.state.elapsedMinutes }, { version: this.appVersion });
+    input.includeContext = form.has('includeContext');
+    const state = this.game.state;
+    const tutorial = onboardingStatus(this.game);
+    const diagnostics = {
+      city: this.game.city.id, lineCount: state.lines.length,
+      activeLines: state.lines.filter(line => !line.routingUnavailable).length,
+      elapsedMinutes: state.elapsedMinutes, budget: Math.round(state.budget),
+      waiting: Math.round(totalWaiting(state.passengers)), carried: state.carried
+    };
+    const context = {
+      device: window.matchMedia('(max-width: 760px)').matches ? 'mobile' : 'desktop',
+      resolution: `${window.innerWidth}x${window.innerHeight}`, screen: 'campaign',
+      tutorialStep: tutorial.status === 'skipped' ? 'skipped' : tutorial.step?.id || 'completed'
+    };
+    const result = createFeedbackReport(input, diagnostics, { version: this.appVersion, context });
     $('#feedbackError').textContent = result.ok ? '' : result.errors.join(' ');
     if (!result.ok) return;
     $('#feedbackJson').value = feedbackJson(result.report); $('#feedbackExport').hidden = false;
@@ -423,6 +466,7 @@ export class UI {
   render() {
     const { state, city } = this.game;
     const clock = gameClock(state.elapsedMinutes, state.calendar);
+    const preview = this.game.previewLine();
     const unlocked = this.game.availableTypes();
     const counts = eligibleCounts(state.lines, state.satisfaction);
     const balance = state.lines.reduce((sum, line) => sum + finite(line.stats?.balancePerHour), 0);
@@ -444,17 +488,21 @@ export class UI {
     $('#pauseButton').disabled = state.status !== 'playing';
     $('#pauseButton').setAttribute('aria-label', state.paused ? 'Wznów grę' : 'Wstrzymaj grę');
     $('#pauseButton').title = state.paused ? 'Wznów grę' : 'Wstrzymaj grę';
+    const buildBadge = $('#gameBuildBadge');
+    buildBadge.classList.toggle('is-hidden', !this.alphaTestMode);
+    buildBadge.textContent = this.alphaTestMode ? `ALPHA TEST · ${this.appVersion}${this.appCommit ? ` · ${this.appCommit.slice(0, 12)}` : ''}` : '';
     this.setText('speedButton', `×${state.speed}`);
     $('#speedButton').disabled = state.status !== 'playing';
     this.setText('trafficStatus', state.status !== 'playing' ? 'Koniec kampanii' : state.paused ? 'Pauza' : demandMultiplier(clock.minuteOfDay) > 1.5 ? 'Godziny szczytu' : clock.hour >= 22 || clock.hour < 5 ? 'Nocne kursy' : 'Ruch zwykły');
     $('.map-context').classList.toggle('rush', demandMultiplier(clock.minuteOfDay) > 1.5);
     this.renderCampaign();
-    this.renderTutorial(unlocked);
+    this.renderTutorial(unlocked, preview);
+    this.renderContextHint();
     this.renderAnalytics(clock.minuteOfDay);
     this.renderCityEvolutionPanel(this.game.visiblePoints());
     this.renderLandUsePanel(this.game.visiblePoints());
     this.renderInvestmentsPanel(this.game.visiblePoints());
-    this.renderDraft(unlocked, counts);
+    this.renderDraft(unlocked, counts, preview);
     this.renderNetwork();
     this.renderFleet();
     this.renderProgress(unlocked, counts);
@@ -465,7 +513,7 @@ export class UI {
     if (state.status === 'won' || state.status === 'lost') this.renderSummary();
   }
 
-  renderDraft(unlocked, counts) {
+  renderDraft(unlocked, counts, currentPreview = this.game.previewLine()) {
     const { state, city } = this.game;
     const type = TRANSPORT_TYPES[state.selectedType];
     const editing = Boolean(state.editingLineId);
@@ -500,12 +548,25 @@ export class UI {
     this.setText('draftStopCount', `${selected.length} przystanków`);
     this.setHtml('draftStopList', selected.map((point, index) => `<li><span class="stop-index">${index + 1}</span><strong>${escapeHtml(point.name)}</strong><div class="stop-actions"><button type="button" data-action="stop-up" data-index="${index}" aria-label="Przenieś ${escapeHtml(point.name)} wyżej" ${index === 0 ? 'disabled' : ''}>↑</button><button type="button" data-action="stop-down" data-index="${index}" aria-label="Przenieś ${escapeHtml(point.name)} niżej" ${index === selected.length - 1 ? 'disabled' : ''}>↓</button><button type="button" data-action="stop-remove" data-index="${index}" aria-label="Usuń ${escapeHtml(point.name)} z trasy">×</button></div></li>`).join(''));
     this.setText('draftHint', selected.length ? 'Dodaj kolejny punkt z mapy lub zmień kolejność strzałkami.' : 'Kliknij pierwszy punkt na mapie lub wybierz trasę startową.');
-    const preview = this.game.previewLine();
+    const preview = currentPreview;
     const hasRoute = selected.length >= 2;
     const detourWarnings = preview.routeDetails?.segments?.filter(segment => segment.detourWarning) || [];
     this.setText('previewDistance', hasRoute ? `${decimal(preview.distanceKm)} km` : '—');
     this.setText('previewTime', hasRoute && preview.metrics ? `${decimal(preview.metrics.travelMinutes)} min` : '—');
     this.setText('previewCost', hasRoute ? money(preview.cost) : '—');
+    const decision = $('#lineDecisionSummary');
+    decision.hidden = !hasRoute || !preview.ok;
+    if (!decision.hidden) {
+      this.setText('lineDecisionBudget', `Budżet teraz: ${money(state.budget)} · po zatwierdzeniu: ${money(state.budget - preview.cost)} · koszt: ${money(preview.cost)}.`);
+      this.setText('lineDecisionBenefit', `Połączenie obejmie ${selected.length} wybrane przystanki; szacowana przepustowość: ${formatNumber(preview.metrics?.capacityPerHour || 0)} miejsc/h. To parametr modelu, nie gwarancja przewozu.`);
+      const risks = [
+        !preview.affordable ? `Brakuje ${money(preview.cost - state.budget)}.` : null,
+        preview.vehiclesToBuy ? `Koszt obejmuje ${preview.vehiclesToBuy} nowych pojazdów (${money(preview.fleetCost)}).` : 'Pojazdy zostaną przydzielone z rezerwy.',
+        editing ? 'Zmiana przebiegu resetuje statystyki postępu tej linii.' : null,
+        detourWarnings.length ? `${detourWarnings.length} odcinków ma ostrzeżenie o objazdach.` : null
+      ].filter(Boolean);
+      this.setText('lineDecisionRisk', `Ryzyka i warunki: ${risks.join(' ')}`);
+    }
     this.setText('previewRoutingSource', hasRoute ? preview.routeDetails?.source || '—' : '—');
     this.setText('previewRoutingAlgorithm', hasRoute ? preview.routeDetails?.algorithm || '—' : '—');
     this.setText('previewRoutingReason', hasRoute ? preview.routeDetails?.reason || '' : '');
@@ -531,10 +592,26 @@ export class UI {
   renderCampaign() {
     const goals = campaignObjectives(this.game);
     const completed = goals.filter(goal => goal.completed);
+    const active = goals.find(goal => !goal.completed);
+    const state = this.game.state;
     this.setText('goalCount', `${completed.length}/${goals.length}`);
-    this.setText('activeGoal', goals.find(goal => !goal.completed)?.title || 'Wszystkie cele Krakowa zrealizowane.');
+    this.setText('activeGoal', active?.title || 'Wszystkie cele Krakowa zrealizowane.');
     this.setHtml('campaignTrack', goals.map(goal => `<i class="${goal.completed ? 'done' : ''}" style="--progress:${Math.max(0, Math.min(1, goal.progress)) * 100}%"></i>`).join(''));
     this.setHtml('goalList', goals.map((goal, index) => `<li class="${goal.completed ? 'done' : ''}"><span class="goal-number">${goal.completed ? '✓' : String(index + 1).padStart(2, '0')}</span><div><strong>${escapeHtml(goal.title)}</strong><small>${escapeHtml(goal.description)}</small>${goal.completed ? '' : `<div class="goal-progress"><i style="width:${Math.max(0, Math.min(1, goal.progress)) * 100}%"></i></div>`}</div></li>`).join(''));
+    const buses = eligibleCounts(state.lines, state.satisfaction).bus;
+    const blockers = {
+      gateway: state.lines.length ? 'Połączenie startowe nie obsługuje jeszcze wymaganego węzła.' : 'Wybierz przystanki i sprawdź dostępność trasy przed budową.',
+      center: 'Brakuje połączenia z węzłem centralnym; wspólny przystanek umożliwia przesiadkę.',
+      passengers: `Brakuje ${formatNumber(Math.max(0, 500 - state.carried))} przewozów do celu.`,
+      buses: `Użyteczne linie autobusowe: ${Math.min(2, buses)}/2. Sprawdź czas pracy, przewozy i zadowolenie.`,
+      tram: state.unlocked.includes('tram') ? 'Uruchom tramwaj i daj mu czas na zebranie przewozów.' : 'Najpierw potrzebne są dwie użyteczne linie autobusowe.',
+      huta: 'Połącz Nową Hutę z Dworcem i sprawdź przewozy tej linii.',
+      airport: state.airportUnlocked ? 'Doprowadź odblokowany transport do Balic i obsłuż pasażerów.' : 'Lotnisko odblokuje się po rozwoju użytecznej sieci.',
+      stress: 'Egzamin zacznie się po ukończeniu wcześniejszych celów.'
+    };
+    const next = goals.filter(goal => !goal.completed).slice(1, 3);
+    const achievements = completed.slice(-2).map(goal => goal.title);
+    this.setHtml('campaignOverview', `<p><strong>Przeszkoda:</strong> ${escapeHtml(active ? blockers[active.id] || active.description : 'Brak. Kampania została ukończona.')}</p><p><strong>Osiągnięcia:</strong> ${completed.length ? escapeHtml(achievements.join(' · ')) : 'Pierwsze osiągnięcie czeka na działanie sieci.'}</p><p><strong>Dalej:</strong> ${next.length ? escapeHtml(next.map(goal => goal.title).join(' → ')) : active ? 'Najpierw ukończ bieżący cel.' : 'Możesz dalej rozwijać sieć.'}</p>`);
     const collapsed = Boolean(this.game.state.preferences?.goalsCollapsed);
     $('#goalsBody').hidden = collapsed;
     $('#toggleGoalsButton').setAttribute('aria-expanded', String(!collapsed));
@@ -546,21 +623,33 @@ export class UI {
     this.previousGoals = new Set(completed.map(goal => goal.id));
   }
 
-  renderTutorial(unlocked) {
-    const { state } = this.game;
-    let step;
-    if (!state.lines.length) step = ['01', `Połącz ${this.game.startScenario.name}`, `Zbuduj dowozową linię do węzła ${this.game.pointName(this.game.startScenario.localHubId)}. Przerywana linia pokazuje przebieg po drogach.`, 'Możesz zatrzymać czas przyciskiem Ⅱ i spokojnie projektować trasę.'];
-    else if (!campaignObjectives(this.game).find(goal => goal.id === 'center')?.completed) step = ['02', 'Połącz węzeł z dworcem', `Doprowadź sieć z ${this.game.pointName(this.game.startScenario.localHubId)} do ${this.game.pointName(this.game.startScenario.centerId)}. Wspólny przystanek umożliwia przesiadkę.`, 'Nie musisz przedłużać pierwszej linii — możesz utworzyć drugą z dogodną przesiadką.'];
-    else if (!unlocked.includes('tram')) step = ['03', 'Niech autobusy pracują', 'Dwie użyteczne linie autobusowe po 6 godzinach pracy odblokują tramwaj. Otwórz szczegóły linii i sprawdź jej bilans oraz kolejkę.', 'Brakuje miejsc? Dokup pojazd. Puste kursy? Zmniejsz częstotliwość.'];
-    else if (!state.lines.some(line => line.type === 'tram')) step = ['04', 'Miejski kręgosłup', 'Tramwaj pomieści więcej pasażerów. Uruchom go między ruchliwymi dzielnicami i zapewnij przesiadki z autobusów.', 'Nakładające się trasy konkurują o pasażerów. Identyczne linie nie przyspieszą rozwoju.'];
-    else if (!unlocked.includes('suburban')) step = ['05', 'Rozwijaj użyteczne korytarze', 'Połącz Nową Hutę i rozwijaj trzy użyteczne trasy tramwajowe. Odblokujesz metro i kolej aglomeracyjną.', 'Rozbudowę finansują bilety i nagrody za cele. Pilnuj kosztów nowych pojazdów.'];
-    else if (!state.airportUnlocked) step = ['06', 'Ostatnia mila do lotniska', 'Dwie działające koleje aglomeracyjne lub trzy linie metra otworzą lotnisko. Rozwijaj użyteczne korytarze.', 'Cel lotniska wymaga przewiezienia pasażerów. Samo narysowanie połączenia nie wystarczy.'];
-    else step = ['07', 'Egzamin metropolii', 'Połącz Balice i przygotuj sieć na normalny dzień, wydarzenie, szczyt oraz zakłócenie.', 'Korzystaj z diagnostyki. Zmieniaj częstotliwość, flotę lub przebieg zanim problem stanie się krytyczny.'];
-    this.setText('stepNumber', step[0]); this.setText('tutorialTitle', step[1]);
-    this.setText('tutorialText', step[2]); this.setText('tutorialTip', step[3]);
-    const collapsed = Boolean(state.preferences?.tutorialCollapsed);
-    $('#tutorialBody').hidden = collapsed;
+  renderTutorial(_unlocked, preview = null) {
+    const status = onboardingStatus(this.game, preview);
+    const steps = onboardingProgress(this.game, preview);
+    const step = getOnboardingStep(this.game, preview);
+    const index = step ? steps.findIndex(item => item.id === step.id) : steps.length;
+    const collapsed = Boolean(this.game.state.preferences?.tutorialCollapsed);
+    this.setText('stepNumber', step ? String(index + 1).padStart(2, '0') : status.status === 'skipped' ? '—' : '✓');
+    this.setText('tutorialTitle', status.status === 'skipped' ? 'Samouczek pominięty' : step?.title || 'Samouczek ukończony');
+    this.setText('tutorialText', status.status === 'skipped' ? 'Gra działa normalnie. Możesz wrócić do samouczka w dowolnym momencie.' : step?.text || 'Wykonałeś wszystkie kroki w tej kampanii. Możesz nadal grać i rozwijać sieć.');
+    this.setText('tutorialTip', status.status === 'skipped' ? 'Postęp kampanii i zapis pozostają bez zmian.' : step?.tip || 'Dalsze cele kampanii znajdziesz powyżej.');
+    this.setText('tutorialProgressCopy', `${status.completed} z ${status.total} kroków${status.status === 'skipped' ? ' · pominięto' : ''}`);
+    $('#tutorialProgress').setAttribute('aria-valuenow', String(status.completed));
+    $('#tutorialProgressBar').style.width = `${Math.round(status.completed / status.total * 100)}%`;
+    $('#tutorialBody').hidden = collapsed || status.status === 'skipped';
+    $('#toggleTutorialButton').hidden = status.status === 'skipped';
     $('#toggleTutorialButton').setAttribute('aria-expanded', String(!collapsed));
+    $('#tutorialSkip').hidden = status.status !== 'active';
+    $('#tutorialRestart').hidden = status.status === 'active';
+  }
+
+  renderContextHint() {
+    const hint = contextualHints(this.game).find(item => !this.dismissedHints.has(item.id));
+    const root = $('#contextHint');
+    root.classList.toggle('is-hidden', !hint);
+    root.classList.toggle('warning', hint?.kind === 'warning');
+    this.activeHintId = hint?.id || null;
+    if (hint) this.setText('contextHintText', hint.text);
   }
 
   renderAnalytics(minuteOfDay) {
@@ -708,7 +797,7 @@ export class UI {
     ];
     this.setHtml('investmentCatalog', options.map(([type, label, effect]) => {
       const item = INVESTMENT_CATALOG[type];
-      return `<article class="investment-offer"><strong>${label}</strong><small>${money(item.cost)} · ${item.weeks} tyg.</small><p>${effect}</p><button type="button" class="secondary-button" data-action="plan-investment" data-investment-type="${type}" ${state.status !== 'playing' || !zone ? 'disabled' : ''}>Utwórz plan</button></article>`;
+      return `<article class="investment-offer"><strong>${label}</strong><small>Koszt ${money(item.cost)} · ${item.weeks} tyg. · budżet po zatwierdzeniu ${money(state.budget - item.cost)}</small><p>${effect}</p><button type="button" class="secondary-button" data-action="plan-investment" data-investment-type="${type}" ${state.status !== 'playing' || !zone ? 'disabled' : ''}>Utwórz plan</button></article>`;
     }).join(''));
     this.setText('investmentBudgetSummary', `Dostępny budżet ${money(state.budget)} · nakłady miejskie ${money(state.investments.totalSpent)} · zwroty ${money(state.investments.totalRefunded)}.`);
     const current = state.investments.projects.map(project => {

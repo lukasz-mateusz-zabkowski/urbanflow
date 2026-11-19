@@ -7,14 +7,16 @@ const root = path.dirname(fileURLToPath(import.meta.url));
 const { version } = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
 const commitShaPattern = /^[a-f0-9]{7,40}$/i;
 
-export function createApp({ commitSha = process.env.URBANFLOW_COMMIT_SHA } = {}) {
+export function createApp({ commitSha = process.env.URBANFLOW_COMMIT_SHA, alphaTestMode = process.env.URBANFLOW_ALPHA_TEST === '1' } = {}) {
   const app = express();
   const health = { status: 'ok', app: 'UrbanFlow', version };
   if (typeof commitSha === 'string' && commitShaPattern.test(commitSha)) {
     health.commit = commitSha;
   }
+  if (alphaTestMode) health.environment = 'alpha-test';
 
   app.disable('x-powered-by');
+  if (alphaTestMode) app.use((_req, res, next) => { res.set('X-Robots-Tag', 'noindex, nofollow, noarchive'); next(); });
   app.get('/health', (_req, res) => res.json(health));
   // The routing graph is stored gzip-compressed on disk. Mark it as an HTTP
   // content encoding so Fetch transparently decompresses it in the browser.

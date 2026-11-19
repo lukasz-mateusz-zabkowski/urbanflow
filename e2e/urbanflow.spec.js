@@ -22,7 +22,7 @@ async function startGame(page, viewport, mobile = false) {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
-  await page.goto('http://127.0.0.1:3100/', { waitUntil: 'domcontentloaded' });
+  await page.goto('http://127.0.0.1:3140/', { waitUntil: 'domcontentloaded' });
   if (mobile) await page.locator('#startKrakow').tap();
   else await page.locator('#startKrakow').click();
   await expect(page.locator('#game')).not.toHaveClass(/is-hidden/);
@@ -268,7 +268,7 @@ for (const viewport of MOBILES) {
     await page.locator('#feedbackButton').click();
     await expect(page.locator('#feedbackDialog')).toBeVisible();
     await expect(page.locator('[name="includeDiagnostics"]')).not.toBeChecked();
-    await page.locator('[name="category"]').selectOption('Interfejs i grafika');
+    await page.locator('[name="category"]').selectOption('Problem z interfejsem');
     await page.locator('#feedbackForm [name="description"]').fill('Panel mieści się na telefonie.');
     await page.locator('[name="rating"]').selectOption('5');
     await page.locator('#feedbackForm button[type="submit"]').click();
@@ -282,7 +282,7 @@ for (const viewport of MOBILES) {
     const download = await downloadPromise;
     const downloadPath = await download.path();
     const downloadedReport = JSON.parse(await readFile(downloadPath, 'utf8'));
-    expect(downloadedReport.category).toBe('Interfejs i grafika');
+    expect(downloadedReport.category).toBe('Problem z interfejsem');
     await saveScreenshot(page, viewport.name);
     await saveScreenshot(page, `${viewport.name}-feedback-json`);
     expect(errors, `browser errors: ${errors.join('; ')}`).toEqual([]);

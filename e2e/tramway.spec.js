@@ -39,7 +39,7 @@ async function openUnlockedTram(page, viewport, mobile = false) {
   await page.route('https://tile.openstreetmap.org/**', route => route.fulfill({ status: 200, contentType: 'image/svg+xml', body: tile }));
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
-  await page.goto('http://127.0.0.1:3100/', { waitUntil: 'domcontentloaded' });
+  await page.goto('http://127.0.0.1:3140/', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('#map')).toBeVisible();
   if (mobile) await page.locator('#mobilePanelButton').tap();
   // The fixture opens an existing tram in edit mode, so transport switching is intentionally disabled.

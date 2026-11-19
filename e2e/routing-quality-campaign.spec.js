@@ -46,7 +46,7 @@ async function startPreparedGame(page, viewport, mobile = false) {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
-  await page.goto('http://127.0.0.1:3100/', { waitUntil: 'domcontentloaded' });
+  await page.goto('http://127.0.0.1:3140/', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('#game')).not.toHaveClass(/is-hidden/);
   await expect(page.locator('#map.leaflet-container')).toBeVisible();
   await expect.poll(() => page.locator('#map .leaflet-tile-loaded').count()).toBeGreaterThan(0);
