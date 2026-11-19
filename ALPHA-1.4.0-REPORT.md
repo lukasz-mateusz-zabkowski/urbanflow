@@ -1,52 +1,85 @@
-# UrbanFlow Alpha 1.4.0 report
+# UrbanFlow Alpha 1.4.0 — Final Onboarding Quality Gate
 
 ## Status
 
-**GO for technical review.** Local checks and all six GitHub Actions jobs passed on the pushed implementation commit. The branch has not been merged, tagged, released, or deployed.
+**GO for technical review and integration.** The implementation and the required local checks pass. GitHub Actions run [#70](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44589545144) passed all six jobs, including the isolated alpha Compose start/health/stop check. The feature branch remains separate from `main`; no tag, release, production deployment, or Raspberry Pi operation was made.
 
 ## Repository
 
-- Base `main` and `v1.3.1-alpha`: `22abeccf742908c6a1262a6c1853662a7a488922`.
-- Working branch: `feature/alpha-1.4.0`.
-- Implementation commit: `55024cc86432b40b68e5c0ef90f709e76f9602a4`.
-- GitHub Actions: [run 44575890240](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44575890240) — success (Node 18, Node 20, Node 22, browser test, security audit, container health).
-- Save schema remains 11; no migration was needed.
+- Repository: `lukasz-mateusz-zabkowski/urbanflow`
+- Base `main`: `22abeccf742908c6a1262a6c1853662a7a488922` (unchanged)
+- Branch: `feature/alpha-1.4.0`
+- Tested implementation commit: `a8bd0830a4cdb745daced247149e0407a97ec0b7`
+- Pushed branch head was verified equal to the local head.
+- The report is a documentation-only follow-up to the tested implementation commit.
+- Two unrelated, untracked user documents remain untouched: `URBANFLOW-1.0.1-RELEASE-HARDENING.md` and `URBANFLOW-RELEASE-INTEGRATION-1.0.0.md`.
 
-## Delivered
+## Twelve-step onboarding audit
 
-- Added a 12-step onboarding flow whose progress is inferred from campaign and simulation state. Skip/restart are saved preferences; they do not grant rewards or reset campaign progress. An older schema-11 save without the new preferences resumes at the next applicable step.
-- Added contextual guidance from observed unavailable routes, queues, line results, budget, district model values, and active investment state. Hints are deduplicated while dismissed in the current session.
-- Expanded campaign guidance with the active blocker, achievements, and the next objective. Route previews show the current/after budget, service capacity, fleet cost, route warnings, and conditions before construction.
-- Added explicit purchase confirmation for vehicles and investment approvals, including current and after budget. Canceling the dialog leaves the campaign unchanged.
-- Updated the local feedback form to six playtest categories. Context and diagnostic data have separate consent controls; JSON remains local and excludes full saves, user-agent strings, and automatic uploads.
-- Added an alpha build/version/SHA badge and an isolated local Compose profile. It binds to loopback only, carries an exact commit SHA, uses no persistent volume, and sends noindex headers. Playtest and rollback guidance is in [ALPHA-1.4.0-PLAYTEST.md](ALPHA-1.4.0-PLAYTEST.md).
-- Fixed mobile horizontal overflow caused by the alpha build badge at narrow widths. The browser checks continue to enforce the requested viewport bounds.
+| Step | Completion evidence for new saves | Legacy save behavior |
+|---|---|---|
+| Map and panel | Selecting a real map point records map exploration. | An existing line can stand in for this earlier action. |
+| First goal | Selecting the scenario hub/center or a starter route records goal selection. | Existing line is accepted. |
+| Plan a bus line | Selecting two or more bus stops or a starter route records a plan. | Existing line is accepted. |
+| Review cost | The valid preview must be visible in the decision panel; preview does not spend money. | Existing line is accepted rather than forcing a repeat. |
+| Build line | A real line must exist. | Existing line is retained. |
+| Start simulation | Elapsed game time must be greater than zero. | Saved simulation time is retained. |
+| Carry passengers | The simulation's carried-passenger counter must be positive. | Saved counter is retained. |
+| Inspect fleet | After real service, the player opens a line detail; merely owning a line is insufficient for new saves. | Existing vehicle/service statistics are used. |
+| Diagnose network | Observed network history must exist and the player must view a diagnostic layer. | Existing diagnostic state/history is recognized. |
+| Improve network | `networkVersion` must advance after the diagnostic baseline. | Existing later network changes are recognized. |
+| Discover opportunities | Player opens City Evolution or Land Use. | Existing unlocked campaign content is recognized. |
+| Learn investments | Player opens Investments, or an existing legacy project is present. | Existing approved/completed investments are recognized. |
+
+Fresh schema-11 saves use a small versioned set of action flags for steps that cannot be inferred from simulation state. These flags add no reward and do not change campaign progress, passenger counts, or money. Schema remains 11. Older saves without the flags are treated as legacy and use existing campaign facts, so progress is not reset. A finished campaign pauses any remaining tutorial steps and does not restart the campaign.
+
+## Changes
+
+- Tightened new-player completion rules: line existence alone no longer counts as cost review, fleet inspection, diagnostics, opportunities, or investment discovery.
+- Added persisted action tracking for route/goal planning, visible valid cost review, fleet detail visit, opportunities, and investment view. Diagnostic completion is recorded only after network observations exist and the diagnostic view is rendered.
+- Kept skip/restart as preferences only; neither grants rewards nor resets the campaign.
+- Added save validation for the new optional tutorial tracker while preserving pre-1.4 schema-11 saves.
+- Added a full real-UI desktop walkthrough that executes all 12 steps, carries passengers through the simulation, pauses before reload, and checks saved budget, lines, passenger totals, and schema after resuming.
+- Added mobile touch checks at 390×844 and 360×800 for map/panel navigation, route preview/build, line details, purchase cancellation without spending, and overflow.
+- The first mobile automation attempt exposed a test setup issue: its helper opened the panel over the map, intercepting marker taps. The flow now closes the panel before tapping the map. A reload comparison also now pauses the simulation first, so it compares a stable saved state.
+- Added a CI step for `compose.alpha-test.yml` using a per-run project name. It builds, starts, checks version and SHA, verifies loopback port binding and no mounts, requests the page and Leaflet asset, stops the service, and cleans up.
 
 ## Validation
 
 - `npm ci`: passed; 0 vulnerabilities reported during install.
-- `npm test`: **227 passed, 0 failed**.
-- `npm run test:browser`: **22 passed, 0 failed** across desktop, mobile, routing, investment, tramway, save/reload, and feedback scenarios. After adding the final schema-11 legacy-save test and screenshot capture, the three onboarding browser tests were rerun and passed.
+- `npm test`: **232 passed, 0 failed**.
+- `npm run test:browser`: **25 passed, 0 failed**.
+- Full first-player walkthrough: all 12 steps completed through the standard game UI in **about 6 seconds**; 54 passengers were transported by the simulation; schema 11, budget, line count, and carried total were unchanged across a paused reload.
+- Mobile UI: route planning/build, safe purchase cancellation, line details and no horizontal overflow passed at 390×844 and 360×800.
+- Legacy-save tests: schema-11 campaigns without onboarding fields load and retain campaign, budget and transit state; developed saves infer prior progress from saved simulation facts.
+- Ended-campaign test: remaining tutorial work is unavailable without changing the final game state.
+- Feedback tests: local JSON is created without automatic upload; diagnostics remain absent unless the separate explicit consent is given. Context and diagnostics are not inferred from a save.
 - `npm run audit:all`: **0 vulnerabilities**.
 - `npm run audit:production`: **0 vulnerabilities**.
 - `git diff --check`: passed.
-- Included existing schema-11 compatibility tests and a regression test for a pre-onboarding schema-11 campaign retaining budget, lines, fleet, and campaign state. Existing deterministic 52-week city/investment simulation tests pass within the Node suite.
-- GitHub Actions run 44575890240: **success**, all six jobs passed for implementation SHA `55024cc86432b40b68e5c0ef90f709e76f9602a4`.
+- GitHub Actions [run #70](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/44589545144): **all six jobs succeeded** (Node 18, 20 and 22; browser test; security audit; container health). The container-health job also ran the isolated alpha Compose profile successfully.
+
+## Isolated alpha test profile
+
+`docker compose -f compose.alpha-test.yml config` passed with an explicit SHA. The resolved profile binds only `127.0.0.1:3101`, has no volume mounts, is tagged with the supplied commit SHA, and has restart disabled. The Docker Desktop Linux engine was unavailable locally, so no local container was started. The new CI check exercised the real Compose build/start/health/version/SHA/asset/port/mount/stop/cleanup path on an isolated GitHub runner. No public endpoint or production configuration was used.
 
 ## Screenshots
 
-Captured by Playwright to the system temporary directory; not added to the repository:
+Playwright saved real game-interface screenshots outside the repository under `%TEMP%\urbanflow-alpha-1.4.0-visual-qa\`:
 
-- Desktop start: `%TEMP%/urbanflow-alpha-1.4.0-visual-qa/onboarding-desktop-start.png`
-- Mobile start: `%TEMP%/urbanflow-alpha-1.4.0-visual-qa/onboarding-mobile-start.png`
-- Desktop feedback flow: `%TEMP%/urbanflow-alpha-1.4.0-visual-qa/onboarding-desktop-feedback.png`
-- Mobile feedback flow: `%TEMP%/urbanflow-alpha-1.4.0-visual-qa/onboarding-mobile-feedback.png`
+- `onboarding-desktop-start.png`
+- `onboarding-desktop-completed.png`
+- `onboarding-desktop-feedback.png`
+- `onboarding-mobile-start.png`
+- `onboarding-mobile-line-details-390.png`
+- `onboarding-mobile-line-details-360.png`
+- `onboarding-mobile-feedback.png`
 
-The deterministic browser suite substitutes local SVG map tiles; it verifies the real game interface and local routing data, while the basemap itself is not evidence of live tile-service rendering.
+The browser tests use deterministic local SVG basemap tiles while exercising the real app interface and local game/routing code; the screenshots do not validate live map-tile service availability.
 
-## Limits and next step
+## Limits and release state
 
-- Contextual hints are based on current recorded state, and dismissed hints may reappear in a later session if the same condition remains.
-- The alpha profile is local-only by default. Any remote tester access must add invite-only access control outside this Compose file; no public service was created.
-- No Raspberry Pi or production configuration was accessed.
-- The report update is documentation-only; it records the verified implementation SHA above. The branch remains available for review and has not been merged.
+- A live local Docker start/stop could not be performed because Docker Desktop's Linux engine pipe was unavailable; the equivalent isolated Compose runtime test passed in CI.
+- Dismissed contextual hints are deduplicated during the current UI session; a still-applicable condition may be shown again in a later session.
+- No merge, tag, GitHub Release, production deployment, or Raspberry Pi operation was performed.
+- Recommendation: review and integrate `feature/alpha-1.4.0` through the repository's normal process.
