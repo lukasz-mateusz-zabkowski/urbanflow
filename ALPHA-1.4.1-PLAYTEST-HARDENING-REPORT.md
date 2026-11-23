@@ -1,16 +1,19 @@
 # UrbanFlow ALPHA 1.4.1 — Playtest Hardening Report
 
-**Status: GO for technical review**  
-**Baseline:** `80850566a35239e9c39a13caf95943d5ce919f13` (private playtest package)  
-**Implementation commit:** `a81e93f1added37ffaab028ed220dfbe9b6e5539`  
-**Branch:** `feature/alpha-1.4.1-playtest-hardening`  
+**Status: GO for technical review**
+
+**Baseline:** `80850566a35239e9c39a13caf95943d5ce919f13` (private playtest package)
+
+**Implementation commit:** `a81e93f1added37ffaab028ed220dfbe9b6e5539`
+
+**Branch:** `feature/alpha-1.4.1-playtest-hardening`
 **Validation date:** 2026-11-23
 
 This is a test candidate, not a production release. No merge, tag, GitHub Release, Docker run, Raspberry Pi operation, or production change was performed. The existing 1.4.0 instance and its browser origin were preserved.
 
 ## Changes
 
-- Updated the candidate version to `1.4.1-alpha`; feedback exports now use the actual application version instead of a hard-coded `1.4.0-alpha` value. A Node regression test checks the version source.
+- Updated the candidate version to `1.4.1-alpha`. Final review removes the manually maintained `FEEDBACK_VERSION`: the feedback UI uses the application version fetched from `/health` once at startup, with no additional request during form submission; static previews use `unknown`. A Node regression test connects `/health` to the exported report.
 - Made deterministic local SVG map tiles the default in the browser-test fixture. The separate live OpenStreetMap check remains distinct, so fixture success is not presented as proof that OSM tiles loaded.
 - Reworked the tramway browser fixture to unlock trams through the real campaign progression and simulation, rather than directly mutating the unlock state. The browser scenario now covers manual track preview, cancellation without charge, construction, geometry editing, save, reload, and restored geometry. Existing touch-drag coverage remains enabled.
 - Increased only the relevant route-graph wait bounds for compressed OSM startup in the tramway browser scenario; the test still verifies the graph and route behavior.
@@ -22,7 +25,7 @@ No repeatable production-code defect was found in tram geometry, campaign persis
 | Check | Result |
 |---|---|
 | `npm ci` | Pass; 72 packages installed |
-| `npm test` | Pass; 237/237 tests |
+| `npm test` | Pass; 238/238 tests after the final version-source regression test |
 | `npm run test:browser` | Pass; 26/26 tests, including desktop/mobile viewports and tramway workflows |
 | `npm run audit:all` | Pass; 0 vulnerabilities |
 | `npm run audit:production` | Pass; 0 vulnerabilities |

@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { once } from 'node:events';
 import { readFile } from 'node:fs/promises';
-import { createFeedbackReport, FEEDBACK_CATEGORIES, FEEDBACK_VERSION } from '../public/js/feedback.js';
+import { createApp } from '../server.js';
+import { createFeedbackReport, FEEDBACK_CATEGORIES } from '../public/js/feedback.js';
 
 const packageVersion = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')).version;
 
@@ -9,10 +11,23 @@ test('feedback report validates inputs, records the game version, and excludes d
   assert.equal(packageVersion, '1.4.1-alpha');
   const report = createFeedbackReport({ category: FEEDBACK_CATEGORIES[0], description: 'Mapa zgubiła rozmiar.', rating: '4', testerId: '' }, null);
   assert.equal(report.ok, true);
-  assert.equal(FEEDBACK_VERSION, packageVersion);
-  assert.equal(report.report.gameVersion, packageVersion);
+  assert.equal(report.report.gameVersion, 'unknown');
   assert.equal(report.report.diagnostics, undefined);
   assert.equal(report.report.testerId, undefined);
+});
+
+test('feedback export takes its version from the existing app health source', async t => {
+  const server = createApp({ commitSha: 'a'.repeat(40) }).listen(0, '127.0.0.1');
+  await once(server, 'listening');
+  t.after(() => new Promise(resolve => server.close(resolve)));
+
+  const response = await fetch(`http://127.0.0.1:${server.address().port}/health`);
+  assert.equal(response.ok, true);
+  const health = await response.json();
+  assert.equal(health.version, packageVersion);
+
+  const report = createFeedbackReport({ category: FEEDBACK_CATEGORIES[0], description: 'Version source check', rating: 5 }, null, { version: health.version });
+  assert.equal(report.report.gameVersion, health.version);
 });
 
 test('feedback diagnostics are attached only after explicit consent and malformed input is rejected', () => {
