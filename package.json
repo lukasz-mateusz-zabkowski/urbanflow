@@ -1,6 +1,6 @@
 {
   "name": "urbanflow",
-  "version": "1.4.1-alpha",
+  "version": "1.5.0-alpha",
   "private": true,
   "type": "module",
   "description": "Lekka przeglądarkowa strategia transportowa oparta o prawdziwą geografię miast.",
@@ -10,6 +10,8 @@
     "test": "node --test",
     "test:browser": "playwright test",
     "alpha-test": "node scripts/alpha-playtest.mjs",
+    "benchmark:atlas": "node scripts/benchmark-atlas-ui.mjs",
+    "verify:osm:live": "node scripts/verify-live-osm.mjs",
     "routing:build": "node scripts/build-routing-graph.mjs",
     "benchmark:investments": "node --expose-gc scripts/benchmark-investments.mjs",
     "audit:all": "npm audit --audit-level=moderate",

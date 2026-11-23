@@ -16,6 +16,7 @@ import { cityEvolutionSnapshot } from './city-evolution.js?v=2';
 import { LAND_USE_TYPES, landUseDominantUse, landUseDirection, landUseLabel } from './land-use.js?v=1';
 import { INVESTMENT_CATALOG } from './investments.js?v=1';
 import { contextualHints, getOnboardingStep, onboardingProgress, onboardingStatus } from './onboarding.js?v=1';
+import { ATLAS_VIEWS, filterAndSortLines, loadAtlasPreferences, saveAtlasPreferences } from './atlas.js?v=1';
 
 const $ = selector => document.querySelector(selector);
 const formatNumber = value => new Intl.NumberFormat('pl-PL').format(Math.round(Number(value) || 0));
@@ -63,8 +64,9 @@ export class UI {
     this.selectedEvolutionDistrict = null;
     this.selectedLandUseDistrict = null;
     this.selectedInvestmentDistrict = null;
+    this.atlasPreferences = { view: 'transport', lineFilter: 'all', lineSort: 'load' };
     this.panelStorage = null;
-    try { this.panelStorage = window.localStorage; } catch { /* Panel width is an optional preference. */ }
+    try { this.panelStorage = window.localStorage; this.atlasPreferences = loadAtlasPreferences(this.panelStorage); } catch { /* Preferences are optional. */ }
     this.setupPanelWidth();
     this.setupTutorialPreviewTracking();
     this.bind();
@@ -126,7 +128,8 @@ export class UI {
         this.checkResult(this.game.setTransport(type));
         return;
       }
-      if (action === 'analytics-mode') { this.checkResult(this.game.setAnalyticsMode(button.dataset.mode)); return; }
+      if (action === 'analytics-mode') { this.setAnalyticsModeFromControl(button.dataset.mode); return; }
+      if (action === 'atlas-view') { this.setAtlasView(button.dataset.view); return; }
       if (action === 'plan-investment') {
         const result = this.game.planInvestment(this.selectedInvestmentDistrict, button.dataset.investmentType);
         if (this.checkResult(result)) this.toast('Projekt zaplanowano. Zatwierdź go po sprawdzeniu kosztu i warunków.');
@@ -171,6 +174,7 @@ export class UI {
         return;
       }
       if (action === 'edit-line') {
+        this.setAtlasView('planning', { updateLayer: false });
         this.checkResult(this.game.beginEditLine(line));
         this.openPanel(); this.scrollToBuild(); return;
       }
@@ -300,6 +304,12 @@ export class UI {
       } else if (event.target.matches('#investmentDistrict')) {
         this.selectedInvestmentDistrict = event.target.value;
         this.renderInvestmentsPanel(this.game.visiblePoints());
+      } else if (event.target.matches('#atlasLineFilter')) {
+        this.atlasPreferences = saveAtlasPreferences({ ...this.atlasPreferences, lineFilter: event.target.value }, this.panelStorage);
+        this.renderNetwork();
+      } else if (event.target.matches('#atlasLineSort')) {
+        this.atlasPreferences = saveAtlasPreferences({ ...this.atlasPreferences, lineSort: event.target.value }, this.panelStorage);
+        this.renderNetwork();
       }
     }, { signal });
     document.addEventListener('input', event => {
@@ -673,6 +683,62 @@ export class UI {
     if (hint) this.setText('contextHintText', hint.text);
   }
 
+  setAtlasView(view, { updateLayer = true } = {}) {
+    const selected = ATLAS_VIEWS.find(item => item.id === view) || ATLAS_VIEWS[0];
+    this.atlasPreferences = saveAtlasPreferences({ ...this.atlasPreferences, view: selected.id }, this.panelStorage);
+    const changedLayer = updateLayer && this.game.state.analyticsMode !== selected.analyticsMode;
+    if (changedLayer) this.checkResult(this.game.setAnalyticsMode(selected.analyticsMode));
+    else this.render();
+  }
+
+  setAnalyticsModeFromControl(mode) {
+    const view = ['flow', 'queues', 'unmet', 'load', 'travel', 'demand'].includes(mode) ? 'passengers'
+      : ['cityEvolution', 'landUse', 'investments'].includes(mode) ? 'development'
+        : mode === 'profit' ? 'operations' : null;
+    if (view) this.atlasPreferences = saveAtlasPreferences({ ...this.atlasPreferences, view }, this.panelStorage);
+    const changedLayer = this.game.state.analyticsMode !== mode;
+    this.checkResult(this.game.setAnalyticsMode(mode));
+    if (!changedLayer) this.render();
+  }
+
+  renderAtlasNavigation() {
+    const active = this.atlasPreferences.view;
+    this.setHtml('atlasViewNav', ATLAS_VIEWS.map(view => `<button type="button" data-action="atlas-view" data-view="${view.id}" class="${active === view.id ? 'active' : ''}" aria-pressed="${active === view.id}" title="${view.description}">${view.label}</button>`).join(''));
+    document.documentElement.dataset.atlasView = active;
+    $('#buildSection').hidden = false;
+    $('.fleet-section').hidden = false;
+    $('.progress-section').hidden = false;
+    $('#operationsDashboard').hidden = active !== 'operations';
+    $('.network-problems').hidden = false;
+    $('.network-history').hidden = false;
+    $('.diagnostic-grid').hidden = false;
+    $('.event-panel').hidden = false;
+    $('.mobility-panel').hidden = false;
+    const mode = this.game.state.analyticsMode;
+    $('#cityEvolutionPanel').hidden = active !== 'development' || mode !== 'cityEvolution';
+    $('#landUsePanel').hidden = active !== 'development' || mode !== 'landUse';
+    $('#investmentsPanel').hidden = active !== 'development' || mode !== 'investments';
+  }
+
+  renderOperationsDashboard() {
+    if (this.atlasPreferences.view !== 'operations') return;
+    const state = this.game.state;
+    const lines = state.lines || [];
+    const revenue = lines.reduce((sum, line) => sum + finite(line.stats?.revenuePerHour), 0);
+    const costs = lines.reduce((sum, line) => sum + finite(line.stats?.costPerHour), 0) + finite(state.fleetReserveCostPerHour);
+    const fleet = fleetSnapshot(state);
+    const owned = Object.values(fleet).reduce((sum, item) => sum + item.owned, 0);
+    const assigned = Object.values(fleet).reduce((sum, item) => sum + item.assigned, 0);
+    const overloaded = lines.filter(line => finite(line.stats?.load) >= 0.95).length;
+    const values = { atlasBudget: money(state.budget), atlasRevenue: money(revenue), atlasCosts: money(costs),
+      atlasCarried: formatNumber(state.carried), atlasFleet: `${assigned} / ${owned}`, atlasOverloaded: String(overloaded) };
+    Object.entries(values).forEach(([id, value]) => this.setText(id, value));
+    const problems = networkProblems(state, this.game.visiblePoints()).slice(0, 4);
+    this.setHtml('atlasActions', problems.length
+      ? problems.map(item => `<li><span><strong>${escapeHtml(item.label)}</strong> · ${escapeHtml(item.cause)}<small>${escapeHtml(item.impact)} ${escapeHtml(item.actions)}</small></span><b>${escapeHtml(item.observed)}</b></li>`).join('')
+      : '<li class="empty-mini">Brak wykrytych problemów w bieżących obserwacjach.</li>');
+  }
+
   renderAnalytics(minuteOfDay) {
     const { state } = this.game;
     const clock = gameClock(state.elapsedMinutes, state.calendar);
@@ -697,11 +763,13 @@ export class UI {
     this.setHtml('mobilityRelations', mobility.busiestRelations.length ? mobility.busiestRelations.map(item => `<li><span>${escapeHtml(item.label)}</span><b>${formatNumber(item.passengers || item.generated)}</b></li>`).join('') : '<li class="empty-mini">Relacje pojawią się po rozpoczęciu podróży.</li>');
     const mobilityFailures = mobility.failures.filter(item => item.passengers > 0);
     this.setHtml('mobilityFailures', mobilityFailures.length ? mobilityFailures.map(item => `<li><span>${escapeHtml(FAILURE_LABELS[item.reason] || item.reason)}</span><b>${formatNumber(item.passengers)}</b></li>`).join('') : '<li class="empty-mini">Brak zarejestrowanych niepowodzeń.</li>');
-    const modes = [['off', 'Zwykła'], ['demand', 'Popyt'], ['flow', 'Przewozy'], ['overload', 'Przeciążenia'], ['queues', 'Kolejki'], ['unmet', 'Braki popytu'], ['profit', 'Rentowność'], ['load', 'Odcinki'], ['travel', 'Czas'], ['access', 'Dostępność'], ['cityEvolution', 'Rozwój miasta'], ['landUse', 'Zagospodarowanie'], ['investments', 'Inwestycje']];
+    const allModes = [['off', 'Zwykła'], ['demand', 'Popyt'], ['flow', 'Przewozy'], ['overload', 'Przeciążenia'], ['queues', 'Kolejki'], ['unmet', 'Braki popytu'], ['profit', 'Rentowność'], ['load', 'Odcinki'], ['travel', 'Czas'], ['access', 'Dostępność'], ['cityEvolution', 'Rozwój miasta'], ['landUse', 'Zagospodarowanie'], ['investments', 'Inwestycje']];
+    const modes = allModes;
     const modeTitles = { off: 'Wyłącz warstwę analityczną', demand: 'Potencjał szacunkowy i wygenerowane podróże', flow: 'Zaobserwowane obciążenie pojazdów', overload: 'Podświetl odcinki o wysokim obciążeniu', queues: 'Liczba oczekujących na punktach', unmet: 'Zgromadzone niezrealizowane próby', profit: 'Obserwowany bilans linii', load: 'Wykorzystanie pojemności odcinków', travel: 'Czas oczekiwania', access: 'Dostępność punktów', cityEvolution: 'Modelowane zmiany obszarów miasta i ich dostępności', landUse: 'Model zagospodarowania i intensywności obszarów', investments: 'Planowanie i obserwacja projektów miejskich' };
     this.setHtml('analyticsModes', modes.map(([id, label]) => `<button type="button" data-action="analytics-mode" data-mode="${id}" class="${state.analyticsMode === id ? 'active' : ''}" aria-pressed="${state.analyticsMode === id}" title="${modeTitles[id]}">${label}</button>`).join(''));
     const legends = { demand: 'Popyt potencjalny jest estymacją modelu; obserwowane wygenerowane podróże pochodzą z symulacji.', flow: 'Grubość pokazuje zaobserwowane obciążenie pojazdów; zielony <65%, pomarańczowy 65–94%, czerwony ≥95%. To wykorzystanie miejsc, nie licznik przejazdów na segmencie.', overload: 'Czerwony odcinek osiągnął co najmniej 95% zaobserwowanego obciążenia.', queues: 'Rozmiar punktu pokazuje liczbę pasażerów aktualnie oczekujących.', unmet: 'Punkty pokazują zgromadzone, zaobserwowane niezrealizowane próby podróży.', profit: 'Kolor linii pokazuje obserwowany bilans operacyjny na godzinę.', load: 'Kolor odcinka pokazuje zaobserwowane wykorzystanie pojemności.', cityEvolution: 'Kolor oznacza atrakcyjność obszaru: czerwony niższą, żółty pośrednią, zielony wyższą. Rozmiar oznacza potencjał rozwoju. Wartości to parametry gry, nie dane demograficzne.', landUse: 'Kolor markera oznacza dominującą modelowaną funkcję terenu, rozmiar — intensywność zabudowy. Markery nie są poligonami dzielnic.', investments: 'Żółty marker oznacza projekt w realizacji, zielony ukończoną inwestycję. Podgląd nie pokazuje parceli ani dokładnego obrysu.' };
     this.setText('networkLegend', legends[state.analyticsMode] || 'Warstwa mapy korzysta z danych bieżącej symulacji. Potencjalny popyt w podsumowaniu jest estymacją.');
+    this.renderAtlasNavigation();
     const problems = networkProblems(state, points);
     this.setText('networkProblemCount', `${problems.length} obserwacji`);
     this.setHtml('networkProblems', problems.length ? problems.map(item => `<li class="network-problem"><b>${escapeHtml(item.label)}</b><span>${escapeHtml(item.cause)} · ${escapeHtml(item.observed)}</span><small>${escapeHtml(item.impact)} ${escapeHtml(item.actions)}</small></li>`).join('') : '<li class="empty-mini">Brak wykrytych problemów na podstawie bieżących obserwacji.</li>');
@@ -871,16 +939,20 @@ export class UI {
     if (!state.lines.some(line => line.id === this.selectedLineId)) this.selectedLineId = null;
     const revenue = state.lines.reduce((sum, line) => sum + finite(line.stats?.revenuePerHour), 0);
     const costs = state.lines.reduce((sum, line) => sum + finite(line.stats?.costPerHour), 0);
-    this.setText('networkCount', `${state.lines.length} linii`);
+    const visibleLines = filterAndSortLines(state.lines, this.atlasPreferences.lineFilter, this.atlasPreferences.lineSort);
+    $('#atlasLineFilter').value = this.atlasPreferences.lineFilter;
+    $('#atlasLineSort').value = this.atlasPreferences.lineSort;
+    this.setText('networkCount', `${visibleLines.length} / ${state.lines.length} linii`);
     this.setHtml('networkSummary', state.lines.length ? `<span>Wpływy / h <b class="positive">${money(revenue)}</b></span><span>Koszty linii / h <b>${money(costs)}</b></span><span>Rezerwa / h <b>${money(state.fleetReserveCostPerHour || 0)}</b></span>` : '');
-    this.setHtml('lineList', state.lines.length ? state.lines.map((line, index) => {
+    this.setHtml('lineList', visibleLines.length ? visibleLines.map((line, index) => {
       const type = TRANSPORT_TYPES[line.type];
       const stats = line.stats || {};
       const from = city.points.find(point => point.id === line.stops[0]);
       const to = city.points.find(point => point.id === line.stops.at(-1));
       return `<button type="button" class="line-item ${line.id === this.selectedLineId ? 'selected' : ''} ${finite(stats.load) > .9 ? 'busy' : ''}" data-action="select-line" data-line="${escapeHtml(line.id)}" style="--transport:${line.color || type.color}" aria-expanded="${line.id === this.selectedLineId}"><b class="line-badge">${escapeHtml(line.name || `${type.short}${index + 1}`)}</b><span class="line-item-copy"><strong>${escapeHtml(from?.name)} → ${escapeHtml(to?.name)}</strong><small>${line.stops.length} przyst. · ${line.vehicles} poj. · ${decimal(finite(stats.load) * 100)}% zajętości</small></span><span class="line-profit ${finite(stats.balancePerHour) < 0 ? 'negative' : 'positive'}">${money(stats.balancePerHour)}<small>/ h</small></span></button>`;
-    }).join('') : '<p class="empty-state">Pierwsza linia nada miastu rytm.<br>Wybierz połączenie dowozowe i zaplanuj trasę.</p>');
+    }).join('') : state.lines.length ? '<p class="empty-state">Brak linii dla wybranego filtra.</p>' : '<p class="empty-state">Pierwsza linia nada miastu rytm.<br>Wybierz połączenie dowozowe i zaplanuj trasę.</p>');
     this.renderDetails();
+    this.renderOperationsDashboard();
   }
 
   renderDetails() {

@@ -8,7 +8,7 @@
   <title>UrbanFlow — Kraków w ruchu</title>
   <link rel="preconnect" href="https://tile.openstreetmap.org">
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css?v=1.9.4">
-  <link rel="stylesheet" href="styles.css?v=16">
+  <link rel="stylesheet" href="styles.css?v=17">
 </head>
 <body>
   <section class="city-screen" id="cityScreen" aria-labelledby="gameTitle">
@@ -68,6 +68,8 @@
           <div class="panel-head-actions"><span class="campaign-tag">Kampania</span><button class="panel-collapse" id="panelCollapseButton" type="button" aria-controls="buildPanel" aria-expanded="true" aria-label="Zwiń panel">Zwiń</button><button class="panel-close" id="panelClose" type="button" aria-label="Zamknij panel">×</button></div>
         </div>
 
+        <nav class="atlas-view-nav" id="atlasViewNav" aria-label="Widoki UrbanFlow Atlas"></nav>
+
         <section class="place-profile" id="placeProfile" aria-live="polite" aria-labelledby="placeProfileName" hidden>
           <div class="place-profile-head"><div><span class="section-kicker" id="placeProfileType"></span><h3 id="placeProfileName"></h3></div><button type="button" id="placeProfileClose" aria-label="Zamknij informacje o miejscu">×</button></div>
           <p id="placeProfileDescription"></p><p id="placeProfileSignificance"></p>
@@ -95,6 +97,18 @@
           <div class="section-title"><h3 id="analyticsTitle">Diagnostyka sieci</h3><span id="capacityComparison">0 oczekuje · 0 miejsc/h</span></div>
           <div class="analytics-modes" id="analyticsModes" role="group" aria-label="Warstwa analityczna mapy"></div>
           <div id="networkLegend" class="network-legend" aria-live="polite"></div>
+          <section class="atlas-operations" id="operationsDashboard" aria-label="Przegląd operacyjny" hidden>
+            <div class="atlas-kpi-grid">
+              <div><span>Budżet</span><strong id="atlasBudget">—</strong></div>
+              <div><span>Przychody sieci / h</span><strong id="atlasRevenue">—</strong></div>
+              <div><span>Koszty sieci / h</span><strong id="atlasCosts">—</strong></div>
+              <div><span>Pasażerowie przewiezieni</span><strong id="atlasCarried">—</strong></div>
+              <div><span>Flota przypisana / własna</span><strong id="atlasFleet">—</strong></div>
+              <div><span>Linie przeciążone</span><strong id="atlasOverloaded">—</strong></div>
+            </div>
+            <div class="diagnostic-title"><strong>Najpilniejsze problemy</strong><span>dane bieżącej symulacji</span></div>
+            <ul id="atlasActions" class="diagnostic-list"></ul>
+          </section>
           <section class="city-evolution-panel" id="cityEvolutionPanel" aria-labelledby="cityEvolutionTitle" hidden>
             <div class="diagnostic-title"><strong id="cityEvolutionTitle">Atlas City Evolution</strong><span>wartości modelu symulacji</span></div>
             <label class="city-evolution-select">Obszar<select id="cityEvolutionDistrict" aria-label="Wybierz obszar miasta"></select></label>
@@ -188,6 +202,10 @@
         <section class="network-section">
           <div class="section-title"><h3>Twoja sieć</h3><span id="networkCount">0 linii</span></div>
           <div class="network-summary" id="networkSummary"></div>
+          <div class="line-tools" role="group" aria-label="Filtrowanie i sortowanie linii">
+            <label>Typ<select id="atlasLineFilter" aria-label="Filtruj linie według typu"><option value="all">Wszystkie</option><option value="bus">Autobusy</option><option value="tram">Tramwaje</option></select></label>
+            <label>Sortuj<select id="atlasLineSort" aria-label="Sortuj linie"><option value="load">Obciążenie</option><option value="cost">Koszty</option><option value="profitability">Rentowność</option></select></label>
+          </div>
           <div class="line-list" id="lineList"><p class="empty-state">Pierwsza linia nada miastu rytm.</p></div>
           <div class="line-detail is-hidden" id="lineDetail" aria-label="Szczegóły wybranej linii"></div>
         </section>
