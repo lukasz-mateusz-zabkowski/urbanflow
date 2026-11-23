@@ -1,4 +1,4 @@
-export const FEEDBACK_VERSION = '1.4.0-alpha';
+export const FEEDBACK_VERSION = '1.4.1-alpha';
 export const FEEDBACK_CATEGORIES = Object.freeze([
   'Błąd', 'Niezrozumiała mechanika', 'Sugestia', 'Problem z wydajnością', 'Problem z interfejsem', 'Ocena pierwszej rozgrywki'
 ]);

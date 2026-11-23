@@ -1,9 +1,10 @@
 import { test, expect } from '@playwright/test';
-import { mkdir } from 'node:fs/promises';
+import { mkdir, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const artifacts = join(tmpdir(), 'urbanflow-alpha-1.4.0-visual-qa');
+const artifacts = join(tmpdir(), 'urbanflow-alpha-1.4.1-visual-qa');
+const appVersion = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')).version;
 const tile = '<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256"><rect width="256" height="256" fill="#e9eee4"/><path d="M0 220 110 110 256 35M0 40 256 210" fill="none" stroke="#fffefa" stroke-width="12"/></svg>';
 async function touch(locator) { await locator.tap({ timeout: 10000 }); }
 
@@ -68,7 +69,7 @@ for (const scenario of [
     await activePage.locator('#feedbackForm [name="description"]').fill('Pierwsza sesja jest zrozumiała.');
     await activePage.locator('#feedbackForm button[type="submit"]').click();
     const report = JSON.parse(await activePage.locator('#feedbackJson').inputValue());
-    expect(report.gameVersion).toBe('1.4.0-alpha');
+    expect(report.gameVersion).toBe(appVersion);
     expect(report.context).toBeUndefined();
     expect(report.diagnostics).toBeUndefined();
     await activePage.locator('#feedbackClose').click();

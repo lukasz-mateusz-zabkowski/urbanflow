@@ -18,7 +18,10 @@ const MOBILES = [
 async function startGame(page, viewport, mobile = false) {
   await page.setViewportSize({ width: viewport.width, height: viewport.height });
   await page.addInitScript(() => { localStorage.clear(); Math.random = () => 0.1; });
-  if (process.env.CI) await page.route('https://tile.openstreetmap.org/**', route => route.fulfill({ status: 200, contentType: 'image/svg+xml', body: CI_TEST_TILE }));
+  // Most browser tests validate game behavior, so keep them deterministic and
+  // independent of the availability or rate limits of the public tile server.
+  // The live OSM layer is checked separately against real tiles.
+  await page.route('https://tile.openstreetmap.org/**', route => route.fulfill({ status: 200, contentType: 'image/svg+xml', body: CI_TEST_TILE }));
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
