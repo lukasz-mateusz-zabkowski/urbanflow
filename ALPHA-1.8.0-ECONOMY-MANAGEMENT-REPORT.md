@@ -2,7 +2,7 @@
 
 ## Status
 
-**Candidate status: pending fresh GitHub Actions after the browser-test interaction correction.** The first pushed implementation SHA had one browser-test failure; details and follow-up are recorded below. No merge, tag, release or deployment was performed.
+**Candidate status: GO for code/test SHA `ca28f593fe2ab23b12ceab77afbf94eccd0cd2d5`.** All six GitHub Actions jobs passed on that SHA. The report-only follow-up commit will trigger a separate workflow; its result is not implied by the earlier run. No merge, tag, release or deployment was performed.
 
 ## Candidate and scope
 
@@ -11,7 +11,7 @@
 - Feature branch: `feature/alpha-1.8.0-economy-management`
 - Save schema: 13 (required for persistent finance ledger and planning reserve)
 - Production and Raspberry Pi: not accessed or changed.
-- Ports 3101–3106: left untouched. Candidate runs on `http://127.0.0.1:3107/`, bound to loopback. `/health` reports `1.8.0-alpha` and source commit `3f18966d4d1bbe7a91cc30d494913122f5fda469` (the initial implementation commit; current pending changes affect only E2E interaction and this report).
+- Ports 3101–3106: left untouched. Candidate runs on `http://127.0.0.1:3107/`, bound to loopback. `/health` currently reports `1.8.0-alpha` and source commit `ca28f593fe2ab23b12ceab77afbf94eccd0cd2d5`.
 
 ## Finance model
 
@@ -37,8 +37,8 @@ Schema 12 migrates to 13 with an empty event history and `historyComplete: false
 - `npm run audit:all`: passed, 0 vulnerabilities.
 - `npm run audit:production`: passed, 0 vulnerabilities.
 - `git diff --check`: passed.
-- Real OpenStreetMap tile request: passed separately against the local candidate. Playwright observed 16 unique tile requests, all HTTP 200; a tile rendered at 256×256, with no browser page errors. This is one desktop check of the public tile endpoint, not an availability guarantee.
-- Live-map screenshot: `%TEMP%\urbanflow-alpha-1.8.0-live-osm\desktop-live-osm-1366x768.png`.
+- Real OpenStreetMap tile request: passed separately against the local candidate SHA `ca28f593fe2ab23b12ceab77afbf94eccd0cd2d5`. Playwright observed 6 unique tile requests, all HTTP 200; a tile rendered at 256×256, with no browser page errors. This is one desktop check of the public tile endpoint, not an availability guarantee.
+- Live-map screenshot: `%TEMP%\urbanflow-alpha-1.8.0-live-osm-final\desktop-live-osm-1366x768.png`.
 
 ## Scenario and performance evidence
 
@@ -62,11 +62,12 @@ Finance UI screenshots are local test artifacts, not repository assets:
 
 GitHub Actions run [45385668354](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/45385668354) on implementation SHA `3f18966d4d1bbe7a91cc30d494913122f5fda469` completed with 5 of 6 jobs successful. Node 18, 20 and 22, security audit and container health passed. The browser job had 38/39 passes: its desktop route-edit test expected an inserted stop after a forced click, but observed 7 stops instead of 8. GitHub did not provide the failure trace artifact.
 
-The test used `force: true` without asserting that the insertion control was in the viewport after the editor's delayed panel scroll. It now scrolls the control into view, asserts visibility, uses a normal click, and records that the click reached the correct control before retaining the same 8-stop assertion. The exact desktop scenario passed five consecutive local repetitions after this change; the full local suite then passed 39/39. No application behavior or assertions were weakened. Requesting a rerun of only the failed GitHub job returned 403 (`Resource not accessible by integration`); a fresh full workflow is required after pushing the correction.
+The test used `force: true` without asserting that the insertion control was in the viewport after the editor's delayed panel scroll. It now scrolls the control into view, asserts visibility, uses a normal click, and records that the click reached the correct control before retaining the same 8-stop assertion. The exact desktop scenario passed five consecutive local repetitions after this change; the full local suite then passed 39/39. No application behavior or assertions were weakened. Requesting a rerun of only the failed GitHub job returned 403 (`Resource not accessible by integration`), so a fresh full workflow was run.
 
-## Remaining checks
+Fresh workflow [45388428914](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/45388428914) on code/test SHA `ca28f593fe2ab23b12ceab77afbf94eccd0cd2d5`: all six jobs succeeded — `test (18)`, `test (20)`, `test (22)`, `browser-test`, `security-audit`, `container-health`.
 
-- Restart the local candidate after the final corrective commit so `/health` reports that exact branch SHA.
-- Push only this feature branch and record the six GitHub Actions results for its final SHA. Until all six are green, release readiness remains NO GO.
+## Final branch handling
+
+- The report-only follow-up will be pushed to the feature branch. It does not change application or test code; a new six-job Actions run is still required on that resulting HEAD.
 - No merge, tag, release, deployment or production change is included in this work.
 
