@@ -2,7 +2,11 @@
 
 ## Status
 
-**Status: pending final validation.** This is a feature-branch candidate; it has not been merged, tagged, released, or deployed. Final commit, test and CI results will be recorded after validation.
+**Local status: GO. GitHub Actions: pending.** This is a feature-branch candidate; it has not been merged, tagged, released, or deployed.
+
+- Base: `05eb5a618701dc445e27519a5f1ff997748ff542` (`main`, 1.6.0-alpha)
+- Candidate code commit: `7a43ed382d321f450cffe33c35d0e76cb87f0e1c`
+- Branch: `feature/alpha-1.7.0-living-city`
 
 ## Scope and architecture
 
@@ -56,13 +60,20 @@ The main measurable cost is the additional bounded weekly history, which makes t
 | `npm run audit:all` | PASS; 0 vulnerabilities |
 | `npm run audit:production` | PASS; 0 vulnerabilities |
 | `git diff --check` | PASS |
-| Live OSM tile verification | pending |
-| Local app on `127.0.0.1:3106` | pending |
-| GitHub Actions (six jobs) | pending |
+| Live OSM tile verification | PASS; 7/7 successful tile responses, no page errors |
+| Local app on `127.0.0.1:3106` | PASS; health version and SHA match candidate; loopback listener |
+| GitHub Actions (six jobs) | pending push and run for the final branch SHA |
 
 Living City focused Playwright coverage has passed at 1366×768, 390×844 and 360×800 during development. It checks selecting a modeled area, its profile, two-area comparison, map selection, transition to planning, no horizontal overflow and no page errors. This is not a physical-phone test.
 
-Screenshots are kept outside the repository at `%LOCALAPPDATA%\Temp\urbanflow-alpha-1.7.0-living-city\`. The focused Living City suite saved desktop 1366×768, mobile 390×844 and mobile 360×800 screenshots. The independent live OSM screenshot will be added to the same directory.
+Screenshots are kept outside the repository at `%LOCALAPPDATA%\Temp\urbanflow-alpha-1.7.0-living-city\`:
+
+- `desktop-1366x768-living-city.png`
+- `mobile-390x844-living-city.png`
+- `mobile-360x800-living-city.png`
+- `desktop-live-osm-1366x768.png`
+
+The real OSM run against `http://127.0.0.1:3106/` made 7 unique tile requests, all returned 200, and at least one tile rendered. It reported no page errors. `/health` returned version `1.7.0-alpha` and commit `7a43ed382d321f450cffe33c35d0e76cb87f0e1c`. The server listener was `127.0.0.1:3106`; ports 3101–3105 were not touched. No physical-phone test was performed.
 
 ## Known limitations
 
@@ -74,4 +85,4 @@ Screenshots are kept outside the repository at `%LOCALAPPDATA%\Temp\urbanflow-al
 
 ## Release decision
 
-**GO/NO GO will be set after the full local test suite, live map check, branch push and all six GitHub Actions jobs.**
+**Local validation: GO. Overall delivery: pending all six GitHub Actions jobs on the pushed branch SHA.**
