@@ -30,6 +30,16 @@ export function recordFinanceEvent(state, type, amount, at = state?.elapsedMinut
   if (!state || !FINANCE_EVENT_TYPES.includes(type) || !nonnegative(amount) || !nonnegative(at)) return false;
   state.finance ||= createFinanceState();
   if (eventKey && state.finance.transactions.some(item => item.eventKey === eventKey)) return false;
+  // Weekly investment maintenance is a monotonic series. The detailed transaction
+  // list is deliberately bounded, so the investment ledger's week watermark is
+  // the durable idempotency receipt after an old transaction ages out.
+  if (type === 'investmentMaintenance' && eventKey) {
+    const match = /^investment-maintenance-week:([1-9]\d*)$/.exec(eventKey);
+    if (match) {
+      const week = Number(match[1]);
+      if (!Number.isSafeInteger(week) || week <= (state.investments?.lastRecordedWeek || 0)) return false;
+    }
+  }
   const finance = state.finance;
   const transaction = {
     id: `finance-${finance.nextId}`,

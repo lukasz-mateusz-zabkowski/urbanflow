@@ -273,6 +273,14 @@ export function loadGame(storage, city) {
       data = { ...data, state: { ...data.state, investments: createInvestmentState(), hubCapacityByPoint: {} } };
       migrated = true;
     }
+    if (data.version === SAVE_VERSION && plain(data.state?.investments)
+      && data.state.investments.lastRecordedWeek === undefined) {
+      const lastRecordedWeek = (data.state.investments.weekly || []).reduce((latest, item) =>
+        Number.isSafeInteger(item?.week) && item.week > latest ? item.week : latest, 0);
+      data = { ...data, state: { ...data.state,
+        investments: { ...data.state.investments, lastRecordedWeek } } };
+      migrated = true;
+    }
     if (data.version === SAVE_VERSION && plain(data.state) && !data.state.hubCapacityByPoint) {
       data = { ...data, state: { ...data.state, hubCapacityByPoint: {} } };
       migrated = true;

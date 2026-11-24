@@ -15,7 +15,8 @@ const round = value => Math.round(value);
 const active = project => project.status === 'planned' || project.status === 'in-progress';
 
 export function createInvestmentState() {
-  return { version: INVESTMENT_VERSION, nextId: 1, projects: [], history: [], assets: [], totalSpent: 0, totalRefunded: 0, totalMaintenance: 0, weekly: [] };
+  return { version: INVESTMENT_VERSION, nextId: 1, projects: [], history: [], assets: [], totalSpent: 0, totalRefunded: 0,
+    totalMaintenance: 0, weekly: [], lastRecordedWeek: 0 };
 }
 
 function districtCanInvest(state, districtId, type, excludeProjectId = null) {
@@ -165,7 +166,9 @@ export function advanceInvestmentProjects(state) {
 
 export function recordInvestmentWeek(state, week) {
   const investments = state.investments;
-  if (!investments || !Number.isSafeInteger(week) || week < 1 || investments.weekly.some(item => item.week === week)) return null;
+  if (!investments || !Number.isSafeInteger(week) || week < 1
+    || week <= (Number.isSafeInteger(investments.lastRecordedWeek) ? investments.lastRecordedWeek : 0)
+    || investments.weekly.some(item => item.week === week)) return null;
   const recent = investments.history.filter(item => item.week === week);
   const weekStart = (week - 1) * INVESTMENT_LIMITS.durationWeekMinutes;
   const weekEnd = week * INVESTMENT_LIMITS.durationWeekMinutes;
@@ -174,6 +177,8 @@ export function recordInvestmentWeek(state, week) {
     return sum + asset.weeklyMaintenance * Math.min(1, activeMinutes / INVESTMENT_LIMITS.durationWeekMinutes);
   }, 0);
   const maintenanceCost = round(maintenance);
+  if (maintenanceCost > 0 && !recordFinanceEvent(state, 'investmentMaintenance', maintenanceCost,
+    Math.max(0, (state.elapsedMinutes || 0) - 1), `investment-maintenance-week:${week}`)) return null;
   state.budget -= maintenanceCost;
   investments.totalMaintenance += maintenanceCost;
   const item = { week, active: investments.projects.filter(active).length,
@@ -181,7 +186,7 @@ export function recordInvestmentWeek(state, week) {
     cancelled: recent.filter(project => project.status === 'cancelled').length,
     costs: recent.filter(project => project.status === 'approved').reduce((sum, project) => sum + project.cost, 0),
     refunds: recent.reduce((sum, project) => sum + project.refund, 0), maintenance: maintenanceCost };
-  investments.weekly.push(item); trimInvestmentHistory(investments); return item;
+  investments.weekly.push(item); investments.lastRecordedWeek = week; trimInvestmentHistory(investments); return item;
 }
 
 export function validateInvestmentState(value, city, state) {
@@ -190,6 +195,7 @@ export function validateInvestmentState(value, city, state) {
     || !Array.isArray(value.history) || value.history.length > INVESTMENT_LIMITS.history
     || !Array.isArray(value.assets) || value.assets.length > INVESTMENT_LIMITS.assets
     || !Array.isArray(value.weekly) || value.weekly.length > 52
+    || !Number.isSafeInteger(value.lastRecordedWeek) || value.lastRecordedWeek < 0
     || !finite(value.totalSpent) || value.totalSpent < 0 || !finite(value.totalRefunded) || value.totalRefunded < 0
     || !finite(value.totalMaintenance) || value.totalMaintenance < 0
     || value.totalRefunded > value.totalSpent) return false;
@@ -233,9 +239,11 @@ export function validateInvestmentState(value, city, state) {
   }
   if (value.nextId <= highestUsedId) return false;
   const weeks = new Set();
+  let highestRecordedWeek = 0;
   for (const item of value.weekly) if (!isObject(item) || !Number.isSafeInteger(item.week) || item.week < 1 || weeks.has(item.week)
     || !['active', 'completed', 'cancelled', 'costs', 'refunds', 'maintenance'].every(key => Number.isSafeInteger(item[key]) && item[key] >= 0)) return false;
-  else weeks.add(item.week);
+  else { weeks.add(item.week); highestRecordedWeek = Math.max(highestRecordedWeek, item.week); }
+  if (value.lastRecordedWeek < highestRecordedWeek) return false;
   const assets = new Set();
   for (const asset of value.assets) {
     const key = `${asset?.districtId}:${asset?.level}`;

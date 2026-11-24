@@ -11,6 +11,7 @@ import { updateCampaign } from '../public/js/campaign.js';
 import { SIMULATION } from '../public/js/simulation.js';
 import { recordInvestmentWeek } from '../public/js/investments.js';
 import { applyEconomyTick } from '../public/js/economy.js';
+import { loadGame, saveGame, SAVE_KEY } from '../public/js/storage.js';
 
 const financeState = () => ({
   status: 'playing', budget: 10000, revenue: 600, expenses: 170, carried: 0,
@@ -183,6 +184,81 @@ test('investment maintenance at a week boundary is attributed to the completed w
   assert.equal(game.state.finance.weeklyCashFlow[0].events, eventsBefore + 1);
 });
 
+test('investment maintenance cannot be rebooked after its detailed transaction ages out', () => {
+  const game = new UrbanFlowGame(CITIES.krakow);
+  game.state.investments.assets.push({ districtId: 'ruczaj', level: 1, completedAt: 0, weeklyMaintenance: 500 });
+  const firstWeek = recordInvestmentWeek(game.state, 1);
+  assert.equal(firstWeek.maintenance, 500);
+  assert.equal(game.state.finance.totals.investmentMaintenance, 500, 'week settlement records the finance event atomically');
+  const afterFirstWeek = game.state.budget;
+
+  for (let week = 2; week <= 53; week += 1) recordInvestmentWeek(game.state, week);
+  assert.equal(game.state.investments.weekly.some(item => item.week === 1), false, 'old detail must roll off the bounded history');
+  assert.equal(recordInvestmentWeek(game.state, 1), null);
+  assert.equal(game.state.budget, afterFirstWeek - 52 * 500);
+
+  const beforeDuplicate = structuredClone(game.state.finance);
+  assert.equal(recordFinanceEvent(game.state, 'investmentMaintenance', 500, 7 * 1440 - 1, 'investment-maintenance-week:1'), false);
+  assert.deepEqual(game.state.finance, beforeDuplicate, 'the compact week watermark protects lifetime totals after transaction eviction');
+});
+
+test('investment maintenance watermark survives save/load after 52-week details roll off', () => {
+  const game = new UrbanFlowGame(CITIES.krakow);
+  assert.equal(game.chooseStarterRoute('loop-center').ok, true);
+  game.state.investments.assets.push({ districtId: 'ruczaj', level: 1, completedAt: 0, weeklyMaintenance: 400 });
+  game.state.hubCapacityByPoint.ruczaj = 1.5;
+  const weekMinutes = 7 * 1440;
+  for (let week = 1; week <= 53; week += 1) {
+    game.state.elapsedMinutes = week * weekMinutes - SIMULATION.startMinute - 1;
+    assert.ok(recordInvestmentWeek(game.state, week));
+  }
+  assert.equal(game.state.investments.weekly.length, 52);
+  assert.equal(game.state.investments.lastRecordedWeek, 53);
+
+  const entries = new Map();
+  const storage = { getItem: key => entries.get(key) ?? null, setItem: (key, value) => entries.set(key, String(value)) };
+  assert.equal(saveGame(storage, game.state).ok, true);
+  const loaded = loadGame(storage, CITIES.krakow);
+  assert.equal(loaded.error, null);
+  const resumed = new UrbanFlowGame(CITIES.krakow, {}, loaded.state);
+  const before = resumed.state.budget;
+  assert.equal(recordInvestmentWeek(resumed.state, 1), null);
+  assert.equal(resumed.state.budget, before);
+  assert.equal(resumed.state.finance.totals.investmentMaintenance, 53 * 400);
+});
+
+test('12, 52 and 104-week finance checkpoints resume without replaying settled maintenance', () => {
+  let game = new UrbanFlowGame(CITIES.krakow);
+  assert.equal(game.chooseStarterRoute('loop-center').ok, true);
+  game.state.investments.assets.push({ districtId: 'ruczaj', level: 1, completedAt: 0, weeklyMaintenance: 400 });
+  game.state.hubCapacityByPoint.ruczaj = 1.5;
+  const entries = new Map();
+  const storage = { getItem: key => entries.get(key) ?? null, setItem: (key, value) => entries.set(key, String(value)) };
+  const weekMinutes = 7 * 1440;
+
+  for (let week = 1; week <= 104; week += 1) {
+    game.state.elapsedMinutes = week * weekMinutes - SIMULATION.startMinute - 1;
+    const settlement = recordInvestmentWeek(game.state, week);
+    assert.equal(settlement.maintenance, 400);
+    if ([12, 52, 104].includes(week)) {
+      assert.equal(saveGame(storage, game.state).ok, true, `${week}-week save`);
+      const loaded = loadGame(storage, CITIES.krakow);
+      assert.equal(loaded.error, null, `${week}-week load`);
+      game = new UrbanFlowGame(CITIES.krakow, {}, loaded.state);
+      assert.equal(game.state.investments.lastRecordedWeek, week);
+    }
+  }
+
+  const settledBudget = game.state.budget;
+  assert.equal(game.state.finance.totals.investmentMaintenance, 104 * 400);
+  assert.equal(recordInvestmentWeek(game.state, 52), null, 'a prior settled week stays closed beyond both bounded ledgers');
+  assert.equal(game.state.budget, settledBudget);
+  assert.equal(game.state.investments.weekly.length, 52);
+  assert.equal(game.state.finance.weeklyCashFlow.length, 12);
+  assert.equal(game.state.finance.dailyCashFlow.length, 28);
+  assert.equal(game.state.finance.transactions.length, FINANCE_LIMITS.transactions);
+});
+
 test('104-week operating cash and bounded finance history reproduce deterministically', () => {
   const run = () => {
     const game = new UrbanFlowGame(CITIES.krakow, { startScenarioId: 'wieliczka', random: () => 0.1 });
@@ -198,8 +274,7 @@ test('104-week operating cash and bounded finance history reproduce deterministi
         game.state.carried += 4;
       }
       const item = recordInvestmentWeek(game.state, week);
-      if (item?.maintenance > 0) recordFinanceEvent(game.state, 'investmentMaintenance', item.maintenance,
-        week * weekMinutes - 1, `investment-maintenance-week:${week}`);
+      assert.ok(item, `week ${week} settles once in order`);
     }
     return {
       budget: game.state.budget, revenue: game.state.revenue, expenses: game.state.expenses, carried: game.state.carried,

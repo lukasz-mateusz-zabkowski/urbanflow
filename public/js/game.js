@@ -566,9 +566,7 @@ export class UrbanFlowGame {
       s.carried += result.transported; s.generated += result.generated; s.abandoned += result.abandoned || 0;
       const economy = applyEconomyTick(s, result.transported, SIMULATION.minutesPerTick);
       if (clock.week > previousWeek) {
-        const investmentWeek = recordInvestmentWeek(s, clock.week - 1);
-        if (investmentWeek?.maintenance > 0) recordFinanceEvent(s, 'investmentMaintenance', investmentWeek.maintenance,
-          Math.max(0, s.elapsedMinutes - 1), `investment-maintenance-week:${investmentWeek.week}`);
+        recordInvestmentWeek(s, clock.week - 1);
         evolveCityWeek(s, this.city);
       }
       recordNetworkHistory(s, { transported: result.transported, generated: result.generated, abandoned: result.abandoned,

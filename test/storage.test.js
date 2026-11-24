@@ -346,6 +346,8 @@ test('schema 12 migrates finance ledger without inventing capital history and pr
   original.state.elapsedMinutes = 14 * 1440;
   const oldState = snapshot(original.state);
   delete oldState.finance;
+  oldState.investments.weekly = [{ week: 9, active: 0, completed: 0, cancelled: 0, costs: 0, refunds: 0, maintenance: 500 }];
+  delete oldState.investments.lastRecordedWeek;
   const storage = memoryStorage();
   storage.setItem(SAVE_KEY, JSON.stringify({ version: 12, cityId: city.id, state: oldState }));
 
@@ -361,7 +363,9 @@ test('schema 12 migrates finance ledger without inventing capital history and pr
   assert.deepEqual(loaded.state.fleet, oldState.fleet);
   assert.deepEqual(loaded.state.cohorts, oldState.cohorts);
   assert.deepEqual(loaded.state.campaign, oldState.campaign);
-  assert.deepEqual(loaded.state.investments, oldState.investments);
+  const { lastRecordedWeek: _lastRecordedWeek, ...migratedInvestments } = loaded.state.investments;
+  assert.deepEqual(migratedInvestments, oldState.investments);
+  assert.equal(loaded.state.investments.lastRecordedWeek, 9, 'bounded investment history seeds the compact idempotency watermark');
   assert.deepEqual(loaded.state.cityEvolution, oldState.cityEvolution);
   assert.deepEqual(loaded.state.calendar, oldState.calendar);
 });
@@ -369,6 +373,35 @@ test('schema 12 migrates finance ledger without inventing capital history and pr
 test('schema 13 rejects malformed finance ledgers and keeps the original save for recovery', () => {
   const state = snapshot(activeGame().state);
   state.finance.totals.investment = Infinity;
+  const raw = JSON.stringify({ version: SAVE_VERSION, cityId: city.id, state });
+  const storage = memoryStorage();
+  storage.setItem(SAVE_KEY, raw);
+
+  const loaded = loadGame(storage, city);
+  assert.equal(loaded.state, null);
+  assert.ok(loaded.error);
+  assert.equal(storage.getItem(SAVE_KEY), raw);
+  assert.equal(storage.getItem(`${SAVE_KEY}.recovery`), raw);
+});
+
+test('schema 13 restores the compact investment week watermark from bounded history', () => {
+  const state = snapshot(activeGame().state);
+  state.investments.weekly = [{ week: 17, active: 0, completed: 0, cancelled: 0, costs: 0, refunds: 0, maintenance: 500 }];
+  delete state.investments.lastRecordedWeek;
+  const storage = memoryStorage();
+  writeState(storage, state);
+
+  const loaded = loadGame(storage, city);
+  assert.equal(loaded.error, null);
+  assert.equal(loaded.state.investments.lastRecordedWeek, 17);
+  assert.equal(validateState(loaded.state, city), true);
+  assert.equal(JSON.parse(storage.getItem(SAVE_KEY)).state.investments.lastRecordedWeek, 17);
+});
+
+test('schema 13 rejects an investment watermark older than its recorded weekly ledger', () => {
+  const state = snapshot(activeGame().state);
+  state.investments.weekly = [{ week: 17, active: 0, completed: 0, cancelled: 0, costs: 0, refunds: 0, maintenance: 0 }];
+  state.investments.lastRecordedWeek = 0;
   const raw = JSON.stringify({ version: SAVE_VERSION, cityId: city.id, state });
   const storage = memoryStorage();
   storage.setItem(SAVE_KEY, raw);
