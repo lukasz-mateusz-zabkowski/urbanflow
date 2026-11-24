@@ -149,7 +149,16 @@ test('standard desktop game builds the ordered seven-stop OSM route, safely edit
   await expect(insertStop).toBeEnabled();
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('urbanflow.krakow.v2')).state.status)).toBe('playing');
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('urbanflow.krakow.v2')).state.paused)).toBe(true);
-  await insertStop.click({ force: true });
+  await insertStop.scrollIntoViewIfNeeded();
+  await expect(insertStop).toBeInViewport();
+  await page.evaluate(() => {
+    window.__routeInsertClickCount = 0;
+    document.addEventListener('click', event => {
+      if (event.target.closest('#lineDetail [data-action="insert-stop-line"]')) window.__routeInsertClickCount += 1;
+    }, { capture: true, once: true });
+  });
+  await insertStop.click();
+  expect(await page.evaluate(() => window.__routeInsertClickCount)).toBe(1);
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('urbanflow.krakow.v2')).state.selectedNodes.length)).toBe(8);
   await expect(page.locator('#draftStopList li')).toHaveCount(8);
   await expect(page.locator('#lineDetail [data-detail="route"]')).toHaveText(savedStopsText);
@@ -166,7 +175,10 @@ test('standard desktop game builds the ordered seven-stop OSM route, safely edit
   await page.locator(`#lineDetail [data-action="edit-line"][data-line="${lineId}"]`).click({ force: true });
   await page.locator('#lineDetail [data-edit-stop]').selectOption(targetId);
   await page.locator('#lineDetail [data-edit-segment]').selectOption('0');
-  await page.locator('#lineDetail [data-action="insert-stop-line"]').click({ force: true });
+  const confirmInsert = page.locator('#lineDetail [data-action="insert-stop-line"]');
+  await confirmInsert.scrollIntoViewIfNeeded();
+  await expect(confirmInsert).toBeInViewport();
+  await confirmInsert.click();
   const previewText = await page.locator('#createLineButton').innerText();
   await page.locator('#createLineButton').scrollIntoViewIfNeeded();
   await expect(page.locator('#createLineButton')).toBeInViewport();

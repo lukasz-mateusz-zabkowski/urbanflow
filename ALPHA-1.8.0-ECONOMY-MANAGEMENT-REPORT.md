@@ -2,7 +2,7 @@
 
 ## Status
 
-**Candidate status: pending final local live-map check and GitHub Actions.** This report records completed local verification; it does not claim a passing remote workflow until that workflow finishes for the pushed SHA.
+**Candidate status: pending fresh GitHub Actions after the browser-test interaction correction.** The first pushed implementation SHA had one browser-test failure; details and follow-up are recorded below. No merge, tag, release or deployment was performed.
 
 ## Candidate and scope
 
@@ -11,7 +11,7 @@
 - Feature branch: `feature/alpha-1.8.0-economy-management`
 - Save schema: 13 (required for persistent finance ledger and planning reserve)
 - Production and Raspberry Pi: not accessed or changed.
-- Ports 3101–3106: left untouched. Candidate port 3107 has not yet been started.
+- Ports 3101–3106: left untouched. Candidate runs on `http://127.0.0.1:3107/`, bound to loopback. `/health` reports `1.8.0-alpha` and source commit `3f18966d4d1bbe7a91cc30d494913122f5fda469` (the initial implementation commit; current pending changes affect only E2E interaction and this report).
 
 ## Finance model
 
@@ -33,11 +33,12 @@ Schema 12 migrates to 13 with an empty event history and `historyComplete: false
 
 - `npm ci`: passed (72 packages installed; 73 audited, 0 vulnerabilities at install).
 - `npm test`: **268 passed, 0 failed, 0 skipped**.
-- `npm run test:browser`: **39 passed** (4.5 minutes), including finance UI at 1920×1080, 1366×768, 390×844 and 360×800; full 12-step tutorial; Operations decision preview/apply; investments; passenger/city and routing; tram construction/edit/save/reload; local OSM graph views. Deterministic browser tests use local tile fixtures and are not evidence that the public tile service is reachable.
+- `npm run test:browser`: **39 passed** (5.5 minutes after the click correction), including finance UI at 1920×1080, 1366×768, 390×844 and 360×800; full 12-step tutorial; Operations decision preview/apply; investments; passenger/city and routing; tram construction/edit/save/reload; local OSM graph views. Deterministic browser tests use local tile fixtures and are not evidence that the public tile service is reachable.
 - `npm run audit:all`: passed, 0 vulnerabilities.
 - `npm run audit:production`: passed, 0 vulnerabilities.
 - `git diff --check`: passed.
-- Real OpenStreetMap tile request: **not yet run**; it will be tested separately against the local candidate server on 127.0.0.1:3107.
+- Real OpenStreetMap tile request: passed separately against the local candidate. Playwright observed 16 unique tile requests, all HTTP 200; a tile rendered at 256×256, with no browser page errors. This is one desktop check of the public tile endpoint, not an availability guarantee.
+- Live-map screenshot: `%TEMP%\urbanflow-alpha-1.8.0-live-osm\desktop-live-osm-1366x768.png`.
 
 ## Scenario and performance evidence
 
@@ -57,9 +58,15 @@ Finance UI screenshots are local test artifacts, not repository assets:
 
 `%TEMP%\urbanflow-alpha-1.8.0-finance\` (`desktop-1920x1080.png`, `desktop-1366x768.png`, `mobile-390x844.png`, `mobile-360x800.png`).
 
+## CI finding and correction
+
+GitHub Actions run [45385668354](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/45385668354) on implementation SHA `3f18966d4d1bbe7a91cc30d494913122f5fda469` completed with 5 of 6 jobs successful. Node 18, 20 and 22, security audit and container health passed. The browser job had 38/39 passes: its desktop route-edit test expected an inserted stop after a forced click, but observed 7 stops instead of 8. GitHub did not provide the failure trace artifact.
+
+The test used `force: true` without asserting that the insertion control was in the viewport after the editor's delayed panel scroll. It now scrolls the control into view, asserts visibility, uses a normal click, and records that the click reached the correct control before retaining the same 8-stop assertion. The exact desktop scenario passed five consecutive local repetitions after this change; the full local suite then passed 39/39. No application behavior or assertions were weakened. Requesting a rerun of only the failed GitHub job returned 403 (`Resource not accessible by integration`); a fresh full workflow is required after pushing the correction.
+
 ## Remaining checks
 
-- Start the committed candidate on `127.0.0.1:3107`, verify `/health` reports the exact commit and `1.8.0-alpha`, then run the independent real OSM tile check.
-- Push only this feature branch and record the six GitHub Actions job results for its final SHA.
+- Restart the local candidate after the final corrective commit so `/health` reports that exact branch SHA.
+- Push only this feature branch and record the six GitHub Actions results for its final SHA. Until all six are green, release readiness remains NO GO.
 - No merge, tag, release, deployment or production change is included in this work.
 
