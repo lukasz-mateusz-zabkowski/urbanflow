@@ -17,7 +17,7 @@ import { LAND_USE_TYPES, landUseDominantUse, landUseDirection, landUseLabel } fr
 import { INVESTMENT_CATALOG } from './investments.js?v=1';
 import { contextualHints, getOnboardingStep, onboardingProgress, onboardingStatus } from './onboarding.js?v=1';
 import { ATLAS_VIEWS, filterAndSortLines, loadAtlasPreferences, saveAtlasPreferences } from './atlas.js?v=1';
-import { compareOperationalDecision, fleetManagementSnapshot } from './operations.js?v=1';
+import { applyOperationalDecisionSafely, compareOperationalDecision, fleetManagementSnapshot, operationalDecisionFingerprint } from './operations.js?v=2';
 
 const $ = selector => document.querySelector(selector);
 const formatNumber = value => new Intl.NumberFormat('pl-PL').format(Math.round(Number(value) || 0));
@@ -66,6 +66,7 @@ export class UI {
     this.selectedLandUseDistrict = null;
     this.selectedInvestmentDistrict = null;
     this.opsDecisionPreviewed = false;
+    this.opsDecisionPreviewFingerprint = null;
     this.opsDecisionLineId = null;
     this.atlasPreferences = { view: 'transport', lineFilter: 'all', lineSort: 'load' };
     this.panelStorage = null;
@@ -110,11 +111,13 @@ export class UI {
       }
       if (button.id === 'opsDecisionPreviewButton') {
         this.opsDecisionPreviewed = true;
+        this.opsDecisionPreviewFingerprint = operationalDecisionFingerprint(this.game.state, $('#opsDecisionLine').value, this.operationalProposal());
         this.renderOperationsDashboard();
         return;
       }
       if (button.id === 'opsDecisionCancelButton') {
         this.opsDecisionPreviewed = false;
+        this.opsDecisionPreviewFingerprint = null;
         this.renderOperationsDashboard();
         return;
       }
@@ -338,19 +341,23 @@ export class UI {
         this.opsDecisionLineId = event.target.value || null;
         this.selectedLineId = this.opsDecisionLineId;
         this.opsDecisionPreviewed = false;
+        this.opsDecisionPreviewFingerprint = null;
         this.map.highlightLine?.(this.selectedLineId);
         this.renderNetwork();
       } else if (event.target.matches('#opsDecisionKind')) {
         this.opsDecisionPreviewed = false;
+        this.opsDecisionPreviewFingerprint = null;
         this.renderOperationsDashboard();
       } else if (event.target.matches('#opsDecisionProfile')) {
         this.opsDecisionPreviewed = false;
+        this.opsDecisionPreviewFingerprint = null;
       }
     }, { signal });
     document.addEventListener('input', event => {
       if (event.target.matches('#opsDecisionFrequency')) {
         this.setText('opsDecisionFrequencyValue', `${decimal(event.target.value)} kursów/h`);
         this.opsDecisionPreviewed = false;
+        this.opsDecisionPreviewFingerprint = null;
         this.renderOperationsDecisionResult();
       }
       if (event.target.matches('[data-frequency]')) $('#frequencyValue').textContent = `${decimal(event.target.value)} kursów/h`;
@@ -835,14 +842,22 @@ export class UI {
 
   renderOperationsDecisionResult() {
     const lineId = $('#opsDecisionLine')?.value;
+    const proposal = this.operationalProposal();
     const preview = this.opsDecisionPreviewed
-      ? compareOperationalDecision(this.game.state, lineId, this.operationalProposal()) : null;
+      ? compareOperationalDecision(this.game.state, lineId, proposal) : null;
+    const stale = Boolean(this.opsDecisionPreviewed && this.opsDecisionPreviewFingerprint
+      && this.opsDecisionPreviewFingerprint !== operationalDecisionFingerprint(this.game.state, lineId, proposal));
     const result = $('#opsDecisionPreview');
     $('#opsDecisionCancelButton').hidden = !this.opsDecisionPreviewed;
     $('#opsDecisionApplyButton').hidden = !this.opsDecisionPreviewed || !preview?.ok;
-    $('#opsDecisionApplyButton').disabled = this.game.state.status !== 'playing' || !preview?.ok;
+    $('#opsDecisionApplyButton').disabled = this.game.state.status !== 'playing' || !preview?.ok || stale;
+    $('#opsDecisionPreviewButton').textContent = stale ? 'Porównaj ponownie' : 'Porównaj wariant';
     if (!this.opsDecisionPreviewed) {
       this.setHtml('opsDecisionPreview', '<p>Wybierz linię i wariant, a następnie uruchom porównanie.</p>');
+      return;
+    }
+    if (stale) {
+      this.setHtml('opsDecisionPreview', '<p class="operations-error">Stan kampanii zmienił się od podglądu. Porównaj wariant ponownie przed otwarciem potwierdzenia.</p>');
       return;
     }
     if (!preview?.ok) {
@@ -866,26 +881,28 @@ export class UI {
   async applyOperationalDecision() {
     const lineId = $('#opsDecisionLine').value;
     const proposal = this.operationalProposal();
-    const preview = compareOperationalDecision(this.game.state, lineId, proposal);
-    if (!preview.ok || this.game.state.status !== 'playing') {
-      this.opsDecisionPreviewed = true;
-      this.renderOperationsDashboard();
+    const result = await applyOperationalDecisionSafely(this.game, lineId, proposal, preview => {
+      const afterBudget = this.game.state.budget - preview.oneTimeCost;
+      const message = preview.description + '. Zmiana miejsc/h: ' + (preview.delta.capacityPerHour >= 0 ? '+' : '') + formatNumber(preview.delta.capacityPerHour)
+        + '; modelowy koszt operacyjny zmieni si\u0119 o ' + money(preview.delta.costPerHour) + '/h. '
+        + (preview.oneTimeCost ? 'Zakup obni\u017Cy bud\u017Cet z ' + money(this.game.state.budget) + ' do ' + money(afterBudget) + '.' : 'Nie ma dodatkowego kosztu zakupu.')
+        + ' Wyniki pasa\u017Cerskie nie s\u0105 prognozowane. Zatwierdzi\u0107 przy u\u017Cyciu mechaniki kampanii?';
+      return confirmAction(message, 'Zatwierd\u017A wariant');
+    }, this.opsDecisionPreviewFingerprint);
+
+    if (!result?.ok) {
+      if (!result?.cancelled) {
+        this.opsDecisionPreviewed = false;
+        this.opsDecisionPreviewFingerprint = null;
+        this.renderOperationsDashboard();
+        this.toast(result?.reason || result?.message || 'Stan kampanii si\u0119 zmieni\u0142. Wykonaj nowy podgl\u0105d decyzji.', 'warn');
+      }
       return;
-    }
-    const afterBudget = this.game.state.budget - preview.oneTimeCost;
-    const message = `${preview.description}. Zmiana miejsc/h: ${preview.delta.capacityPerHour >= 0 ? '+' : ''}${formatNumber(preview.delta.capacityPerHour)}; modelowy koszt operacyjny zmieni się o ${money(preview.delta.costPerHour)}/h. ${preview.oneTimeCost ? `Zakup obniży budżet z ${money(this.game.state.budget)} do ${money(afterBudget)}.` : 'Nie ma dodatkowego kosztu zakupu.'} Wyniki pasażerskie nie są prognozowane. Zatwierdzić przy użyciu mechaniki kampanii?`;
-    if (!await confirmAction(message, 'Zatwierdź wariant')) return;
-    let result;
-    if (proposal.kind === 'assign') result = this.game.assignVehicle(lineId);
-    else if (proposal.kind === 'remove') result = this.game.unassignVehicle(lineId);
-    else if (proposal.kind === 'buy') result = this.game.buyVehicle(lineId);
-    else if (proposal.kind === 'frequency') result = this.game.setFrequency(lineId, proposal.value);
-    else if (proposal.kind === 'profile') {
-      result = this.game.setTimetableProfile(lineId, proposal.profileId, gameClock(this.game.state.elapsedMinutes, this.game.state.calendar).dayType);
     }
     if (this.checkResult(result)) {
       this.opsDecisionPreviewed = false;
-      this.toast('Decyzja operacyjna zatwierdzona przez istniejący model gry. Obserwuj jej rzeczywiste wyniki.');
+      this.opsDecisionPreviewFingerprint = null;
+      this.toast('Decyzja operacyjna zatwierdzona przez istniej\u0105cy model gry. Obserwuj jej rzeczywiste wyniki.');
       this.renderNetwork();
     }
   }

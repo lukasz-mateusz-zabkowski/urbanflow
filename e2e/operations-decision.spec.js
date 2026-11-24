@@ -34,10 +34,11 @@ for (const viewport of [
     await page.locator('#operationsFleetLines [data-action="open-line"]').first().click();
     await expect(page.locator('#lineDetail')).toBeVisible();
 
-    const before = await page.evaluate(() => {
+    let before = await page.evaluate(() => {
       const state = JSON.parse(localStorage.getItem('urbanflow.krakow.v2')).state;
       return { budget: state.budget, carried: state.carried, generated: state.generated,
-        networkVersion: state.networkVersion, line: structuredClone(state.lines[0]), rng: state.rngState };
+        networkVersion: state.networkVersion, line: structuredClone(state.lines[0]), rng: state.rngState,
+        elapsedMinutes: state.elapsedMinutes };
     });
     await page.locator('#opsDecisionKind').selectOption('frequency');
     await page.locator('#opsDecisionFrequency').evaluate(input => {
@@ -49,11 +50,25 @@ for (const viewport of [
     const duringPreview = await page.evaluate(() => {
       const state = JSON.parse(localStorage.getItem('urbanflow.krakow.v2')).state;
       return { budget: state.budget, carried: state.carried, generated: state.generated,
-        networkVersion: state.networkVersion, line: structuredClone(state.lines[0]), rng: state.rngState };
+        networkVersion: state.networkVersion, line: structuredClone(state.lines[0]), rng: state.rngState,
+        elapsedMinutes: state.elapsedMinutes };
     });
     expect(duringPreview).toEqual(before);
+    await page.locator('#pauseButton').click();
+    await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('urbanflow.krakow.v2')).state.elapsedMinutes), { timeout: 10000 })
+      .toBeGreaterThan(before.elapsedMinutes);
+    await expect(page.locator('#opsDecisionApplyButton')).toBeDisabled();
+    await expect(page.locator('#opsDecisionPreview')).toContainText('Stan kampanii zmienił się od podglądu');
+    await page.locator('#pauseButton').click();
+    await page.locator('#opsDecisionPreviewButton').click();
+    await expect(page.locator('#opsDecisionApplyButton')).toBeEnabled();
     await page.locator('#opsDecisionCancelButton').click();
-    expect(await page.evaluate(() => JSON.parse(localStorage.getItem('urbanflow.krakow.v2')).state.budget)).toBe(before.budget);
+    before = await page.evaluate(() => {
+      const state = JSON.parse(localStorage.getItem('urbanflow.krakow.v2')).state;
+      return { budget: state.budget, carried: state.carried, generated: state.generated,
+        networkVersion: state.networkVersion, line: structuredClone(state.lines[0]), rng: state.rngState,
+        elapsedMinutes: state.elapsedMinutes };
+    });
 
     await page.locator('#opsDecisionKind').selectOption('assign');
     await page.locator('#opsDecisionPreviewButton').click();

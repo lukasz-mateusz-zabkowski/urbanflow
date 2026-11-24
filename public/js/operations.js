@@ -108,6 +108,62 @@ export function compareOperationalDecision(state, lineId, proposal) {
   };
 }
 
+/** Captures only campaign state that can change the displayed proposal or its safety checks. */
+export function operationalDecisionFingerprint(state, lineId, proposal) {
+  const line = (state?.lines || []).find(item => item.id === lineId) || null;
+  const type = line?.type;
+  const city = state?.city;
+  return JSON.stringify({
+    proposal,
+    status: state?.status,
+    budget: state?.budget,
+    elapsedMinutes: state?.elapsedMinutes,
+    calendar: state?.calendar,
+    rngState: state?.rngState,
+    networkVersion: state?.networkVersion,
+    line,
+    sameTypeAssignments: type ? (state?.lines || []).filter(item => item.type === type).map(item => [item.id, item.vehicles]) : [],
+    fleet: type ? state?.fleet?.[type] ?? null : null,
+    city: city ? {
+      points: (city.points || []).filter(point => (line?.stops || []).includes(point.id)).map(point => [point.id, point.lat, point.lng]),
+      railCorridors: city.railCorridors || []
+    } : null,
+    cityEvents: state?.cityEvents || []
+  });
+}
+
+/**
+ * Confirms and applies a proposal only if the exact campaign inputs used for its
+ * preview remain unchanged for the entire async confirmation interval.
+ */
+export async function applyOperationalDecisionSafely(game, lineId, proposal, confirm, expectedFingerprint) {
+  if (!game?.state || typeof confirm !== 'function') return { ok: false, reason: 'Brak aktywnej kampanii lub potwierdzenia.' };
+  const initialFingerprint = operationalDecisionFingerprint(game.state, lineId, proposal);
+  const initialPreview = compareOperationalDecision(game.state, lineId, proposal);
+  if (!initialPreview.ok) return { ...initialPreview, stale: false };
+  if (!expectedFingerprint || expectedFingerprint !== initialFingerprint) {
+    return { ok: false, stale: true, reason: 'Stan kampanii zmienił się od ostatniego podglądu.' };
+  }
+
+  if (!await confirm(initialPreview)) return { ok: false, cancelled: true };
+
+  const currentFingerprint = operationalDecisionFingerprint(game.state, lineId, proposal);
+  const currentPreview = compareOperationalDecision(game.state, lineId, proposal);
+  if (currentFingerprint !== initialFingerprint || !currentPreview.ok) {
+    return { ok: false, stale: true, reason: 'Stan kampanii zmienił się podczas potwierdzania. Sprawdź i porównaj wariant ponownie.' };
+  }
+
+  let result;
+  if (proposal.kind === 'assign') result = game.assignVehicle(lineId);
+  else if (proposal.kind === 'remove') result = game.unassignVehicle(lineId);
+  else if (proposal.kind === 'buy') result = game.buyVehicle(lineId);
+  else if (proposal.kind === 'frequency') result = game.setFrequency(lineId, proposal.value);
+  else if (proposal.kind === 'profile') result = game.setTimetableProfile(lineId, proposal.profileId, initialPreview.dayType);
+  else return { ok: false, reason: 'Nieznany wariant operacyjny.' };
+
+  return result?.ok ? { ...result, preview: initialPreview } : result || { ok: false, reason: 'Nie udało się zatwierdzić wariantu.' };
+}
+
 export function fleetManagementSnapshot(state) {
   const clock = gameClock(state.elapsedMinutes || 0, state.calendar);
   const types = Object.entries(TRANSPORT_TYPES).map(([id, type]) => {
