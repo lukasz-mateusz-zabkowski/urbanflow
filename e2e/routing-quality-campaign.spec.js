@@ -50,7 +50,9 @@ async function startPreparedGame(page, viewport, mobile = false) {
   await expect(page.locator('#game')).not.toHaveClass(/is-hidden/);
   await expect(page.locator('#map.leaflet-container')).toBeVisible();
   await expect.poll(() => page.locator('#map .leaflet-tile-loaded').count()).toBeGreaterThan(0);
-  await page.locator('#pauseButton').click({ force: true });
+  const pauseButton = page.locator('#pauseButton');
+  if (await pauseButton.getAttribute('aria-label') !== 'Wznów grę') await pauseButton.click({ force: true });
+  await expect(pauseButton).toHaveAttribute('aria-label', 'Wznów grę');
   if (mobile) {
     const panelToggle = page.locator('#mobilePanelButton');
     if (await panelToggle.getAttribute('aria-expanded') !== 'true') await panelToggle.tap();
@@ -143,7 +145,12 @@ test('standard desktop game builds the ordered seven-stop OSM route, safely edit
   const editStop = page.locator('#lineDetail [data-edit-stop]');
   await editStop.selectOption(targetId);
   await page.locator('#lineDetail [data-edit-segment]').selectOption('0');
-  await page.locator('#lineDetail [data-action="insert-stop-line"]').click({ force: true });
+  const insertStop = page.locator('#lineDetail [data-action="insert-stop-line"]');
+  await expect(insertStop).toBeEnabled();
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('urbanflow.krakow.v2')).state.status)).toBe('playing');
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('urbanflow.krakow.v2')).state.paused)).toBe(true);
+  await insertStop.click({ force: true });
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('urbanflow.krakow.v2')).state.selectedNodes.length)).toBe(8);
   await expect(page.locator('#draftStopList li')).toHaveCount(8);
   await expect(page.locator('#lineDetail [data-detail="route"]')).toHaveText(savedStopsText);
   await expect(page.locator('#budgetStat')).toHaveText(savedBudget);

@@ -66,6 +66,7 @@ The main measurable cost is the additional bounded weekly history, which makes t
 | Live OSM tile verification | PASS; 7/7 successful tile responses, no page errors |
 | Local app on `127.0.0.1:3106` | PASS; health version and SHA match candidate; loopback listener |
 | GitHub Actions (six jobs) | PASS on branch SHA `cb0eefa4edd279740357666951b0e181b8ddbe6e`; [run 45367827598](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/45367827598) |
+| Final main workflow before test hardening | 5/6 jobs passed; Playwright failed the desktop stop-insertion assertion (expected 8 draft stops, observed 7). The test helper now confirms the paused state and saved draft mutation. The focused test passed 3/3 repetitions and the full local suite passed 35/35; CI for the correction is pending. |
 
 Living City focused Playwright coverage has passed at 1366x768, 390x844 and 360x800 during development. It checks selecting a modeled area, its profile, two-area comparison, map selection, transition to planning, no horizontal overflow and no page errors. This is not a physical-phone test.
 
@@ -88,4 +89,4 @@ The final real OSM run used the 1.7.0 application code commit `d77a996cdcff2577f
 
 ## Release decision
 
-**Local validation: GO. Candidate CI: GO for code/report SHA `cb0eefa4edd279740357666951b0e181b8ddbe6e`. This report-only update is followed by a separate CI run for its new branch SHA.**
+**Local validation: GO. Integration remains pending until the corrected candidate and resulting main both pass all six GitHub Actions jobs.**
