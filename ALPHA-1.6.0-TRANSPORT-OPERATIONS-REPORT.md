@@ -2,14 +2,14 @@
 
 ## Status
 
-**GO for technical review.** Local Node, Playwright, audit, benchmark, and real OSM checks pass. All six GitHub Actions jobs passed for the implementation commit. This report is committed after that implementation SHA; the post-report workflow is being verified separately. No merge, tag, release, production access, or Raspberry Pi operation was performed.
+**GO for technical review.** Local Node, Playwright, audit, benchmark, and real OSM checks pass. All six GitHub Actions jobs passed for both the implementation commit and the report-only branch HEAD recorded below. No merge, tag, release, production access, or Raspberry Pi operation was performed.
 
 ## Branch and commits
 
 - Base: `v1.5.0-alpha` / `232d9c339e0d043ad2671eae163c39ddc34bd0c5`.
 - Implementation commit: `bc810bbd0f4008ea0ee24d47ecff2da572fbfa09` on `feature/alpha-1.6.0-transport-operations`.
 - Implementation branch was pushed to GitHub and matched this commit before this documentation-only report commit.
-- Final branch HEAD is the documentation-only commit directly after the implementation SHA; this does not change the tested source tree.
+- Report-only branch HEAD tested in GitHub Actions: `588e1314aa5d2f13120eb520c98b10b9035647ce`; it follows the implementation commit and changes no application or test source.
 - The work is isolated in `urbanflow-alpha-1.6.0`; the original worktree and its untracked user documents were not altered.
 
 ## What changed
@@ -55,10 +55,10 @@ The baseline is a proxy measured in the same environment, not a historical 1.5.0
 
 - Run: [Tests #45345381008](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/45345381008) for `bc810bbd0f4008ea0ee24d47ecff2da572fbfa09` — **success**.
 - `test (18)`, `test (20)`, `test (22)`, `browser-test`, `security-audit`, and `container-health`: all succeeded.
-- The report-only commit receives its own workflow; its status will be confirmed after pushing.
+- Run: [Tests #45345892456](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/45345892456) for report-only HEAD `588e1314aa5d2f13120eb520c98b10b9035647ce` — **success**, all six jobs.
 
 ## Limits and next step
 
 The simulator compares operational service/cost metrics at one shared moment. It does not run two future passenger simulations and cannot claim ridership, revenue, or profitability improvement. Observed costs are withheld where history is incomplete. Desktop-browser touch emulation is not a physical phone test. The benchmark's 1.5 baseline is a model-calculation proxy, not a prior release measurement.
 
-**Recommendation: GO for technical review after the report-only commit's GitHub Actions run also succeeds.**
+**Recommendation: GO for technical review.**
