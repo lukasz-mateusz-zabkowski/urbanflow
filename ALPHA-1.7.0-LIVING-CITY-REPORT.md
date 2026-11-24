@@ -65,7 +65,7 @@ The main measurable cost is the additional bounded weekly history, which makes t
 | `git diff --check` | PASS |
 | Live OSM tile verification | PASS; 7/7 successful tile responses, no page errors |
 | Local app on `127.0.0.1:3106` | PASS; health version and SHA match candidate; loopback listener |
-| GitHub Actions (six jobs) | pending push and run for the final branch SHA |
+| GitHub Actions (six jobs) | PASS on branch SHA `cb0eefa4edd279740357666951b0e181b8ddbe6e`; [run 45367827598](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/45367827598) |
 
 Living City focused Playwright coverage has passed at 1366x768, 390x844 and 360x800 during development. It checks selecting a modeled area, its profile, two-area comparison, map selection, transition to planning, no horizontal overflow and no page errors. This is not a physical-phone test.
 
@@ -76,7 +76,7 @@ Screenshots are kept outside the repository at `%LOCALAPPDATA%\Temp\urbanflow-al
 - `mobile-360x800-living-city.png`
 - `desktop-live-osm-1366x768.png`
 
-The real OSM check must be repeated against the final code SHA before delivery. The prior run made 7 unique tile requests, all returned 200, and at least one tile rendered with no page errors. The final run's health SHA and listener are recorded after restart below. No physical-phone test was performed.
+The final real OSM run used the 1.7.0 application code commit `d77a996cdcff2577f839d30994a3a5567fdbde93` on `http://127.0.0.1:3106/`. `/health` returned version `1.7.0-alpha` and that code SHA. Seven unique OpenStreetMap tile requests returned 200; one rendered tile was confirmed, with no browser page errors. The server listens on `127.0.0.1:3106`; ports 3101-3105 were not touched. No physical-phone test was performed.
 
 ## Known limitations
 
@@ -88,4 +88,4 @@ The real OSM check must be repeated against the final code SHA before delivery. 
 
 ## Release decision
 
-**Local validation: GO. Overall delivery: pending all six GitHub Actions jobs on the final pushed branch SHA.**
+**Local validation: GO. Candidate CI: GO for code/report SHA `cb0eefa4edd279740357666951b0e181b8ddbe6e`. This report-only update is followed by a separate CI run for its new branch SHA.**
