@@ -2,7 +2,7 @@
 
 ## Status
 
-**Candidate status: GO for code/test SHA `ca28f593fe2ab23b12ceab77afbf94eccd0cd2d5`.** All six GitHub Actions jobs passed on that SHA. The report-only follow-up commit will trigger a separate workflow; its result is not implied by the earlier run. No merge, tag, release or deployment was performed.
+**Candidate status: GO for code/test SHA `ca28f593fe2ab23b12ceab77afbf94eccd0cd2d5`.** All six GitHub Actions jobs passed on that SHA, and all six also passed on report-bearing branch SHA `0225436edeca7be6253bae40441b35aa9a22b722`. This report refresh is documentation-only; its triggered workflow is verified separately before final handoff. No merge, tag, release or deployment was performed.
 
 ## Candidate and scope
 
@@ -66,8 +66,10 @@ The test used `force: true` without asserting that the insertion control was in 
 
 Fresh workflow [45388428914](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/45388428914) on code/test SHA `ca28f593fe2ab23b12ceab77afbf94eccd0cd2d5`: all six jobs succeeded — `test (18)`, `test (20)`, `test (22)`, `browser-test`, `security-audit`, `container-health`.
 
+Workflow [45389052929](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/45389052929) on report-bearing SHA `0225436edeca7be6253bae40441b35aa9a22b722` also passed all six jobs.
+
 ## Final branch handling
 
-- The report-only follow-up will be pushed to the feature branch. It does not change application or test code; a new six-job Actions run is still required on that resulting HEAD.
+- The report refresh is documentation-only. Its final branch SHA and six-job workflow result are recorded in the handoff summary; no application, test or campaign code changes follow the successful code/test candidate.
 - No merge, tag, release, deployment or production change is included in this work.
 
