@@ -21,6 +21,7 @@ for (const viewport of [
     await page.locator('#startKrakow').click();
     await expect(page.locator('#map.leaflet-container')).toBeVisible();
     if (viewport.width <= 760) await page.locator('#mobilePanelButton').click();
+    await page.locator('[data-action="atlas-view"][data-view="development"]').click();
     await page.locator('[data-action="analytics-mode"][data-mode="cityEvolution"]').click();
     await expect(page.locator('#cityEvolutionPanel')).toBeVisible();
     await expect(page.locator('.living-city-legend')).toContainText('wzrost mieszkańców');

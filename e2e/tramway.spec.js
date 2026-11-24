@@ -56,6 +56,8 @@ async function openUnlockedTram(page, viewport, mobile = false, { includeExistin
   await page.goto('http://127.0.0.1:3140/', { waitUntil: 'domcontentloaded' });
   await expect(page.locator('#map')).toBeVisible({ timeout: 60000 });
   if (mobile) await page.locator('#mobilePanelButton').tap();
+  const planning = page.locator('[data-action="atlas-view"][data-view="planning"]');
+  if (mobile) await planning.tap(); else await planning.click();
   // The fixture opens an existing tram in edit mode, so transport switching is intentionally disabled.
   if (includeExistingTram) await expect(page.locator('[data-type="tram"]')).toHaveAttribute('aria-pressed', 'true');
   return errors;

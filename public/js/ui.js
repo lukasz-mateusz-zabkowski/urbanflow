@@ -70,9 +70,18 @@ export class UI {
     this.opsDecisionPreviewed = false;
     this.opsDecisionPreviewFingerprint = null;
     this.opsDecisionLineId = null;
+    this.activeWorkspaceLayout = null;
+    this.activeWorkspaceView = null;
+    this.analyticsModesSignature = '';
     this.atlasPreferences = { view: 'transport', lineFilter: 'all', lineSort: 'load' };
     this.panelStorage = null;
     try { this.panelStorage = window.localStorage; this.atlasPreferences = loadAtlasPreferences(this.panelStorage); } catch { /* Preferences are optional. */ }
+    const hasRouteDraft = Boolean(game.state.editingLineId)
+      || (game.state.selectedNodes?.length || 0) >= 2
+      || (game.state.tramControlPoints?.length || 0) > 0;
+    if (hasRouteDraft && this.atlasPreferences.view !== 'planning') {
+      this.atlasPreferences = saveAtlasPreferences({ ...this.atlasPreferences, view: 'planning' }, this.panelStorage);
+    }
     this.setupPanelWidth();
     this.setupTutorialPreviewTracking();
     this.bind();
@@ -112,7 +121,7 @@ export class UI {
       if (route) {
         const result = this.onStarterSelect ? this.onStarterSelect(route) : this.game.selectStarterRoute(route);
         if (result?.ok === false) this.toast(result.message, 'warn');
-        else { this.openPanel(); this.scrollToBuild(); }
+        else { this.setAtlasView('planning'); this.openPanel(); this.scrollToBuild(); }
         return;
       }
       if (button.id === 'opsDecisionPreviewButton') {
@@ -228,6 +237,7 @@ export class UI {
         this.openPanel(); this.scrollToBuild(); return;
       }
       if (action === 'insert-stop-line') {
+        this.setAtlasView('planning', { updateLayer: false });
         const root = $('#lineDetail');
         const segmentIndex = Number(root.querySelector('[data-edit-segment]').value);
         const stopId = root.querySelector('[data-edit-stop]').value;
@@ -500,6 +510,13 @@ export class UI {
   selectPlace(id) {
     this.selectedPlaceId = id;
     this.renderPlaceProfile();
+    const tutorialStep = getOnboardingStep(this.game);
+    if (tutorialStep && ['first-goal', 'plan-bus', 'review-cost', 'build-line'].includes(tutorialStep.id)
+      && this.atlasPreferences.view !== 'planning') {
+      this.atlasPreferences = saveAtlasPreferences({ ...this.atlasPreferences, view: 'planning' }, this.panelStorage);
+      this.render();
+      this.openPanel();
+    }
     if (window.matchMedia('(max-width: 760px)').matches) {
       this.openPanel(); this.later(() => $('#placeProfile').scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 60);
     }
@@ -773,23 +790,94 @@ export class UI {
         : mode === 'profit' ? 'operations' : null;
     if (view) this.atlasPreferences = saveAtlasPreferences({ ...this.atlasPreferences, view }, this.panelStorage);
     const changedLayer = this.game.state.analyticsMode !== mode;
-    this.checkResult(this.game.setAnalyticsMode(mode));
-    if (!changedLayer) this.render();
+    if (!changedLayer) { this.render(); return; }
+
+    // Layer changes affect map styling, diagnostics and a small set of panels.
+    // Avoid rebuilding campaign, fleet and line-list DOM for this view-only action.
+    const tutorial = this.game.state.preferences?.tutorialActions;
+    const tutorialBefore = tutorial ? `${tutorial.opportunities}:${tutorial.investment}` : '';
+    const onChange = this.game.events.onChange;
+    let result;
+    try {
+      this.game.events.onChange = null;
+      result = this.game.setAnalyticsMode(mode);
+    } finally {
+      this.game.events.onChange = onChange;
+    }
+    if (!this.checkResult(result)) return;
+    const clock = gameClock(this.game.state.elapsedMinutes, this.game.state.calendar);
+    const points = this.game.visiblePoints();
+    this.renderAnalytics(clock.minuteOfDay);
+    this.renderCityEvolutionPanel(points);
+    this.renderLandUsePanel(points);
+    this.renderInvestmentsPanel(points);
+    if (tutorial && tutorialBefore !== `${tutorial.opportunities}:${tutorial.investment}`) {
+      this.renderTutorial(this.game.availableTypes(), this.game.previewLine());
+    }
+    this.map.render(points, this.game.state);
+    this.map.highlightLine?.(this.selectedLineId);
   }
 
   renderAtlasNavigation() {
     const active = this.atlasPreferences.view;
-    this.setHtml('atlasViewNav', ATLAS_VIEWS.map(view => `<button type="button" data-action="atlas-view" data-view="${view.id}" class="${active === view.id ? 'active' : ''}" aria-pressed="${active === view.id}" title="${view.description}">${view.label}</button>`).join(''));
+    const nav = $('#atlasViewNav');
+    const navNeedsBuild = nav.children.length !== ATLAS_VIEWS.length
+      || ATLAS_VIEWS.some((view, index) => nav.children[index]?.dataset.view !== view.id);
+    if (navNeedsBuild) {
+      this.setHtml('atlasViewNav', ATLAS_VIEWS.map(view => `<button type="button" data-action="atlas-view" data-view="${view.id}" aria-pressed="false" title="${view.description}">${view.label}</button>`).join(''));
+    }
     document.documentElement.dataset.atlasView = active;
-    $('#buildSection').hidden = false;
-    $('.fleet-section').hidden = false;
-    $('.progress-section').hidden = false;
+    const selected = ATLAS_VIEWS.find(view => view.id === active) || ATLAS_VIEWS[0];
+    const index = ATLAS_VIEWS.indexOf(selected) + 1;
+    if (this.activeWorkspaceView !== active) {
+      nav.querySelectorAll('[data-action="atlas-view"]').forEach(button => {
+        const selectedView = button.dataset.view === active;
+        button.classList.toggle('active', selectedView);
+        button.setAttribute('aria-pressed', String(selectedView));
+      });
+      this.setText('atlasWorkspaceEyebrow', selected.eyebrow);
+      this.setText('atlasWorkspaceTitle', selected.title);
+      this.setText('atlasWorkspaceDescription', selected.description);
+      this.setText('atlasWorkspaceIndex', `${String(index).padStart(2, '0')} / ${String(ATLAS_VIEWS.length).padStart(2, '0')}`);
+      $('#buildPanel').setAttribute('aria-label', `${selected.title} — ${this.game.city.name}`);
+      this.activeWorkspaceView = active;
+    }
+    // Move task modules only when the workspace changes. Reordering these DOM
+    // nodes on every simulation render caused avoidable layout work.
+    if (this.activeWorkspaceLayout !== active) {
+      const campaign = $('.campaign-card');
+      const progress = $('.progress-section');
+      ['.analytics-section', '.fleet-section', '#buildSection', '.network-section'].forEach(selector => {
+        const section = $(selector);
+        if (section && progress) progress.before(section);
+      });
+      const prioritySections = {
+        transport: ['.network-section', '.analytics-section'],
+        planning: ['#buildSection', '.network-section'],
+        passengers: ['.analytics-section'],
+        development: ['.analytics-section'],
+        operations: ['.analytics-section', '.fleet-section', '.network-section'],
+      }[active] || [];
+      prioritySections.forEach(selector => {
+        const section = $(selector);
+        if (section && campaign) campaign.before(section);
+      });
+      this.activeWorkspaceLayout = active;
+    }
+    $('#buildSection').hidden = active !== 'planning';
+    $('.analytics-section').hidden = active === 'planning';
+    $('.fleet-section').hidden = active !== 'operations';
+    $('.progress-section').hidden = active !== 'planning';
+    $('.network-section').hidden = !['transport', 'planning', 'operations'].includes(active);
+    $('.analytics-section > .section-title').hidden = active === 'planning';
+    $('#analyticsModes').hidden = active === 'planning';
+    $('#networkLegend').hidden = active === 'planning';
     $('#operationsDashboard').hidden = active !== 'operations';
-    $('.network-problems').hidden = false;
-    $('.network-history').hidden = false;
-    $('.diagnostic-grid').hidden = false;
-    $('.event-panel').hidden = false;
-    $('.mobility-panel').hidden = false;
+    $('.network-problems').hidden = !['transport', 'passengers', 'operations'].includes(active);
+    $('.network-history').hidden = !['passengers', 'operations'].includes(active);
+    $('.analytics-section > .diagnostic-grid').hidden = active !== 'passengers';
+    $('.event-panel').hidden = !['transport', 'passengers'].includes(active);
+    $('.mobility-panel').hidden = active !== 'passengers';
     const mode = this.game.state.analyticsMode;
     $('#cityEvolutionPanel').hidden = active !== 'development' || mode !== 'cityEvolution';
     $('#landUsePanel').hidden = active !== 'development' || mode !== 'landUse';
@@ -1014,9 +1102,26 @@ export class UI {
     const mobilityFailures = mobility.failures.filter(item => item.passengers > 0);
     this.setHtml('mobilityFailures', mobilityFailures.length ? mobilityFailures.map(item => `<li><span>${escapeHtml(FAILURE_LABELS[item.reason] || item.reason)}</span><b>${formatNumber(item.passengers)}</b></li>`).join('') : '<li class="empty-mini">Brak zarejestrowanych niepowodzeń.</li>');
     const allModes = [['off', 'Zwykła'], ['demand', 'Popyt'], ['flow', 'Przewozy'], ['overload', 'Przeciążenia'], ['queues', 'Kolejki'], ['unmet', 'Braki popytu'], ['profit', 'Rentowność'], ['load', 'Odcinki'], ['travel', 'Czas'], ['access', 'Dostępność'], ['cityEvolution', 'Rozwój miasta'], ['landUse', 'Zagospodarowanie'], ['investments', 'Inwestycje']];
-    const modes = allModes;
+    const workspaceModes = {
+      transport: ['off', 'overload', 'profit', 'load'],
+      planning: ['off'],
+      passengers: ['off', 'flow', 'overload', 'queues', 'unmet', 'load', 'travel', 'demand'],
+      development: ['off', 'access', 'cityEvolution', 'landUse', 'investments'],
+      operations: ['off', 'profit', 'overload', 'load']
+    };
+    const modes = allModes.filter(([id]) => (workspaceModes[this.atlasPreferences.view] || workspaceModes.transport).includes(id));
     const modeTitles = { off: 'Wyłącz warstwę analityczną', demand: 'Potencjał szacunkowy i wygenerowane podróże', flow: 'Zaobserwowane obciążenie pojazdów', overload: 'Podświetl odcinki o wysokim obciążeniu', queues: 'Liczba oczekujących na punktach', unmet: 'Zgromadzone niezrealizowane próby', profit: 'Obserwowany bilans linii', load: 'Wykorzystanie pojemności odcinków', travel: 'Czas oczekiwania', access: 'Dostępność punktów', cityEvolution: 'Modelowane zmiany obszarów miasta i ich dostępności', landUse: 'Model zagospodarowania i intensywności obszarów', investments: 'Planowanie i obserwacja projektów miejskich' };
-    this.setHtml('analyticsModes', modes.map(([id, label]) => `<button type="button" data-action="analytics-mode" data-mode="${id}" class="${state.analyticsMode === id ? 'active' : ''}" aria-pressed="${state.analyticsMode === id}" title="${modeTitles[id]}">${label}</button>`).join(''));
+    const modesSignature = `${this.atlasPreferences.view}:${modes.map(([id]) => id).join(',')}`;
+    if (this.analyticsModesSignature !== modesSignature) {
+      this.setHtml('analyticsModes', modes.map(([id, label]) => `<button type="button" data-action="analytics-mode" data-mode="${id}" class="${state.analyticsMode === id ? 'active' : ''}" aria-pressed="${state.analyticsMode === id}" title="${modeTitles[id]}">${label}</button>`).join(''));
+      this.analyticsModesSignature = modesSignature;
+    } else {
+      $('#analyticsModes').querySelectorAll('[data-action="analytics-mode"]').forEach(button => {
+        const selected = button.dataset.mode === state.analyticsMode;
+        button.classList.toggle('active', selected);
+        button.setAttribute('aria-pressed', String(selected));
+      });
+    }
     const legends = { demand: 'Popyt potencjalny jest estymacją modelu; obserwowane wygenerowane podróże pochodzą z symulacji.', flow: 'Grubość pokazuje zaobserwowane obciążenie pojazdów; zielony <65%, pomarańczowy 65–94%, czerwony ≥95%. To wykorzystanie miejsc, nie licznik przejazdów na segmencie.', overload: 'Czerwony odcinek osiągnął co najmniej 95% zaobserwowanego obciążenia.', queues: 'Rozmiar punktu pokazuje liczbę pasażerów aktualnie oczekujących.', unmet: 'Punkty pokazują zgromadzone, zaobserwowane niezrealizowane próby podróży.', profit: 'Kolor linii pokazuje obserwowany bilans operacyjny na godzinę.', load: 'Kolor odcinka pokazuje zaobserwowane wykorzystanie pojemności.', cityEvolution: 'Kolor oznacza atrakcyjność obszaru: czerwony niższą, żółty pośrednią, zielony wyższą. Rozmiar oznacza potencjał rozwoju. Wartości to parametry gry, nie dane demograficzne.', landUse: 'Kolor markera oznacza dominującą modelowaną funkcję terenu, rozmiar — intensywność zabudowy. Markery nie są poligonami dzielnic.', investments: 'Żółty marker oznacza projekt w realizacji, zielony ukończoną inwestycję. Podgląd nie pokazuje parceli ani dokładnego obrysu.' };
     this.setText('networkLegend', legends[state.analyticsMode] || 'Warstwa mapy korzysta z danych bieżącej symulacji. Potencjalny popyt w podsumowaniu jest estymacją.');
     this.renderAtlasNavigation();

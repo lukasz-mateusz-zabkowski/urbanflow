@@ -16,7 +16,9 @@ async function openGame(page, viewport, mobile) {
   await page.goto('http://127.0.0.1:3140/', { waitUntil: 'domcontentloaded' });
   if (mobile) await page.locator('#startKrakow').tap(); else await page.locator('#startKrakow').click();
   await expect(page.locator('#map')).toBeVisible();
-  if (mobile) { await page.locator('#mobilePanelButton').tap(); await expect(page.locator('#buildPanel')).toHaveClass(/open/); await page.waitForTimeout(300); }
+  if (mobile && !(await page.locator('#buildPanel').evaluate(panel => panel.classList.contains('open')))) await page.locator('#mobilePanelButton').tap();
+  await page.locator('[data-action="atlas-view"][data-view="development"]').click();
+  if (mobile) { await expect(page.locator('#buildPanel')).toHaveClass(/open/); await page.waitForTimeout(300); }
   await expect(page.locator('[data-mode="investments"]')).toBeVisible();
   if (mobile) {
     await page.locator('[data-mode="investments"]').evaluate(target => target.scrollIntoView({ block: 'center', inline: 'nearest' }));
@@ -86,6 +88,7 @@ test('completed project panel shows saved modeled results after campaign reload'
   await page.goto('http://127.0.0.1:3140/', { waitUntil: 'domcontentloaded' });
   await page.locator('#startKrakow').click();
   await expect(page.locator('#map')).toBeVisible();
+  await page.locator('[data-action="atlas-view"][data-view="development"]').click();
   await page.locator('[data-mode="investments"]').click();
   await expect(page.locator('#investmentsPanel')).toBeVisible();
   const firstArea = await page.locator('#investmentDistrict option').first().getAttribute('value');
@@ -119,6 +122,7 @@ test('completed project panel shows saved modeled results after campaign reload'
   });
   expect(storageError).toBe(null);
   await expect(resumedPage.locator('#map')).toBeVisible({ timeout: 60_000 });
+  await resumedPage.locator('[data-action="atlas-view"][data-view="development"]').click();
   await resumedPage.locator('[data-mode="investments"]').click();
   await expect(resumedPage.locator('#investmentProjectList')).toContainText(/pojemność mieszkaniowa\s+14.?500/);
   await expect(resumedPage.locator('#investmentProjectList')).toContainText(/Δ\s+2500/);

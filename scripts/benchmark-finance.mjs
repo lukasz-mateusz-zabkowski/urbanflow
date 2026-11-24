@@ -1,9 +1,11 @@
 import { performance } from 'node:perf_hooks';
+import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const candidateRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const baselineRoot = resolve(process.env.UF_BENCHMARK_BASE_ROOT || candidateRoot);
+const versionAt = root => JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8')).version;
 const samples = 31;
 const ticksPerSample = 300;
 
@@ -83,8 +85,8 @@ if (globalThis.gc) globalThis.gc();
 const heapAfter = process.memoryUsage().heapUsed;
 
 console.log(JSON.stringify({
-  baseline: { root: baselineRoot, version: '1.7.0-alpha', tickMsPerTick: baseline.tickMs, saveBytes: baseline.saveBytes },
-  candidate: { version: '1.8.0-alpha', tickMsPerTick: candidate.tickMs, saveBytes: candidate.saveBytes },
+  baseline: { root: baselineRoot, version: versionAt(baselineRoot), tickMsPerTick: baseline.tickMs, saveBytes: baseline.saveBytes },
+  candidate: { root: candidateRoot, version: versionAt(candidateRoot), tickMsPerTick: candidate.tickMs, saveBytes: candidate.saveBytes },
   financeDashboardCalculationMsPerCall: financeMs,
   financeDashboardHeapDeltaBytesAfter10000ReadCycles: heapAfter - heapBefore,
   method: { samples, warmupSamples: 3, ticksPerSample, sameNodeProcess: process.version, gcExposed: Boolean(globalThis.gc) }

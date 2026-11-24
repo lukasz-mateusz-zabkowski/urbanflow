@@ -368,6 +368,7 @@ export class GameMap {
           vehicle.marker.setIcon(this.vehicleIcon(transport, color)); vehicle.iconSignature = iconSignature;
         }
         vehicle.heading = vehicle.marker.getElement()?.querySelector('.vehicle-heading');
+        vehicle.marker.getElement()?.querySelector('.map-vehicle')?.classList.toggle('selected-line-vehicle', selected);
         vehicle.record = record; vehicle.index = Math.floor(index * record.activeFleet / count);
       }
     }

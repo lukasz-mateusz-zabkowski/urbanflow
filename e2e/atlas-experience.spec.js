@@ -48,13 +48,16 @@ for (const scenario of [
       await page.screenshot({ path: join(artifacts, `${scenario.name}-${view}.png`), animations: 'disabled' });
     }
 
+    await page.locator('[data-action="atlas-view"][data-view="development"]').click();
     await page.locator('[data-action="analytics-mode"][data-mode="landUse"]').click();
     await expect(page.locator('#landUsePanel')).toBeVisible();
     await page.locator('[data-action="analytics-mode"][data-mode="investments"]').click();
     await expect(page.locator('#investmentsPanel')).toBeVisible();
+    await page.locator('[data-action="atlas-view"][data-view="passengers"]').click();
     await page.locator('[data-action="analytics-mode"][data-mode="queues"]').click();
     await expect(page.locator('.mobility-panel')).toBeVisible();
     await expect(page.locator('#networkLegend')).not.toBeEmpty();
+    await page.locator('[data-action="atlas-view"][data-view="operations"]').click();
 
     await page.locator('#atlasLineFilter').selectOption('bus');
     await expect(page.locator('#lineList .line-item')).toHaveCount(1);

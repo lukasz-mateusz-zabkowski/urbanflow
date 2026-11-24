@@ -18,8 +18,14 @@ try {
   await page.goto(baseUrl, { waitUntil: 'domcontentloaded' });
   await page.locator('#startKrakow').click();
   await page.locator('#map.leaflet-container').waitFor({ state: 'visible' });
+  // Starting a campaign changes the map bounds after Leaflet is created. Wait for
+  // the settled viewport to have a useful set of real tiles before taking evidence.
+  await page.waitForTimeout(800);
+  await page.evaluate(() => window.dispatchEvent(new Event('resize')));
   await page.waitForFunction(() => [...document.querySelectorAll('img.leaflet-tile-loaded')]
-    .some(image => image.src.startsWith('https://tile.openstreetmap.org/') && image.complete && image.naturalWidth > 0), null, { timeout: 20000 });
+    .filter(image => image.src.startsWith('https://tile.openstreetmap.org/') && image.complete && image.naturalWidth > 0).length >= 6,
+  null, { timeout: 30000 });
+  await page.waitForTimeout(700);
   const rendered = await page.evaluate(() => [...document.querySelectorAll('img.leaflet-tile-loaded')]
     .filter(image => image.src.startsWith('https://tile.openstreetmap.org/') && image.complete && image.naturalWidth > 0)
     .map(image => ({ src: image.src, width: image.naturalWidth, height: image.naturalHeight })));

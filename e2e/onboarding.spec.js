@@ -131,10 +131,13 @@ test('a first-time player completes all 12 tutorial steps through the game inter
   await openLineDetails(page);
   await expect(page.locator('#lineDetail')).toBeVisible();
   await expect(progress).toHaveAttribute('aria-valuenow', '8');
+  await page.locator('[data-action="atlas-view"][data-view="passengers"]').click();
   await page.locator('#analyticsModes [data-mode="queues"]').click();
   await expect(progress).toHaveAttribute('aria-valuenow', '9');
+  await page.locator('[data-action="atlas-view"][data-view="transport"]').click();
   await page.locator('#lineDetail [data-action="unassign-vehicle"]').click();
   await expect(progress).toHaveAttribute('aria-valuenow', '10');
+  await page.locator('[data-action="atlas-view"][data-view="development"]').click();
   await page.locator('#analyticsModes [data-mode="cityEvolution"]').click();
   await expect(progress).toHaveAttribute('aria-valuenow', '11');
   await page.locator('#analyticsModes [data-mode="investments"]').click();
@@ -170,6 +173,7 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 360, height: 800 }
       const budgetBeforePlan = await page.locator('#budgetStat').innerText();
       await exploreMap(page, true);
       await expect(page.locator('#tutorialProgress')).toHaveAttribute('aria-valuenow', '1');
+      await page.locator('[data-action="atlas-view"][data-view="planning"]').tap();
       await page.locator('#clearSelectionButton').tap();
       await page.locator('#panelClose').tap();
       await page.locator('#routeOptions [data-route]').first().tap();
@@ -181,8 +185,12 @@ for (const viewport of [{ width: 390, height: 844 }, { width: 360, height: 800 }
       await page.locator('#createLineButton').tap();
       await expect(page.locator('#tutorialProgress')).toHaveAttribute('aria-valuenow', '5');
       await expect.poll(() => page.locator('#lineList .line-item').count()).toBe(1);
-      await page.locator('#mobilePanelButton').tap();
+      if (!(await page.locator('#buildPanel').evaluate(panel => panel.classList.contains('open')))) {
+        await page.locator('#mobilePanelButton').tap();
+      }
       await expect(page.locator('#buildPanel')).toHaveClass(/open/);
+      await page.locator('[data-action="atlas-view"][data-view="operations"]').tap();
+      await expect(page.locator('#fleetList')).toBeVisible();
       const budgetBeforeCancel = await page.locator('#budgetStat').innerText();
       await touch(page.locator('#fleetList [data-action="purchase-fleet"]').first());
       await expect(page.locator('dialog.confirm-dialog')).toBeVisible();

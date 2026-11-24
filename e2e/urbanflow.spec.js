@@ -32,7 +32,7 @@ async function startGame(page, viewport, mobile = false) {
   await expect(page.locator('#map.leaflet-container')).toBeVisible();
   await expect(page.locator('#weekdayStat')).not.toBeEmpty();
   await expect.poll(() => page.locator('.node-icon').count()).toBeGreaterThan(0);
-  await expect(page.locator('#mobilityTitle')).toBeVisible();
+  await expect(page.locator('#mobilityTitle')).toBeAttached();
   expect(await page.locator('#mobilityOrigin option').count()).toBeGreaterThan(1);
   await expect.poll(() => page.locator('.leaflet-tile-loaded').count(), { timeout: 20000 }).toBeGreaterThan(0);
   const firstMarker = page.locator('.node-icon:not(:has(.map-node.selected))').first();
@@ -108,6 +108,7 @@ for (const viewport of DESKTOPS) {
     await expect(page.locator('#previewRoutingReason')).not.toBeEmpty();
     await expect(page.locator('#previewRoutingSnap')).not.toBeEmpty();
 
+    await page.locator('[data-action="atlas-view"][data-view="passengers"]').click();
     const places = await page.locator('#mobilityOrigin option').evaluateAll(options => options.map(option => option.value));
     await page.locator('#mobilityOrigin').selectOption(places[0]);
     await page.locator('#mobilityDestination').selectOption(places[1]);
@@ -125,6 +126,7 @@ for (const viewport of DESKTOPS) {
     await expect(page.locator('#networkHistorySummary')).toBeVisible();
     await expect(page.locator('#networkDailySummary')).toBeVisible();
     await expect(page.locator('#networkWeeklySummary')).toBeVisible();
+    await page.locator('[data-action="atlas-view"][data-view="development"]').click();
     await page.locator('[data-mode="cityEvolution"]').click();
     await expect(page.locator('#cityEvolutionPanel')).toBeVisible();
     await expect(page.locator('#cityEvolutionDistrict option').first()).toBeAttached();
@@ -141,10 +143,13 @@ for (const viewport of DESKTOPS) {
     await expect(page.locator('.land-use-legend span')).toHaveCount(7);
     await expect(page.locator('#networkLegend')).toContainText('Markery');
     await saveElementScreenshot(page.locator('#landUsePanel'), `${viewport.name}-atlas-land-use`);
+    await page.locator('[data-action="atlas-view"][data-view="passengers"]').click();
     await page.locator('[data-mode="unmet"]').click();
     await saveElementScreenshot(page.locator('.analytics-section'), `${viewport.name}-atlas-network`);
+    await page.locator('[data-action="atlas-view"][data-view="planning"]').click();
     await expect(page.locator('#createLineButton')).toBeEnabled();
     await page.locator('#createLineButton').click();
+    await page.locator('[data-action="atlas-view"][data-view="operations"]').click();
     await expect.poll(() => page.locator('#networkHistorySummary').innerText(), { timeout: 10000 }).toContain('Tick:');
     await expect.poll(() => page.locator('#networkDailySummary').innerText()).toContain('Dzień');
     await expect.poll(() => page.locator('#networkWeeklySummary').innerText()).toContain('Tydzień');
@@ -199,6 +204,7 @@ for (const viewport of DESKTOPS) {
       await expect(page.locator('#budgetStat')).toHaveText(originalBudget);
       await page.locator('#clearSelectionButton').click();
     }
+    await page.locator('[data-action="atlas-view"][data-view="passengers"]').click();
     await page.locator('[data-mode="off"]').click();
 
     const bounds = await page.evaluate(() => {
@@ -243,6 +249,7 @@ for (const viewport of MOBILES) {
     await expect(page.locator('#buildPanel')).not.toHaveClass(/open/);
     await page.locator('#mobilePanelButton').click();
     await expect(page.locator('#buildPanel')).toHaveClass(/open/);
+    await page.locator('[data-action="atlas-view"][data-view="passengers"]').click();
     const places = await page.locator('#mobilityOrigin option').evaluateAll(options => options.map(option => option.value));
     await page.locator('#mobilityOrigin').selectOption(places[0]);
     await page.locator('#mobilityDestination').selectOption(places[1]);
@@ -252,6 +259,7 @@ for (const viewport of MOBILES) {
     await page.locator('[data-mode="queues"]').tap();
     await expect(page.locator('#networkLegend')).toContainText('Rozmiar punktu');
     await saveElementScreenshot(page.locator('.analytics-section'), `${viewport.name}-atlas-network`);
+    await page.locator('[data-action="atlas-view"][data-view="development"]').tap();
     await page.locator('[data-mode="cityEvolution"]').tap();
     await expect(page.locator('#cityEvolutionPanel')).toBeVisible();
     await expect(page.locator('#cityEvolutionProfile')).toContainText('Miejsca pracy');
@@ -266,6 +274,7 @@ for (const viewport of MOBILES) {
     await expect(page.locator('#landUseProfile')).toContainText('Dostęp transportu');
     await assertNoViewportOverflow(page, viewport.width);
     await saveElementScreenshot(page.locator('#landUsePanel'), `${viewport.name}-atlas-land-use`);
+    await page.locator('[data-action="atlas-view"][data-view="passengers"]').tap();
     await page.locator('[data-mode="off"]').tap();
     await page.locator('#feedbackButton').scrollIntoViewIfNeeded();
     await page.locator('#feedbackButton').click();
@@ -313,6 +322,7 @@ async function exerciseTimetable(page, viewport, mobile) {
   if (mobile && await page.locator('#mobilePanelButton').getAttribute('aria-expanded') !== 'true') {
     await page.locator('#mobilePanelButton').tap();
   }
+  await page.locator('[data-action="atlas-view"][data-view="passengers"]').click();
   const flowMode = page.locator('[data-mode="flow"]');
   if (mobile) await flowMode.tap(); else await flowMode.click();
   await expect(page.locator('#networkLegend')).toContainText('zaobserwowane obciążenie');
@@ -320,6 +330,7 @@ async function exerciseTimetable(page, viewport, mobile) {
   await saveScreenshot(page, mobile ? 'mobile-390x844-atlas-network-line' : `desktop-${viewport.width}x${viewport.height}-atlas-network-line`);
   const ordinaryMode = page.locator('[data-mode="off"]');
   if (mobile) await ordinaryMode.tap(); else await ordinaryMode.click();
+  await page.locator('[data-action="atlas-view"][data-view="planning"]').click();
   await expect(page.locator('#lineDetail')).toBeVisible();
   await expect(page.locator('.timetable-control')).toBeVisible();
   const periodRow = page.locator('[data-timetable-row="morning-peak"]');

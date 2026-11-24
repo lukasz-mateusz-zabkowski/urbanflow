@@ -56,8 +56,12 @@ async function startPreparedGame(page, viewport, mobile = false) {
   if (mobile) {
     const panelToggle = page.locator('#mobilePanelButton');
     if (await panelToggle.getAttribute('aria-expanded') !== 'true') await panelToggle.tap();
-    await page.locator('[data-action="pick-on-map"]').scrollIntoViewIfNeeded();
   }
+  const planning = page.locator('[data-action="atlas-view"][data-view="planning"]');
+  if (mobile) await planning.tap(); else await planning.click();
+  await expect(planning).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#buildSection')).toBeVisible();
+  await page.locator('[data-action="pick-on-map"]').scrollIntoViewIfNeeded();
   await page.locator('[data-action="pick-on-map"]').click({ force: true });
   // On mobile the expanded build sheet covers the map controls. Close it first,
   // then zoom until local stop markers are individually targetable.
