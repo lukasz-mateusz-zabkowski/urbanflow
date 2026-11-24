@@ -256,6 +256,23 @@ test('matched 12-week scenarios distinguish no service, useful transit, and tran
   assert.equal(investedState.cityEvolution.weeklyReports.length, 12);
 });
 
+test('a completed hub modernization is counted once in the district history despite also becoming an asset', () => {
+  const state = makeState([{ id: 'hub-service', type: 'bus', frequency: 4, vehicles: 2,
+    stops: ['biezanow', 'centrum'], stats: { load: 0.2, avgWaitMinutes: 8 } }]);
+  state.elapsedMinutes = 0; state.budget = 500000; state.status = 'playing';
+  state.cityEvolution = createCityEvolutionState(city);
+  state.investments = createInvestmentState(); state.hubCapacityByPoint = {};
+  const planned = planInvestment(state, 'biezanow', 'hub');
+  assert.equal(planned.ok, true);
+  assert.equal(approveInvestment(state, planned.project.id).ok, true);
+  const project = state.investments.projects[0];
+  state.elapsedMinutes = project.completesAt;
+  assert.equal(advanceInvestmentProjects(state).length, 1);
+  assert.equal(state.investments.assets.filter(asset => asset.districtId === 'biezanow').length, 1);
+  const report = evolveCityWeek(state, city);
+  assert.equal(report.districtSnapshots.find(item => item.id === 'biezanow').investmentCount, 1);
+});
+
 test('night-only timetables count as real district access', () => {
   let nightOnly = createWeeklyTimetable('balanced', 8);
   for (const dayType of SERVICE_DAY_TYPES) for (const period of DEFAULT_SERVICE_PERIODS) {

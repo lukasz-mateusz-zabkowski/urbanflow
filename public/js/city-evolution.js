@@ -200,7 +200,6 @@ export function evolveCityWeek(state, city) {
       residentsCapacity: zone.capacity.residents, jobsCapacity: zone.capacity.jobs,
       demandFactor: cityDemandFactor(evolution, zone),
       investmentCount: (state.investments?.projects || []).filter(project => project.districtId === zone.id && ['planned', 'in-progress'].includes(project.status)).length
-        + (state.investments?.assets || []).filter(asset => asset.districtId === zone.id).length
         + (state.investments?.history || []).filter(item => item.districtId === zone.id && item.status === 'completed').length
     })),
     networkBalance: network ? network.revenue - network.cost : null,
