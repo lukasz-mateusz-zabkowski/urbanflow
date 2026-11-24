@@ -18,6 +18,7 @@ import { INVESTMENT_CATALOG } from './investments.js?v=1';
 import { contextualHints, getOnboardingStep, onboardingProgress, onboardingStatus } from './onboarding.js?v=1';
 import { ATLAS_VIEWS, filterAndSortLines, loadAtlasPreferences, saveAtlasPreferences } from './atlas.js?v=1';
 import { applyOperationalDecisionSafely, compareOperationalDecision, fleetManagementSnapshot, operationalDecisionFingerprint } from './operations.js?v=2';
+import { financeForecast, financeGoals, financeHistory, financeSnapshot, plannedFinancialCommitments } from './finance.js?v=1';
 
 const $ = selector => document.querySelector(selector);
 const formatNumber = value => new Intl.NumberFormat('pl-PL').format(Math.round(Number(value) || 0));
@@ -158,6 +159,17 @@ export class UI {
       if (action === 'living-city-plan') {
         this.setAtlasView('planning');
         this.openPanel(); this.scrollToBuild();
+        return;
+      }
+      if (action === 'finance-plan-line') {
+        this.setAtlasView('planning');
+        this.openPanel(); this.scrollToBuild();
+        return;
+      }
+      if (action === 'finance-open-investments') {
+        this.setAnalyticsModeFromControl('investments');
+        this.openPanel();
+        $('#investmentCatalog')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
         return;
       }
       if (action === 'plan-investment') {
@@ -364,6 +376,10 @@ export class UI {
       } else if (event.target.matches('#opsDecisionProfile')) {
         this.opsDecisionPreviewed = false;
         this.opsDecisionPreviewFingerprint = null;
+      } else if (event.target.matches('#financeReserveTarget')) {
+        const result = this.game.setFinanceReserveTarget(event.target.value);
+        if (result.ok) this.renderOperationsDashboard();
+        else this.toast(result.message, 'warn');
       }
     }, { signal });
     document.addEventListener('input', event => {
@@ -793,6 +809,7 @@ export class UI {
     const values = { atlasBudget: money(state.budget), atlasRevenue: money(revenue), atlasCosts: money(costs),
       atlasCarried: formatNumber(state.carried), atlasFleet: `${assigned} / ${owned}`, atlasOverloaded: String(overloaded) };
     Object.entries(values).forEach(([id, value]) => this.setText(id, value));
+    this.renderFinanceManagement();
     const problems = networkProblems(state, this.game.visiblePoints()).slice(0, 4);
     this.setHtml('atlasActions', problems.length
       ? problems.map(item => `<li><span><strong>${escapeHtml(item.label)}</strong> · ${escapeHtml(item.cause)}<small>${escapeHtml(item.impact)} ${escapeHtml(item.actions)}</small></span><b>${escapeHtml(item.observed)}</b></li>`).join('')
@@ -844,6 +861,58 @@ export class UI {
       profile.dataset.ready = 'true';
     }
     this.renderOperationsDecisionResult();
+  }
+
+  renderFinanceManagement() {
+    const state = this.game.state;
+    const snapshot = financeSnapshot(state);
+    const history = financeHistory(state);
+    const planned = plannedFinancialCommitments(state);
+    const reserve = snapshot.cash.plannedReserve;
+    const available = state.budget - reserve - planned;
+    const financeInput = $('#financeReserveTarget');
+    if (financeInput && document.activeElement !== financeInput) financeInput.value = String(reserve);
+    this.setHtml('financeKpis', [
+      ['Gotówka teraz', money(snapshot.cash.budget), 'stan budżetu kampanii'],
+      ['Wynik operacyjny', money(snapshot.operating.balance), 'skumulowane obserwowane wpływy minus koszty operacyjne'],
+      ['Koszty jednorazowe', money(snapshot.capital.lineConstruction + snapshot.capital.lineRebuild + snapshot.capital.fleetPurchase + snapshot.capital.investment - snapshot.capital.refunds),
+        snapshot.capital.historyComplete ? 'księga od początku kampanii' : 'zarejestrowane od 1.8.0; starsza historia niedostępna'],
+      ['Nagrody kampanii', money(snapshot.capital.campaignGrants), 'osobne wpływy jednorazowe; poza wynikiem operacyjnym'],
+      ['Utrzymanie inwestycji', money(snapshot.capital.investmentMaintenance), 'zaksięgowane koszty tygodniowe od 1.8.0']
+    ].map(([label, value, note]) => `<article><span>${escapeHtml(label)}</span><strong>${escapeHtml(value)}</strong><small>${escapeHtml(note)}</small></article>`).join(''));
+    this.setText('financeAvailableDevelopment', money(available));
+
+    const weeklyCommitments = (state.investments?.assets || []).reduce((sum, asset) => sum + Math.max(0, finite(asset.weeklyMaintenance)), 0);
+    const forecastRows = [1, 7, 28].map(days => {
+      const forecast = financeForecast(state, days, { weeklyCommitments });
+      if (!forecast.available) return `<article><strong>${days === 1 ? '24 godziny' : `${days} dni`}</strong><span>Brak wystarczających danych (${forecast.observedDays}/${forecast.requiredDays} pełnych dni).</span></article>`;
+      return `<article><strong>${days === 1 ? '24 godziny' : `${days} dni`}</strong><span>Modelowany wynik netto: ${money(forecast.expectedNet)}</span><small>Zakres obserwowanych scenariuszy: ${money(forecast.lowNet)} – ${money(forecast.highNet)} · koszty zobowiązań ${money(forecast.knownCommitments)}</small></article>`;
+    }).join('');
+    this.setHtml('financeForecast', `<div class="diagnostic-title"><strong>Prognoza finansowa</strong><span>model z pełnych dni i znanego utrzymania</span></div><div class="finance-forecast-grid">${forecastRows}</div>`);
+
+    const recentDays = history.days.slice(-4).reverse();
+    const recentWeeks = history.weeks.slice(-4).reverse();
+    const rows = [
+      ...recentWeeks.map(period => `<li><span><strong>Tydzień ${formatNumber(period.week)}</strong><small>Operacyjne wpływy / koszty ${money(period.revenue)} / ${money(period.cost)} · wynik ${money(period.balance)} · przepływ z zarejestrowanymi zdarzeniami ${money(period.cashFlow)}</small></span><b>${money(period.cashFlow)}</b></li>`),
+      ...recentDays.map(period => `<li><span><strong>${escapeHtml(period.date)}</strong><small>Operacyjne wpływy / koszty ${money(period.revenue)} / ${money(period.cost)} · wynik ${money(period.balance)} · przepływ z zarejestrowanymi zdarzeniami ${money(period.cashFlow)}</small></span><b>${money(period.cashFlow)}</b></li>`)
+    ];
+    this.setHtml('financeHistory', rows.length ? rows.join('') : '<li class="empty-mini">Historia pojawi się po zarejestrowaniu pełnego okresu symulacji.</li>');
+    const lineRows = (state.lines || []).map(line => ({ line,
+      revenue: Number.isFinite(line.stats?.revenuePerHour) ? line.stats.revenuePerHour : null,
+      cost: Number.isFinite(line.stats?.costPerHour) ? line.stats.costPerHour : null
+    })).sort((a, b) => {
+      const aBalance = a.revenue === null || a.cost === null ? -Infinity : a.revenue - a.cost;
+      const bBalance = b.revenue === null || b.cost === null ? -Infinity : b.revenue - b.cost;
+      if (aBalance === bBalance) return 0;
+      return bBalance > aBalance ? 1 : -1;
+    });
+    this.setHtml('financeLineProfitability', lineRows.length ? lineRows.map(({ line, revenue, cost }) => {
+      const observed = revenue !== null && cost !== null;
+      const balance = observed ? revenue - cost : null;
+      return `<li><span><strong>${escapeHtml(line.name || line.id)}</strong><small>${escapeHtml(TRANSPORT_TYPES[line.type]?.name || line.type)} · wpływy ${observed ? money(revenue) : 'brak obserwacji'}/h · koszt ${observed ? money(cost) : 'brak obserwacji'}/h</small></span><b class="${balance !== null && balance >= 0 ? 'positive' : 'negative'}">${balance === null ? '—' : `${money(balance)}/h`}</b></li>`;
+    }).join('') : '<li class="empty-mini">Brak aktywnych linii.</li>');
+    const goals = financeGoals(state).map(goal => `<span class="finance-goal ${goal.status}"><strong>${escapeHtml(goal.label)}</strong> · ${goal.value === null ? 'brak obserwacji' : money(goal.value)} <small>${escapeHtml(goal.source)}</small></span>`).join('');
+    this.setHtml('financeGoals', `<strong>Cele i kondycja</strong>${goals}`);
   }
 
   operationalProposal() {

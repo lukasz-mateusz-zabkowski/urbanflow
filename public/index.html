@@ -106,6 +106,26 @@
               <div><span>Flota przypisana / własna</span><strong id="atlasFleet">—</strong></div>
               <div><span>Linie przeciążone</span><strong id="atlasOverloaded">—</strong></div>
             </div>
+            <section class="operations-module finance-management" aria-labelledby="financeManagementTitle">
+              <div class="diagnostic-title"><strong id="financeManagementTitle">Finance &amp; Management</strong><span>gotówka, wynik operacyjny i zobowiązania</span></div>
+              <div class="finance-kpi-grid" id="financeKpis" aria-live="polite"></div>
+              <div class="finance-planning-grid">
+                <label>Rezerwa planistyczna
+                  <input id="financeReserveTarget" type="number" min="0" max="1000000000" step="1000" inputmode="numeric" aria-describedby="financeReserveNote">
+                </label>
+                <div><span>Na rozwój po rezerwie i planach</span><strong id="financeAvailableDevelopment">—</strong></div>
+              </div>
+              <p id="financeReserveNote" class="operations-simulator-note">Rezerwa jest celem planistycznym. Nie blokuje ani nie odejmuje pieniędzy z budżetu.</p>
+              <div class="finance-shortcuts"><button type="button" class="secondary-button" data-action="finance-plan-line">Planowanie linii</button><button type="button" class="secondary-button" data-action="finance-open-investments">Inwestycje miejskie</button></div>
+              <div class="finance-forecast" id="financeForecast" aria-live="polite"></div>
+              <div class="diagnostic-title"><strong>Przepływy historyczne</strong><span>wyłącznie zaobserwowane okresy</span></div>
+              <ul id="financeHistory" class="diagnostic-list"></ul>
+              <div class="diagnostic-title"><strong>Rentowność linii</strong><span>obserwowane tempo z ostatnich 60 minut symulacji</span></div>
+              <ul id="financeLineProfitability" class="diagnostic-list"></ul>
+              <p class="operations-simulator-note">Przychody i koszty operacyjne pochodzą z obserwacji sieci. Wydatki jednorazowe pokazują księgowanie od wersji 1.8.0; wcześniejsza historia kapitałowa nie jest odtwarzana.</p>
+              <p id="financeGoals" class="finance-goals" aria-live="polite"></p>
+              <p class="operations-simulator-note">Prognozy są zakresami modelowanymi z pełnych dni obserwacji i znanych zobowiązań. Nie gwarantują przyszłego wyniku. Kredyty nie są dostępne w tej wersji.</p>
+            </section>
             <section class="operations-module" aria-labelledby="fleetManagementTitle">
               <div class="diagnostic-title"><strong id="fleetManagementTitle">Zarządzanie flotą</strong><span>pojazdy i koszty z modelu gry</span></div>
               <div id="operationsFleetTypes" class="operations-fleet-types"></div>

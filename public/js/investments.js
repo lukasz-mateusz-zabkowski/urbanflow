@@ -1,4 +1,5 @@
 import { capacitiesForLandUse, LAND_USE_INTENSITIES, validateLandUseProfile } from './land-use.js?v=1';
+import { recordFinanceEvent } from './finance.js?v=1';
 
 export const INVESTMENT_VERSION = 1;
 export const INVESTMENT_LIMITS = Object.freeze({ activeProjects: 6, history: 40, assets: 44, durationWeekMinutes: 7 * 24 * 60, refundRate: 0.5 });
@@ -140,6 +141,7 @@ export function advanceInvestmentProjects(state) {
       // Preconditions can change while the project is being built; fail safely with a full refund.
       state.budget += project.cost;
       investments.totalRefunded += project.cost;
+      recordFinanceEvent(state, 'investmentRefund', project.cost, state.elapsedMinutes || 0, `investment-failed-refund:${project.id}`);
       project.status = 'cancelled'; project.refund = project.cost; project.cancelledAt = state.elapsedMinutes;
       investments.history.push({ id: project.id, type: project.type, districtId: project.districtId,
         status: project.status, cost: 0, refund: project.cost, at: project.cancelledAt,

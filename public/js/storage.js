@@ -6,9 +6,10 @@ import { createCityEvolutionState, validateCityEvolutionState } from './city-evo
 import { createLandUseProfile } from './land-use.js?v=1';
 import { createInvestmentState, validateInvestmentState } from './investments.js?v=1';
 import { createTramInfrastructure, validateTramInfrastructure } from './tramway.js?v=1';
+import { createFinanceState, validateFinanceState } from './finance.js?v=1';
 
 export const SAVE_KEY = 'urbanflow.krakow.v2';
-export const SAVE_VERSION = 12;
+export const SAVE_VERSION = 13;
 const goals = new Set(['wieliczka', 'gateway', 'center', 'passengers', 'quality', 'buses', 'tram', 'huta', 'airport', 'profit', 'stress']);
 const finite = value => typeof value === 'number' && Number.isFinite(value);
 const nonnegative = value => finite(value) && value >= 0;
@@ -80,6 +81,7 @@ export function validateState(s, city) {
   if (s.analyticsMode !== undefined && !['off', 'demand', 'queues', 'load', 'profit', 'travel', 'access', 'flow', 'overload', 'unmet', 'cityEvolution', 'landUse', 'investments'].includes(s.analyticsMode)) return false;
   if (!validateCityEvolutionState(s.cityEvolution, city)) return false;
   if (!validateInvestmentState(s.investments, city, s)) return false;
+  if (!validateFinanceState(s.finance)) return false;
   if (!validateTramInfrastructure(s.tramInfrastructure) || !['street', 'manual', 'existing'].includes(s.tramBuildMode)
     || !Array.isArray(s.tramControlPoints) || s.tramControlPoints.length > 300
     || s.tramControlPoints.some(point => !Array.isArray(point) || point.length !== 2 || !finite(point[0]) || !finite(point[1]) || Math.abs(point[0]) > 90 || Math.abs(point[1]) > 180)) return false;
@@ -195,6 +197,7 @@ export function loadGame(storage, city) {
     if (raw.length > 2000000) throw new Error('size');
     let data = JSON.parse(raw);
     if (data.cityId !== city.id) throw new Error('format');
+    const originalVersion = data.version;
     let migrated = false;
     if ([2, 3].includes(data.version) && plain(data.state) && Array.isArray(data.state.lines)) {
       const oldVersion = data.version;
@@ -258,6 +261,10 @@ export function loadGame(storage, city) {
       data = { ...data, version: SAVE_VERSION };
       migrated = true;
     }
+    if (data.version === 12 && plain(data.state)) {
+      data = { ...data, version: SAVE_VERSION };
+      migrated = true;
+    }
     if (data.version === SAVE_VERSION && plain(data.state) && !data.state.cityEvolution) {
       data = { ...data, state: { ...data.state, cityEvolution: createCityEvolutionState(city) } };
       migrated = true;
@@ -272,6 +279,12 @@ export function loadGame(storage, city) {
     }
     if (data.version === SAVE_VERSION && plain(data.state) && !data.state.tramInfrastructure) {
       data = { ...data, state: { ...data.state, tramInfrastructure: createTramInfrastructure(), tramBuildMode: 'street', tramControlPoints: [] } };
+      migrated = true;
+    }
+    if (originalVersion < SAVE_VERSION && data.version === SAVE_VERSION && plain(data.state) && !data.state.finance) {
+      data = { ...data, state: { ...data.state,
+        finance: createFinanceState(city.startingBudget, data.state.elapsedMinutes || 0) } };
+      data.state.finance.historyComplete = false;
       migrated = true;
     }
     if (data.version === SAVE_VERSION && plain(data.state?.cityEvolution)) {

@@ -81,7 +81,7 @@ for (const viewport of [
     expect(after.carried).toBe(before.carried);
     expect(after.generated).toBe(before.generated);
     expect(after.rngState).toBe(before.rng);
-    expect(savedAfter.version).toBe(12);
+    expect(savedAfter.version).toBe(13);
 
     const width = await page.evaluate(() => ({ body: document.body.scrollWidth, page: document.documentElement.scrollWidth }));
     expect(width.body).toBeLessThanOrEqual(viewport.width);

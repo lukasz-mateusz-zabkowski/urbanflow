@@ -1,4 +1,4 @@
-import test from 'node:test';
+﻿import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CITIES } from '../public/js/cities.js';
 import { UrbanFlowGame } from '../public/js/game.js';
@@ -6,6 +6,7 @@ import { saveGame, loadGame, clearSave, validateState, SAVE_KEY, SAVE_VERSION } 
 import { advanceInvestmentProjects } from '../public/js/investments.js';
 import { evolveCityWeek } from '../public/js/city-evolution.js';
 import { SIMULATION } from '../public/js/simulation.js';
+import { validateFinanceState } from '../public/js/finance.js';
 
 const city = CITIES.krakow;
 const snapshot = value => JSON.parse(JSON.stringify(value));
@@ -228,7 +229,7 @@ test('schema 5 migrates to bounded network history without losing campaign, flee
   assert.deepEqual(loaded.state.mobility, oldState.mobility);
   assert.deepEqual(loaded.state.unlocked, oldState.unlocked);
   assert.deepEqual(loaded.state.networkHistory, []);
-  assert.equal(JSON.parse(storage.getItem(SAVE_KEY)).version, 12);
+  assert.equal(JSON.parse(storage.getItem(SAVE_KEY)).version, 13);
   const invalid = snapshot(loaded.state); invalid.networkHistory = Array(97).fill({ at: 0, networkVersion: 0, transported: 0, averageWaitMinutes: 0,
     availability: 0, utilization: 0, revenue: 0, cost: 0, balance: 0 });
   assert.equal(validateState(invalid, city), false);
@@ -248,7 +249,7 @@ test('schema 6 migrates observed coverage while preserving state and starting lo
   assert.deepEqual(loaded.state.networkWeeklyHistory, []);
   assert.equal(loaded.state.lines.length, game.state.lines.length);
   assert.deepEqual(loaded.state.campaign, game.state.campaign);
-  assert.equal(JSON.parse(storage.getItem(SAVE_KEY)).version, 12);
+  assert.equal(JSON.parse(storage.getItem(SAVE_KEY)).version, 13);
 });
 
 test('schema 7 migrates deterministic city profiles without losing campaign, budget, lines, fleet or mobility', () => {
@@ -266,7 +267,7 @@ test('schema 7 migrates deterministic city profiles without losing campaign, bud
   assert.deepEqual(first.state.mobility, oldState.mobility);
   assert.deepEqual(first.state.campaign, oldState.campaign);
   assert.equal(first.state.cityEvolution.source, 'simulation-parameters');
-  assert.equal(JSON.parse(storage.getItem(SAVE_KEY)).version, 12);
+  assert.equal(JSON.parse(storage.getItem(SAVE_KEY)).version, 13);
   const district = first.state.cityEvolution.districts.ruczaj;
   assert.ok(district && district.residents === district.base.residents);
   const saved = snapshot(first.state);
@@ -287,7 +288,7 @@ test('schema 8 adds deterministic land-use profiles while preserving occupied va
   storage.setItem(SAVE_KEY, JSON.stringify({ version: 8, cityId: city.id, state: oldState }));
   const loaded = loadGame(storage, city);
   assert.equal(loaded.error, null);
-  assert.equal(JSON.parse(storage.getItem(SAVE_KEY)).version, 12);
+  assert.equal(JSON.parse(storage.getItem(SAVE_KEY)).version, 13);
   const afterZone = loaded.state.cityEvolution.districts.ruczaj;
   assert.equal(afterZone.residents, beforeZone.residents);
   assert.equal(afterZone.jobs, beforeZone.jobs);
@@ -324,13 +325,14 @@ test('schema 11 adds truthful Living City history slots without changing the exi
   evolveCityWeek(game.state, city);
   const oldState = snapshot(game.state);
   const originalCampaign = snapshot(oldState.campaign);
+  delete oldState.finance;
   for (const report of oldState.cityEvolution.weeklyReports) delete report.districtSnapshots;
   const storage = memoryStorage();
   storage.setItem(SAVE_KEY, JSON.stringify({ version: 11, cityId: city.id, state: oldState }));
   const loaded = loadGame(storage, city);
   assert.equal(loaded.error, null);
   assert.equal(JSON.parse(storage.getItem(SAVE_KEY)).version, SAVE_VERSION);
-  assert.equal(SAVE_VERSION, 12);
+  assert.equal(SAVE_VERSION, 13);
   assert.deepEqual(loaded.state.campaign, originalCampaign);
   assert.deepEqual(loaded.state.lines, oldState.lines);
   assert.equal(loaded.state.budget, oldState.budget);
@@ -339,7 +341,46 @@ test('schema 11 adds truthful Living City history slots without changing the exi
   assert.equal(validateState(loaded.state, city), true);
 });
 
-test('schema 12 resumes Living City snapshots deterministically across the 52-week horizon', () => {
+test('schema 12 migrates finance ledger without inventing capital history and preserves campaign state', () => {
+  const original = activeGame();
+  original.state.elapsedMinutes = 14 * 1440;
+  const oldState = snapshot(original.state);
+  delete oldState.finance;
+  const storage = memoryStorage();
+  storage.setItem(SAVE_KEY, JSON.stringify({ version: 12, cityId: city.id, state: oldState }));
+
+  const loaded = loadGame(storage, city);
+  assert.equal(loaded.error, null);
+  assert.equal(JSON.parse(storage.getItem(SAVE_KEY)).version, 13);
+  assert.equal(validateFinanceState(loaded.state.finance), true);
+  assert.equal(loaded.state.finance.historyComplete, false);
+  assert.equal(loaded.state.finance.ledgerStartAt, oldState.elapsedMinutes);
+  assert.deepEqual(loaded.state.finance.transactions, []);
+  assert.equal(loaded.state.budget, oldState.budget);
+  assert.deepEqual(loaded.state.lines, oldState.lines);
+  assert.deepEqual(loaded.state.fleet, oldState.fleet);
+  assert.deepEqual(loaded.state.cohorts, oldState.cohorts);
+  assert.deepEqual(loaded.state.campaign, oldState.campaign);
+  assert.deepEqual(loaded.state.investments, oldState.investments);
+  assert.deepEqual(loaded.state.cityEvolution, oldState.cityEvolution);
+  assert.deepEqual(loaded.state.calendar, oldState.calendar);
+});
+
+test('schema 13 rejects malformed finance ledgers and keeps the original save for recovery', () => {
+  const state = snapshot(activeGame().state);
+  state.finance.totals.investment = Infinity;
+  const raw = JSON.stringify({ version: SAVE_VERSION, cityId: city.id, state });
+  const storage = memoryStorage();
+  storage.setItem(SAVE_KEY, raw);
+
+  const loaded = loadGame(storage, city);
+  assert.equal(loaded.state, null);
+  assert.ok(loaded.error);
+  assert.equal(storage.getItem(SAVE_KEY), raw);
+  assert.equal(storage.getItem(`${SAVE_KEY}.recovery`), raw);
+});
+
+test('schema 13 resumes Living City snapshots deterministically across the 52-week horizon', () => {
   const original = activeGame();
   for (let week = 2; week <= 6; week += 1) {
     original.state.elapsedMinutes = (week - 1) * 7 * 1440;
@@ -361,15 +402,16 @@ test('schema 12 resumes Living City snapshots deterministically across the 52-we
   assert.equal(resumed.state.cityEvolution.weeklyReports.at(-1).districtSnapshots.length, Object.keys(resumed.state.cityEvolution.districts).length);
 });
 
-test('schema 10 migrates tram construction state to schema 12 without changing campaign or transit state', () => {
+test('schema 10 migrates tram construction state to schema 13 without changing campaign or transit state', () => {
   const game = activeGame();
   const oldState = snapshot(game.state);
+  delete oldState.finance;
   delete oldState.tramInfrastructure; delete oldState.tramBuildMode; delete oldState.tramControlPoints;
   const storage = memoryStorage();
   writeState(storage, oldState, { version: 10 });
   const loaded = loadGame(storage, city);
   assert.equal(loaded.error, null);
-  assert.equal(JSON.parse(storage.getItem(SAVE_KEY)).version, 12);
+  assert.equal(JSON.parse(storage.getItem(SAVE_KEY)).version, 13);
   assert.deepEqual(loaded.state.tramInfrastructure, { version: 1, segments: [] });
   assert.equal(loaded.state.tramBuildMode, 'street');
   assert.deepEqual(loaded.state.tramControlPoints, []);
@@ -380,8 +422,9 @@ test('schema 10 migrates tram construction state to schema 12 without changing c
   assert.deepEqual(loaded.state.cohorts, oldState.cohorts);
 });
 
-test('schema 9 migrates an in-progress campaign to schema 12 without touching campaign or transit state', () => {
+test('schema 9 migrates an in-progress campaign to schema 13 without touching campaign or transit state', () => {
   const oldState = snapshot(activeGame().state);
+  delete oldState.finance;
   oldState.budget = 234567;
   oldState.campaign.completed = ['gateway'];
   delete oldState.investments; delete oldState.hubCapacityByPoint;
@@ -389,7 +432,7 @@ test('schema 9 migrates an in-progress campaign to schema 12 without touching ca
   storage.setItem(SAVE_KEY, JSON.stringify({ version: 9, cityId: city.id, state: oldState }));
   const loaded = loadGame(storage, city);
   assert.equal(loaded.error, null);
-  assert.equal(JSON.parse(storage.getItem(SAVE_KEY)).version, 12);
+  assert.equal(JSON.parse(storage.getItem(SAVE_KEY)).version, 13);
   assert.equal(loaded.state.budget, oldState.budget);
   assert.deepEqual(loaded.state.lines, oldState.lines);
   assert.deepEqual(loaded.state.cohorts, oldState.cohorts);

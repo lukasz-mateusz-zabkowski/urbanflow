@@ -1,5 +1,6 @@
 import { eligibleCounts, PROGRESSION } from './transport.js?v=10';
 import { buildNetwork, isConnected, totalWaiting } from './passengers.js?v=10';
+import { recordFinanceEvent } from './finance.js?v=1';
 
 export const STRESS_PHASES = [
   { id: 'morning', title: 'Poranny szczyt', duration: 420, demand: 1.55, locationId: 'dworzec', localDemand: 1.25, description: 'Dojazdy do głównego węzła gwałtownie rosną.' },
@@ -108,7 +109,9 @@ export function updateCampaign(game, delta) {
   c.qualityMinutes = s.satisfaction > 75 && s.lines.length ? c.qualityMinutes + delta : 0;
   const objectives = campaignObjectives(game);
   for (const objective of objectives.slice(0, 7)) if (!objective.completed && objective.progress >= 1) {
-    c.completed.push(objective.id); s.budget += objective.reward; c.grants += objective.reward; game.events.onObjective?.(objective);
+    c.completed.push(objective.id); s.budget += objective.reward; c.grants += objective.reward;
+    if (objective.reward > 0) recordFinanceEvent(s, 'campaignGrant', objective.reward, s.elapsedMinutes, `campaign-reward:${objective.id}`);
+    game.events.onObjective?.(objective);
   }
   const list = definitions(game);
   const firstSeven = list.slice(0, 7).every(([id]) => completed(c, id));

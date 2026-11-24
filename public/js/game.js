@@ -12,6 +12,7 @@ import { chooseStartScenario, starterRoutesFor } from './cities.js?v=11';
 import { getRoutingGraphStatus, routeLine, routeLineDetails, routingMode } from './routing.js?v=14';
 import { ensureFleet, fleetStatus, missingFleetCost } from './fleet.js?v=10';
 import { createTramInfrastructure, planTrackSegments, commitTrackPlan, buildManualTramGeometry, routeOnPlayerTramTracks } from './tramway.js?v=1';
+import { createFinanceState, recordFinanceEvent } from './finance.js?v=1';
 import { ensureCityEvolution, evolveCityWeek } from './city-evolution.js?v=2';
 import { advanceInvestmentProjects, approveInvestment, cancelInvestment, createInvestmentState, planInvestment, recordInvestmentWeek } from './investments.js?v=1';
 import {
@@ -58,6 +59,7 @@ export class UrbanFlowGame {
     this.state.tramInfrastructure ||= createTramInfrastructure(); this.state.tramBuildMode ||= 'street'; this.state.tramControlPoints ||= [];
     this.state.cityEvents ||= []; this.state.nextEventId ||= 1; this.state.analyticsMode ||= 'off';
     this.state.networkHistory ||= []; this.state.networkDailyHistory ||= []; this.state.networkWeeklyHistory ||= [];
+    this.state.finance ||= createFinanceState(city.startingBudget, this.state.elapsedMinutes || 0);
     const previousPreferences = this.state.preferences || {};
     this.state.preferences = {
       tutorialCollapsed: false, goalsCollapsed: true, tutorialStatus: 'active', tutorialMapExplored: false,
@@ -292,6 +294,8 @@ export class UrbanFlowGame {
       vehicles: 2, frequency: 3, timetable: createWeeklyTimetable('balanced', TRANSPORT_TYPES[type].maxFrequency),
       ageMinutes: 0, stats: blankStats() };
     this.state.lines.push(line); this.state.budget -= preview.cost; this.state.networkVersion++;
+    recordFinanceEvent(this.state, 'lineConstruction', preview.cost - preview.fleetCost, this.state.elapsedMinutes, `line-build:${line.id}`);
+    if (preview.fleetCost > 0) recordFinanceEvent(this.state, 'fleetPurchase', preview.fleetCost, this.state.elapsedMinutes, `line-build-fleet:${line.id}`);
     this.state.unlockedPointLevel = Math.min(2, Math.max(this.state.unlockedPointLevel, this.state.lines.length));
     this.state.selectedNodes = []; this.state.editingLineId = null;
     this.revealStops(line.stops);
@@ -348,6 +352,10 @@ export class UrbanFlowGame {
       // Edited routes must demonstrate useful service again before counting toward unlocks.
       line.ageMinutes = 0; line.stats = blankStats(); line.history = []; line.accounting = [];
       this.state.budget -= preview.cost; this.state.networkVersion++;
+      recordFinanceEvent(this.state, 'lineRebuild', Math.max(0, preview.cost - preview.fleetCost), this.state.elapsedMinutes,
+        `line-edit:${line.id}:${this.state.finance.nextId}`);
+      if (preview.fleetCost > 0) recordFinanceEvent(this.state, 'fleetPurchase', preview.fleetCost, this.state.elapsedMinutes,
+        `line-edit-fleet:${line.id}:${this.state.finance.nextId}`);
       this.revealStops(line.stops, { maxCorridor: 10, maxRing: 4 });
     }
     if (line.routingUnavailable) {
@@ -370,13 +378,17 @@ export class UrbanFlowGame {
     if (line.vehicles >= 16) return fail('Limit 16 pojazdów na linię.');
     const cost = TRANSPORT_TYPES[line.type].vehicleCost;
     if (this.state.budget < cost) return fail(`Potrzebujesz ${cost.toLocaleString('pl-PL')} zł na pojazd.`);
-    this.state.budget -= cost; ensureFleet(this.state)[line.type].owned++; line.vehicles++; line.cost += cost; this.state.networkVersion++; this.changed(); return { ok: true };
+    this.state.budget -= cost; ensureFleet(this.state)[line.type].owned++; line.vehicles++; line.cost += cost; this.state.networkVersion++;
+    recordFinanceEvent(this.state, 'fleetPurchase', cost, this.state.elapsedMinutes, `vehicle-line:${line.id}:${this.state.finance.nextId}`);
+    this.changed(); return { ok: true };
   }
   purchaseFleetVehicle(type) {
     if (!TRANSPORT_TYPES[type] || this.state.status !== 'playing') return fail('Nie można kupić tego pojazdu.');
     const cost = TRANSPORT_TYPES[type].vehicleCost;
     if (this.state.budget < cost) return fail(`Potrzebujesz ${cost.toLocaleString('pl-PL')} zł na pojazd.`);
-    this.state.budget -= cost; this.state.fleetPurchases += cost; ensureFleet(this.state)[type].owned++; this.changed(); return { ok: true };
+    this.state.budget -= cost; this.state.fleetPurchases += cost; ensureFleet(this.state)[type].owned++;
+    recordFinanceEvent(this.state, 'fleetPurchase', cost, this.state.elapsedMinutes, `vehicle-reserve:${type}:${this.state.finance.nextId}`);
+    this.changed(); return { ok: true };
   }
   assignVehicle(id, count = 1) {
     const line = this.state.lines.find(item => item.id === id); count = Math.floor(Number(count));
@@ -515,13 +527,26 @@ export class UrbanFlowGame {
   }
   approveInvestment(projectId) {
     const result = approveInvestment(this.state, projectId);
-    if (result.ok) this.changed();
+    if (result.ok) {
+      recordFinanceEvent(this.state, 'investment', result.project.cost, this.state.elapsedMinutes, `investment-approval:${projectId}`);
+      this.changed();
+    }
     return result;
   }
   cancelInvestment(projectId) {
     const result = cancelInvestment(this.state, projectId);
-    if (result.ok) this.changed();
+    if (result.ok) {
+      if (result.refund > 0) recordFinanceEvent(this.state, 'investmentRefund', result.refund, this.state.elapsedMinutes, `investment-refund:${projectId}`);
+      this.changed();
+    }
     return result;
+  }
+  setFinanceReserveTarget(value) {
+    const amount = Number(value);
+    if (!Number.isFinite(amount) || amount < 0 || amount > 1_000_000_000) return fail('Podaj prawidłową rezerwę planistyczną.');
+    this.state.finance.reserveTarget = Math.round(amount);
+    this.changed();
+    return { ok: true, reserveTarget: this.state.finance.reserveTarget };
   }
   tick(random = Math.random) {
     const s = this.state;
@@ -541,7 +566,9 @@ export class UrbanFlowGame {
       s.carried += result.transported; s.generated += result.generated; s.abandoned += result.abandoned || 0;
       const economy = applyEconomyTick(s, result.transported, SIMULATION.minutesPerTick);
       if (clock.week > previousWeek) {
-        recordInvestmentWeek(s, clock.week - 1);
+        const investmentWeek = recordInvestmentWeek(s, clock.week - 1);
+        if (investmentWeek?.maintenance > 0) recordFinanceEvent(s, 'investmentMaintenance', investmentWeek.maintenance,
+          Math.max(0, s.elapsedMinutes - 1), `investment-maintenance-week:${investmentWeek.week}`);
         evolveCityWeek(s, this.city);
       }
       recordNetworkHistory(s, { transported: result.transported, generated: result.generated, abandoned: result.abandoned,
