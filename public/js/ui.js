@@ -12,7 +12,7 @@ import { clampPanelWidth, DEFAULT_PANEL_WIDTH, loadPanelWidth, savePanelWidth } 
 import { createFeedbackReport, feedbackJson } from './feedback.js?v=14';
 import { TIMETABLE_PROFILES, SERVICE_DAY_TYPES, SERVICE_DAY_LABELS, formatTimetableTime, periodAt, timetableForDay } from './timetable.js?v=10';
 import { mobilitySnapshot } from './mobility.js?v=11';
-import { cityEvolutionSnapshot } from './city-evolution.js?v=2';
+import { cityEvolutionSnapshot } from './city-evolution.js?v=3';
 import { LAND_USE_TYPES, landUseDominantUse, landUseDirection, landUseLabel } from './land-use.js?v=1';
 import { INVESTMENT_CATALOG } from './investments.js?v=1';
 import { contextualHints, getOnboardingStep, onboardingProgress, onboardingStatus } from './onboarding.js?v=1';
@@ -63,6 +63,7 @@ export class UI {
     this.detailLineId = null;
     this.selectedPlaceId = null;
     this.selectedEvolutionDistrict = null;
+    this.selectedComparisonDistrict = null;
     this.selectedLandUseDistrict = null;
     this.selectedInvestmentDistrict = null;
     this.opsDecisionPreviewed = false;
@@ -94,6 +95,10 @@ export class UI {
     window.addEventListener('urbanflow:select-land-use', event => {
       this.selectedLandUseDistrict = event.detail?.id || null;
       this.renderLandUsePanel(this.game.visiblePoints());
+    }, { signal });
+    window.addEventListener('urbanflow:select-city-evolution', event => {
+      this.selectedEvolutionDistrict = event.detail?.id || null;
+      this.renderCityEvolutionPanel(this.game.visiblePoints());
     }, { signal });
     window.addEventListener('urbanflow:select-investment-area', event => {
       this.selectedInvestmentDistrict = event.detail?.id || null;
@@ -150,6 +155,11 @@ export class UI {
       }
       if (action === 'analytics-mode') { this.setAnalyticsModeFromControl(button.dataset.mode); return; }
       if (action === 'atlas-view') { this.setAtlasView(button.dataset.view); return; }
+      if (action === 'living-city-plan') {
+        this.setAtlasView('planning');
+        this.openPanel(); this.scrollToBuild();
+        return;
+      }
       if (action === 'plan-investment') {
         const result = this.game.planInvestment(this.selectedInvestmentDistrict, button.dataset.investmentType);
         if (this.checkResult(result)) this.toast('Projekt zaplanowano. Zatwierdź go po sprawdzeniu kosztu i warunków.');
@@ -324,6 +334,9 @@ export class UI {
         button.disabled = event.target.value === this.selectedServiceDayType || this.game.state.status !== 'playing';
       } else if (event.target.matches('#cityEvolutionDistrict')) {
         this.selectedEvolutionDistrict = event.target.value;
+        this.renderCityEvolutionPanel(this.game.visiblePoints());
+      } else if (event.target.matches('#cityEvolutionCompareDistrict')) {
+        this.selectedComparisonDistrict = event.target.value || null;
         this.renderCityEvolutionPanel(this.game.visiblePoints());
       } else if (event.target.matches('#landUseDistrict')) {
         this.selectedLandUseDistrict = event.target.value;
@@ -986,11 +999,39 @@ export class UI {
     if (!zones.some(zone => zone.id === this.selectedEvolutionDistrict)) this.selectedEvolutionDistrict = zones[0]?.id || null;
     this.setHtml('cityEvolutionDistrict', zones.map(zone => `<option value="${escapeHtml(zone.id)}">${escapeHtml(zone.name)}</option>`).join(''));
     if (this.selectedEvolutionDistrict) select.value = this.selectedEvolutionDistrict;
+    const compareSelect = $('#cityEvolutionCompareDistrict');
+    if (!zones.some(zone => zone.id === this.selectedComparisonDistrict) || this.selectedComparisonDistrict === this.selectedEvolutionDistrict) this.selectedComparisonDistrict = null;
+    this.setHtml('cityEvolutionCompareDistrict', `<option value="">Nie porównuj</option>${zones.filter(item => item.id !== this.selectedEvolutionDistrict).map(item => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.name)}</option>`).join('')}`);
+    compareSelect.value = this.selectedComparisonDistrict || '';
     const zone = model.districts.find(item => item.id === this.selectedEvolutionDistrict);
     if (!zone) { this.setHtml('cityEvolutionProfile', '<p class="empty-mini">Brak dostępnych obszarów do pokazania.</p>'); return; }
+    const comparedZone = model.districts.find(item => item.id === this.selectedComparisonDistrict);
+    const comparisonRows = [
+      ['Mieszkańcy · model', item => formatNumber(item.residents)],
+      ['Dostępność transportowa', item => `${item.transportAccess}%`],
+      ['Jakość transportu', item => `${item.transportSatisfaction}/100`],
+      ['Atrakcyjność mieszkaniowa', item => `${Math.round(item.residentialAttractiveness)}/100`],
+      ['Atrakcyjność gospodarcza', item => `${Math.round(item.economicAttractiveness)}/100`],
+      ['Potencjał rozwoju', item => `${item.growthPotential}/100`],
+      ['Intensywność · rezerwa', item => `${item.landUse.intensity} · ${item.landUse.shares.reserve}%`],
+      ['Popyt · model', item => `${decimal(item.demandFactor)}×`]
+    ];
+    this.setHtml('cityEvolutionAreaComparison', comparedZone
+      ? `<div class="living-city-compare-card"><strong>${escapeHtml(zone.name)}</strong><dl>${comparisonRows.map(([label, value]) => `<div><dt>${label}</dt><dd>${value(zone)}</dd></div>`).join('')}</dl></div><div class="living-city-compare-card"><strong>${escapeHtml(comparedZone.name)}</strong><dl>${comparisonRows.map(([label, value]) => `<div><dt>${label}</dt><dd>${value(comparedZone)}</dd></div>`).join('')}</dl></div>`
+      : '<p class="empty-mini">Wybierz drugi obszar, aby porównać bieżące wartości modelu.</p>');
     const change = value => `${value > 0 ? '+' : ''}${formatNumber(value)}`;
-    this.setHtml('cityEvolutionProfile', `<dl class="detail-stats city-evolution-stats"><div><dt>Mieszkańcy · model</dt><dd>${formatNumber(zone.residents)} <small>(${change(zone.lastChange.residents)} w tym tygodniu)</small></dd></div><div><dt>Miejsca pracy · model</dt><dd>${formatNumber(zone.jobs)} <small>(${change(zone.lastChange.jobs)} w tym tygodniu)</small></dd></div><div><dt>Atrakcyjność mieszkaniowa</dt><dd>${Math.round(zone.residentialAttractiveness)}/100</dd></div><div><dt>Atrakcyjność gospodarcza</dt><dd>${Math.round(zone.economicAttractiveness)}/100</dd></div><div><dt>Dostępność pracy / mieszkań</dt><dd>${zone.jobAccess}% / ${zone.residentialAccess}%</dd></div><div><dt>Zadowolenie transportowe</dt><dd>${zone.transportSatisfaction}/100</dd></div><div><dt>Potencjał rozwoju</dt><dd>${zone.growthPotential}/100</dd></div><div><dt>Limit modelu · mieszkańcy / praca</dt><dd>${formatNumber(zone.capacity.residents)} / ${formatNumber(zone.capacity.jobs)}</dd></div></dl><p class="city-evolution-factor">Profil miejsca: ${escapeHtml(zone.profile)}. Zmiany są wygładzane tygodniowo, ograniczane pojemnością i zależą od dostępnych połączeń oraz obserwowanego oczekiwania i obciążenia.</p>`);
     const latest = model.weeklyReports.at(-1);
+    const history = model.weeklyReports;
+    const latestSnapshot = latest?.districtSnapshots?.find(item => item.id === zone.id);
+    const priorSnapshot = [...history.slice(0, -1)].reverse().map(report => report.districtSnapshots?.find(item => item.id === zone.id)).find(Boolean);
+    this.setHtml('cityEvolutionProfile', `<h3 class="living-city-area-name">${escapeHtml(zone.name)}</h3><dl class="detail-stats city-evolution-stats"><div><dt>Mieszkańcy · model</dt><dd>${formatNumber(zone.residents)} <small>(${change(zone.lastChange.residents)} w tym tygodniu)</small></dd></div><div><dt>Miejsca pracy · model</dt><dd>${formatNumber(zone.jobs)} <small>(${change(zone.lastChange.jobs)} w tym tygodniu)</small></dd></div><div><dt>Atrakcyjność mieszkaniowa</dt><dd>${Math.round(zone.residentialAttractiveness)}/100</dd></div><div><dt>Atrakcyjność gospodarcza</dt><dd>${Math.round(zone.economicAttractiveness)}/100</dd></div><div><dt>Dostępność pracy / mieszkań</dt><dd>${zone.jobAccess}% / ${zone.residentialAccess}%</dd></div><div><dt>Dostęp transportowa / jakość</dt><dd>${zone.transportAccess}% / ${zone.transportSatisfaction}/100</dd></div><div><dt>Potencjał rozwoju</dt><dd>${zone.growthPotential}/100</dd></div><div><dt>Zagospodarowanie · rezerwa</dt><dd>${escapeHtml(zone.landUse.intensity)} · ${zone.landUse.shares.reserve}%</dd></div><div><dt>Limit modelu · mieszkańcy / praca</dt><dd>${formatNumber(zone.capacity.residents)} / ${formatNumber(zone.capacity.jobs)}</dd></div></dl><p class="city-evolution-factor">Profil miejsca: ${escapeHtml(zone.profile)}. Parametry są modelowane, nie są danymi demograficznymi. Dostępność wymaga aktywnej usługi i osiągalnych, komplementarnych obszarów; przeciążenie i oczekiwanie ograniczają korzyść.</p>`);
+    const delta = (key, suffix = '') => {
+      const value = latestSnapshot && priorSnapshot ? latestSnapshot[key] - priorSnapshot[key] : null;
+      return value === null ? '—' : `${value > 0 ? '+' : ''}${decimal(value)}${suffix}`;
+    };
+    this.setText('cityEvolutionComparison', latestSnapshot && priorSnapshot
+      ? `Tydz. ${history.at(-2).week} → ${latest.week}: dostępność ${delta('transportAccess', ' pp')}, jakość ${delta('transportSatisfaction', ' pkt')}, atrakcyjność mieszkaniowa ${delta('residentialAttractiveness', ' pkt')}, mieszkańcy ${delta('residents')}, praca ${delta('jobs')}, popyt modelowany ${delta('demandFactor')}, inwestycje w obszarze ${delta('investmentCount')}.`
+      : 'Brak porównywalnego zapisanego pomiaru dla wcześniejszego tygodnia. Historia Living City zaczyna się od pierwszego raportu po aktualizacji.');
     this.setText('cityEvolutionWeeklySummary', latest
       ? `Tydzień ${latest.week}: mieszkańcy ${change(latest.residentsDelta)}, miejsca pracy ${change(latest.jobsDelta)}, popyt modelowany ${latest.demandChangePercent > 0 ? '+' : ''}${decimal(latest.demandChangePercent)}%${latest.networkBalance === null ? '' : `, wynik sieci w tygodniu ${latest.networkWeek}: ${money(latest.networkBalance)}`}.`
       : 'Zmiany pojawią się po upływie pierwszego tygodnia symulacji.');

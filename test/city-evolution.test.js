@@ -3,6 +3,7 @@ import test from 'node:test';
 import { CITIES } from '../public/js/cities.js';
 import { UrbanFlowGame } from '../public/js/game.js';
 import { latentDemand } from '../public/js/demand.js';
+import { advanceInvestmentProjects, approveInvestment, createInvestmentState, planInvestment } from '../public/js/investments.js';
 import { createWeeklyTimetable, DEFAULT_SERVICE_PERIODS, SERVICE_DAY_TYPES, setDailyFrequency } from '../public/js/timetable.js';
 import {
   createCityEvolutionState, evolveCityWeek, cityDemandFactor, cityEvolutionSnapshot, validateCityEvolutionState
@@ -37,9 +38,20 @@ test('weekly evolution rewards connected residential areas, grows gradually and 
   assert.ok(after.residents >= before);
   assert.ok(after.residents <= after.capacity.residents);
   assert.equal(report.week, 2);
+  assert.equal(Object.is(report.demandChangePercent, -0), false, 'JSON save/resume does not normalize a negative zero');
   assert.equal(state.cityEvolution.weeklyReports.length, 1);
   assert.equal(state.cityEvolution.weeklyReports[0].networkBalance, 100);
   assert.equal(state.cityEvolution.weeklyReports[0].networkWeek, 1, 'week 2 report summarizes the completed week 1 network');
+  const snapshot = report.districtSnapshots.find(item => item.id === 'ruczaj');
+  assert.equal(snapshot.residents, after.residents);
+  assert.equal(snapshot.transportAccess, after.transportAccess);
+  assert.equal(snapshot.intensity, after.landUse.intensity);
+  assert.ok(Number.isFinite(snapshot.demandFactor));
+  assert.ok(snapshot.demandFactor >= 0.8 && snapshot.demandFactor <= 1.25);
+  assert.equal(report.districtSnapshots.length, Object.keys(state.cityEvolution.districts).length);
+  const malformed = structuredClone(state.cityEvolution);
+  malformed.weeklyReports[0].districtSnapshots[0].transportAccess = Infinity;
+  assert.equal(validateCityEvolutionState(malformed, city), false);
 });
 
 test('an isolated district receives no invented access and its demand effect remains bounded', () => {
@@ -181,6 +193,67 @@ test('district accessibility follows actual weekly service, including a timetabl
   const stopped = makeState([{ ...line, timetable: noService }]); stopped.cityEvolution = createCityEvolutionState(city); evolveCityWeek(stopped, city);
   assert.ok(active.cityEvolution.districts.bronowice.transportAccess > 0);
   assert.equal(stopped.cityEvolution.districts.bronowice.transportAccess, 0);
+});
+
+test('service between residential areas without reachable jobs does not fabricate useful accessibility or land growth', () => {
+  const state = makeState([{ id: 'residential-loop', type: 'bus', frequency: 4, vehicles: 2,
+    stops: ['biezanow', 'bronowice'], stats: { load: 0.1, avgWaitMinutes: 5 } }]);
+  state.cityEvolution = createCityEvolutionState(city);
+  evolveCityWeek(state, city);
+  for (const id of ['biezanow', 'bronowice']) {
+    assert.equal(state.cityEvolution.districts[id].jobAccess, 0);
+    assert.equal(state.cityEvolution.districts[id].transportAccess, 0,
+      'a route serving homes but no employment destination cannot unlock development');
+    assert.equal(state.cityEvolution.districts[id].landUse.developmentProgress, 0);
+  }
+});
+
+test('district access weights reachable homes by modeled population instead of counting points equally', () => {
+  const simulate = residents => {
+    const state = makeState([{ id: 'work-connection', type: 'bus', frequency: 4, vehicles: 2,
+      stops: ['ruczaj', 'centrum'], stats: { load: 0.2, avgWaitMinutes: 8 } }]);
+    state.cityEvolution = createCityEvolutionState(city);
+    state.cityEvolution.districts.ruczaj.residents = residents;
+    evolveCityWeek(state, city);
+    return state.cityEvolution.districts.centrum.residentialAccess;
+  };
+  assert.ok(simulate(500000) > simulate(1000), 'a connection to a larger residential area exposes more modeled residents');
+});
+
+test('matched 12-week scenarios distinguish no service, useful transit, and transit plus a completed housing investment', () => {
+  const line = { id: 'line-1', type: 'bus', frequency: 4, vehicles: 2, stops: ['biezanow', 'centrum'],
+    stats: { load: 0.3, avgWaitMinutes: 8 } };
+  const simulate = (withService, withInvestment) => {
+    const state = makeState(withService ? [line] : []);
+    state.elapsedMinutes = 0; state.budget = 500000; state.status = 'playing';
+    state.cityEvolution = createCityEvolutionState(city);
+    state.investments = createInvestmentState(); state.hubCapacityByPoint = {};
+    if (withInvestment) {
+      const planned = planInvestment(state, 'biezanow', 'housing');
+      assert.equal(planned.ok, true);
+      assert.equal(approveInvestment(state, planned.project.id).ok, true);
+    }
+    for (let week = 2; week <= 13; week += 1) {
+      state.elapsedMinutes = (week - 1) * 7 * 1440;
+      advanceInvestmentProjects(state);
+      state.networkWeeklyHistory.push({ week: week - 1, revenue: 1000, cost: 800, transported: 40, averageWaitMinutes: 8 });
+      evolveCityWeek(state, city);
+    }
+    return state;
+  };
+  const noServiceState = simulate(false, false);
+  const servedState = simulate(true, false);
+  const investedState = simulate(true, true);
+  assert.deepEqual(servedState.cityEvolution, simulate(true, false).cityEvolution, 'same initial state and transport choices reproduce the same city result');
+  const isolatedZone = noServiceState.cityEvolution.districts.biezanow;
+  const servedZone = servedState.cityEvolution.districts.biezanow;
+  const investedZone = investedState.cityEvolution.districts.biezanow;
+  assert.equal(isolatedZone.transportAccess, 0);
+  assert.ok(servedZone.transportAccess > isolatedZone.transportAccess);
+  assert.ok(investedZone.landUse.shares.residential > servedZone.landUse.shares.residential);
+  assert.ok(investedZone.capacity.residents > servedZone.capacity.residents);
+  assert.ok(cityDemandFactor(investedState.cityEvolution, 'biezanow') >= cityDemandFactor(servedState.cityEvolution, 'biezanow'));
+  assert.equal(investedState.cityEvolution.weeklyReports.length, 12);
 });
 
 test('night-only timetables count as real district access', () => {

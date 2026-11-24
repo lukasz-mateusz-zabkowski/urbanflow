@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.7.0 — Living City
+
+- Refined City Evolution transport accessibility using modeled residents and jobs in reachable complementary-use areas; service without a useful destination no longer grants an artificial baseline benefit.
+- Added bounded weekly snapshots per modeled area so players can inspect actual recorded changes to residents, jobs, access, quality, attractiveness, demand factor, capacity and investment count.
+- Added an Atlas Living City workspace with selectable map markers, area profiles, recorded week-to-week comparisons, a side-by-side current area comparison, and a shortcut into network planning.
+- Added accessible keyboard selection for symbolic city markers and a dedicated interactive Leaflet pane above other analytical layers.
+- Migrated schema 11 campaigns to schema 12. Older campaigns retain gameplay state; unrecorded historical district snapshots remain empty instead of being fabricated.
+- Added deterministic matched scenarios, 52-week save/resume coverage, desktop/mobile browser coverage and a repeatable Living City benchmark.
+- See `docs/URBANFLOW-LIVING-CITY.md` and `ALPHA-1.7.0-LIVING-CITY-REPORT.md` for model assumptions and validation.
+
 ## 1.6.0 — Atlas Operations
 
 - Added an Operations fleet summary for owned, assigned, and reserve vehicles by type, observed line operating costs, modelled reserve maintenance, capacity warnings, and potentially idle assignments.

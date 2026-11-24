@@ -354,7 +354,7 @@ async function exerciseTimetable(page, viewport, mobile) {
   await expect(page.locator('[data-timetable-row="morning-peak"] [data-frequency-value]')).toHaveText('2 kursów/h');
   await page.locator('[data-action="toggle-special-next"]').click();
   const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('urbanflow.krakow.v2')));
-  expect(saved.version).toBe(11);
+  expect(saved.version).toBe(12);
   expect(saved.state.lines[0].timetable.sameEveryDay).toBe(false);
   expect(saved.state.lines[0].timetable.profiles.saturday.periods[0].frequency).toBe(0);
   expect(saved.state.lines[0].timetable.profiles.weekday.periods[0].frequency).toBe(2);
@@ -367,11 +367,11 @@ async function exerciseTimetable(page, viewport, mobile) {
   expect(errors, `browser errors: ${errors.join('; ')}`).toEqual([]);
 }
 
-test('desktop timetable editor changes weekly service and persists schema 11', async ({ page }) => {
+test('desktop timetable editor changes weekly service and persists schema 12', async ({ page }) => {
   await exerciseTimetable(page, { width: 1280, height: 720 }, false);
 });
 
-test('mobile timetable editor supports touch interaction and persists schema 11', async ({ browser }) => {
+test('mobile timetable editor supports touch interaction and persists schema 12', async ({ browser }) => {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   const page = await context.newPage();
   await exerciseTimetable(page, { width: 390, height: 844 }, true);

@@ -2,13 +2,13 @@ import { TRANSPORT_TYPES } from './transport.js?v=10';
 import { createUniformTimetable, createWeeklyTimetable, migrateDailyTimetable, validateWeeklyTimetable } from './timetable.js?v=10';
 import { createSimulationCalendar, validateSimulationCalendar } from './simulation.js?v=10';
 import { createMobilityState } from './mobility.js?v=11';
-import { createCityEvolutionState, validateCityEvolutionState } from './city-evolution.js?v=2';
+import { createCityEvolutionState, validateCityEvolutionState } from './city-evolution.js?v=3';
 import { createLandUseProfile } from './land-use.js?v=1';
 import { createInvestmentState, validateInvestmentState } from './investments.js?v=1';
 import { createTramInfrastructure, validateTramInfrastructure } from './tramway.js?v=1';
 
 export const SAVE_KEY = 'urbanflow.krakow.v2';
-export const SAVE_VERSION = 11;
+export const SAVE_VERSION = 12;
 const goals = new Set(['wieliczka', 'gateway', 'center', 'passengers', 'quality', 'buses', 'tram', 'huta', 'airport', 'profit', 'stress']);
 const finite = value => typeof value === 'number' && Number.isFinite(value);
 const nonnegative = value => finite(value) && value >= 0;
@@ -254,6 +254,10 @@ export function loadGame(storage, city) {
         tramControlPoints: Array.isArray(data.state.tramControlPoints) ? data.state.tramControlPoints : [] } };
       migrated = true;
     }
+    if (data.version === 11 && plain(data.state)) {
+      data = { ...data, version: SAVE_VERSION };
+      migrated = true;
+    }
     if (data.version === SAVE_VERSION && plain(data.state) && !data.state.cityEvolution) {
       data = { ...data, state: { ...data.state, cityEvolution: createCityEvolutionState(city) } };
       migrated = true;
@@ -278,9 +282,10 @@ export function loadGame(storage, city) {
         return [id, zone];
       }));
       const weeklyReports = (evolution.weeklyReports || []).map(report => {
-        if (report.landUseChanges && report.blockedByTransport && report.developmentPotential) return report;
+        if (report.landUseChanges && report.blockedByTransport && report.developmentPotential && Array.isArray(report.districtSnapshots)) return report;
         changed = true;
-        return { ...report, landUseChanges: report.landUseChanges || [], blockedByTransport: report.blockedByTransport || [], developmentPotential: report.developmentPotential || [] };
+        return { ...report, landUseChanges: report.landUseChanges || [], blockedByTransport: report.blockedByTransport || [],
+          developmentPotential: report.developmentPotential || [], districtSnapshots: report.districtSnapshots || [] };
       });
       if (changed) {
         data = { ...data, state: { ...data.state, cityEvolution: { ...evolution, districts, weeklyReports } } };

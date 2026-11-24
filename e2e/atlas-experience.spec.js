@@ -76,7 +76,7 @@ for (const scenario of [
     expect(widths.page).toBeLessThanOrEqual(scenario.viewport.width);
 
     const save = await page.evaluate(() => JSON.parse(localStorage.getItem('urbanflow.krakow.v2')));
-    expect(save.version).toBe(11);
+    expect(save.version).toBe(12);
     expect({ budget: save.state.budget, carried: save.state.carried,
       lines: save.state.lines.map(line => ({ id: line.id, type: line.type, stops: line.stops })), fleet: save.state.fleet }).toEqual(before);
     expect(JSON.parse(await page.evaluate(() => localStorage.getItem('urbanflow.atlas.preferences.v1'))).view).toBe('operations');

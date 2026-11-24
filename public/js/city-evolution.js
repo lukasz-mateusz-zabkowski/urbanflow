@@ -82,20 +82,28 @@ function networkAccess(state, city, zones) {
   }
   const jobs = Object.values(zones).filter(zone => employmentProfiles.has(zone.profile));
   const homes = Object.values(zones).filter(zone => residentialProfiles.has(zone.profile));
+  const totalJobs = jobs.reduce((sum, zone) => sum + Math.max(0, Number(zone.jobs) || 0), 0);
+  const totalResidents = homes.reduce((sum, zone) => sum + Math.max(0, Number(zone.residents) || 0), 0);
   const result = new Map();
   for (const zone of Object.values(zones)) {
     const component = components.get(zone.id);
     const served = component !== undefined;
-    const reachableJobs = jobs.filter(other => component !== undefined && components.get(other.id) === component).length;
-    const reachableHomes = homes.filter(other => component !== undefined && components.get(other.id) === component).length;
-    const jobAccess = jobs.length ? reachableJobs / jobs.length : 0;
-    const residentialAccess = homes.length ? reachableHomes / homes.length : 0;
+    const reachableJobs = jobs.filter(other => component !== undefined && components.get(other.id) === component)
+      .reduce((sum, other) => sum + Math.max(0, Number(other.jobs) || 0), 0);
+    const reachableResidents = homes.filter(other => component !== undefined && components.get(other.id) === component)
+      .reduce((sum, other) => sum + Math.max(0, Number(other.residents) || 0), 0);
+    const jobAccess = totalJobs ? reachableJobs / totalJobs : 0;
+    const residentialAccess = totalResidents ? reachableResidents / totalResidents : 0;
     const localLines = operatingLines.filter(line => line.stops.includes(zone.id));
     const componentLines = operatingLines.filter(line => line.stops.some(stop => components.get(stop) === component));
     const serviceShare = componentLines.length ? Math.max(...componentLines.map(line => serviceShares.get(line.id) || 0)) : 0;
     const wait = localLines.length ? localLines.reduce((sum, line) => sum + Math.max(0, Number(line.stats?.avgWaitMinutes) || 0), 0) / localLines.length : 60;
     const load = localLines.length ? Math.max(...localLines.map(line => clamp(Number(line.stats?.load) || 0, 0, 1.5))) : 1;
-    const access = served ? clamp((0.7 * (employmentProfiles.has(zone.profile) ? residentialAccess : jobAccess) + 0.3) * serviceShare, 0, 1) : 0;
+    const complementaryAccess = employmentProfiles.has(zone.profile) ? residentialAccess : jobAccess;
+    // A route that only connects like-use areas has no modelled useful destination.
+    // Do not grant the old 30% baseline access until a complementary destination is reachable.
+    const access = served && complementaryAccess > 0
+      ? clamp((0.7 * complementaryAccess + 0.3) * serviceShare, 0, 1) : 0;
     const satisfaction = served ? clamp(70 * access + 20 * Math.max(0, 1 - wait / 60) + 10 * Math.max(0, 1 - load), 0, 100) : 0;
     result.set(zone.id, { access, jobAccess, residentialAccess, satisfaction, waitMinutes: wait, load, connected: served });
   }
@@ -173,7 +181,7 @@ export function evolveCityWeek(state, city) {
   developmentPotential.sort((a, b) => b.potential - a.potential || b.progress - a.progress || a.id.localeCompare(b.id));
   const report = {
     week, residentsDelta: after.residents - before.residents, jobsDelta: after.jobs - before.jobs,
-    demandChangePercent: before.residents ? round(((after.residents / before.residents) - 1) * 1000) / 10 : 0,
+    demandChangePercent: before.residents ? (round(((after.residents / before.residents) - 1) * 1000) / 10 || 0) : 0,
     fastestGrowing: byChange('residents').slice(0, 3).filter(zone => zone.lastChange.residents > 0).map(zone => ({ id: zone.id, name: zone.name, change: zone.lastChange.residents })),
     declining: byChange('residents').reverse().slice(0, 3).filter(zone => zone.lastChange.residents < 0).map(zone => ({ id: zone.id, name: zone.name, change: zone.lastChange.residents })),
     transportIssues: ranked.filter(zone => zone.transportAccess < 30 || zone.transportSatisfaction < 35)
@@ -183,6 +191,18 @@ export function evolveCityWeek(state, city) {
     blockedByTransport: blockedByTransport.slice(0, 5),
     developmentPotential: developmentPotential.slice(0, 3),
     investments: investmentSummary,
+    districtSnapshots: ranked.map(zone => ({
+      id: zone.id, residents: zone.residents, jobs: zone.jobs,
+      residentialAttractiveness: zone.residentialAttractiveness, economicAttractiveness: zone.economicAttractiveness,
+      transportAccess: zone.transportAccess, transportSatisfaction: zone.transportSatisfaction,
+      jobAccess: zone.jobAccess, residentialAccess: zone.residentialAccess, growthPotential: zone.growthPotential,
+      intensity: zone.landUse.intensity, reserve: zone.landUse.shares.reserve,
+      residentsCapacity: zone.capacity.residents, jobsCapacity: zone.capacity.jobs,
+      demandFactor: cityDemandFactor(evolution, zone),
+      investmentCount: (state.investments?.projects || []).filter(project => project.districtId === zone.id && ['planned', 'in-progress'].includes(project.status)).length
+        + (state.investments?.assets || []).filter(asset => asset.districtId === zone.id).length
+        + (state.investments?.history || []).filter(item => item.districtId === zone.id && item.status === 'completed').length
+    })),
     networkBalance: network ? network.revenue - network.cost : null,
     networkWeek: network?.week ?? null
   };
@@ -230,7 +250,9 @@ export function validateCityEvolutionState(evolution, city) {
       || !Array.isArray(report.fastestGrowing) || !Array.isArray(report.declining) || !Array.isArray(report.transportIssues)
       || !Array.isArray(report.landUseChanges) || report.landUseChanges.length > ids.size
       || !Array.isArray(report.blockedByTransport) || report.blockedByTransport.length > 5
-      || !Array.isArray(report.developmentPotential) || report.developmentPotential.length > 3) return false;
+      || !Array.isArray(report.developmentPotential) || report.developmentPotential.length > 3
+      || !Array.isArray(report.districtSnapshots) || report.districtSnapshots.length > ids.size
+      || (report.districtSnapshots.length !== 0 && report.districtSnapshots.length !== ids.size)) return false;
     for (const item of [...report.fastestGrowing, ...report.declining]) if (!ids.has(item?.id) || typeof item.name !== 'string' || !Number.isFinite(item.change)) return false;
     for (const item of report.transportIssues) if (!ids.has(item?.id) || typeof item.name !== 'string'
       || !finiteNonnegative(item.access) || item.access > 100 || !finiteNonnegative(item.satisfaction) || item.satisfaction > 100) return false;
@@ -245,6 +267,17 @@ export function validateCityEvolutionState(evolution, city) {
     for (const item of report.developmentPotential) if (!ids.has(item?.id) || typeof item.name !== 'string'
       || !finiteNonnegative(item.potential) || item.potential > 100 || !finiteNonnegative(item.progress) || item.progress > 100
       || !['transport', 'residential', 'economic'].includes(item.direction)) return false;
+    const snapshotIds = new Set();
+    for (const item of report.districtSnapshots) {
+      if (!ids.has(item?.id) || snapshotIds.has(item.id) || !['residents', 'jobs', 'residentialAttractiveness', 'economicAttractiveness',
+        'transportAccess', 'transportSatisfaction', 'jobAccess', 'residentialAccess', 'growthPotential', 'reserve',
+        'residentsCapacity', 'jobsCapacity', 'demandFactor', 'investmentCount'].every(key => finiteNonnegative(item[key]))
+        || ['residentialAttractiveness', 'economicAttractiveness', 'transportAccess', 'transportSatisfaction', 'jobAccess', 'residentialAccess', 'growthPotential', 'reserve'].some(key => item[key] > 100)
+        || item.residents > item.residentsCapacity || item.jobs > item.jobsCapacity || item.demandFactor < CITY_EVOLUTION_LIMITS.demandFactorMin
+        || item.demandFactor > CITY_EVOLUTION_LIMITS.demandFactorMax || !['low', 'medium', 'high'].includes(item.intensity)
+        || !Number.isSafeInteger(item.investmentCount)) return false;
+      snapshotIds.add(item.id);
+    }
   }
   return true;
 }

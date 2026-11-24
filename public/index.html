@@ -8,7 +8,7 @@
   <title>UrbanFlow — Kraków w ruchu</title>
   <link rel="preconnect" href="https://tile.openstreetmap.org">
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css?v=1.9.4">
-  <link rel="stylesheet" href="styles.css?v=18">
+  <link rel="stylesheet" href="styles.css?v=19">
 </head>
 <body>
   <section class="city-screen" id="cityScreen" aria-labelledby="gameTitle">
@@ -140,8 +140,12 @@
           </section>
           <section class="city-evolution-panel" id="cityEvolutionPanel" aria-labelledby="cityEvolutionTitle" hidden>
             <div class="diagnostic-title"><strong id="cityEvolutionTitle">Atlas City Evolution</strong><span>wartości modelu symulacji</span></div>
+            <div class="living-city-legend" aria-label="Legenda rozwoju miasta"><span><i class="trend-up"></i> wzrost mieszkańców</span><span><i class="trend-flat"></i> stabilnie</span><span><i class="trend-down"></i> spadek</span><small>Wypełnienie: atrakcyjność · wielkość: potencjał · markery są symboliczne.</small></div>
             <label class="city-evolution-select">Obszar<select id="cityEvolutionDistrict" aria-label="Wybierz obszar miasta"></select></label>
+            <label class="city-evolution-select">Porównaj obszar<select id="cityEvolutionCompareDistrict" aria-label="Wybierz drugi obszar do porównania"><option value="">Nie porównuj</option></select></label>
             <div id="cityEvolutionProfile" class="city-evolution-profile" aria-live="polite"></div>
+            <div id="cityEvolutionAreaComparison" class="living-city-area-comparison" aria-live="polite"></div>
+            <div class="city-evolution-week living-city-comparison"><strong>Zmiana względem poprzedniego tygodnia</strong><p id="cityEvolutionComparison">Historia obszaru pojawi się po zamknięciu tygodnia symulacji.</p><button class="secondary-button" type="button" data-action="living-city-plan">Planuj transport dla tego obszaru</button></div>
             <div class="city-evolution-week"><strong>Podsumowanie tygodniowe</strong><p id="cityEvolutionWeeklySummary">Zmiany pojawią się po upływie pierwszego tygodnia symulacji.</p><ul id="cityEvolutionWeeklyDetails" class="diagnostic-list"></ul></div>
             <small class="city-evolution-note">Liczba mieszkańców i miejsc pracy to deterministyczne parametry gry, a nie dane demograficzne Krakowa. Dostępność wynika z bieżącego grafu linii; wskaźniki pokazują modelowane zależności.</small>
           </section>
@@ -281,6 +285,6 @@
   </dialog>
   <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="false"></div>
   <script src="vendor/leaflet/leaflet.js?v=1.9.4"></script>
-  <script type="module" src="js/main.js?v=23"></script>
+  <script type="module" src="js/main.js?v=24"></script>
 </body>
 </html>

@@ -486,17 +486,38 @@ export class GameMap {
     }
     if (mode === 'cityEvolution') {
       const zones = gameState.cityEvolution?.districts || {};
+      // This layer is intentionally small (the modeled areas only) and must remain individually clickable/accessibile.
+      if (!this.map.getPane('living-city')) {
+        const pane = this.map.createPane('living-city');
+        pane.style.zIndex = String(MAP_LAYER_ORDER.prospects + 1);
+        pane.style.pointerEvents = 'auto';
+      }
+      this.livingCityRenderer ||= L.svg({ padding: 0.4, pane: 'living-city' });
       for (const point of points) {
         const zone = zones[point.id];
         if (!zone || point.type === 'stop') continue;
         const score = Math.max(zone.residentialAttractiveness, zone.economicAttractiveness);
-        const color = score < 40 ? '#bc5144' : score < 68 ? '#d2a43e' : '#378760';
+        const fillColor = score < 40 ? '#bc5144' : score < 68 ? '#d2a43e' : '#378760';
+        const trendColor = zone.lastChange?.residents > 0 ? '#378760' : zone.lastChange?.residents < 0 ? '#bc5144' : '#718077';
         const radius = 8 + Math.min(7, (zone.growthPotential || 0) * 0.07);
-        const marker = L.circleMarker([point.lat, point.lng], { renderer: this.analysisRenderer, radius, color, fillColor: color,
-          fillOpacity: 0.25 + Math.min(0.35, (zone.growthPotential || 0) * 0.0035), weight: 2, interactive: true, keyboard: true })
+        const marker = L.circleMarker([point.lat, point.lng], { renderer: this.livingCityRenderer, radius, color: trendColor, fillColor,
+          fillOpacity: 0.25 + Math.min(0.35, (zone.growthPotential || 0) * 0.0035), weight: 3, interactive: true, keyboard: true,
+          bubblingMouseEvents: false, className: 'living-city-marker' })
           .addTo(this.analysisLayer);
-        marker.bindTooltip(`<strong>${escapeHtml(zone.name)}</strong><br>Atrakcyjność ${Math.round(score)}/100 · potencjał ${zone.growthPotential}/100<br>Mieszkańcy ${Math.round(zone.residents)} (${zone.lastChange?.residents > 0 ? '+' : ''}${Math.round(zone.lastChange?.residents || 0)})<br>Miejsca pracy ${Math.round(zone.jobs)} (${zone.lastChange?.jobs > 0 ? '+' : ''}${Math.round(zone.lastChange?.jobs || 0)})`, { direction: 'top', sticky: true, className: 'place-tooltip' });
-        marker.bindPopup(`<strong>${escapeHtml(zone.name)}</strong><br>Atrakcyjność: ${Math.round(score)}/100<br>Populacja modelu: ${Math.round(zone.residents)}<br>Miejsca pracy modelu: ${Math.round(zone.jobs)}<br>Dostępność: ${zone.transportAccess}%`);
+        marker.bindTooltip(`<strong>${escapeHtml(zone.name)}</strong><br>Atrakcyjność ${Math.round(score)}/100 · potencjał ${zone.growthPotential}/100<br>Dostępność ${zone.transportAccess}% · jakość ${zone.transportSatisfaction}/100<br>Mieszkańcy ${Math.round(zone.residents)} (${zone.lastChange?.residents > 0 ? '+' : ''}${Math.round(zone.lastChange?.residents || 0)})<br>Miejsca pracy ${Math.round(zone.jobs)} (${zone.lastChange?.jobs > 0 ? '+' : ''}${Math.round(zone.lastChange?.jobs || 0)})`, { direction: 'top', sticky: true, className: 'place-tooltip' });
+        marker.bindPopup(`<strong>${escapeHtml(zone.name)}</strong><br>Atrakcyjność: ${Math.round(score)}/100<br>Populacja modelu: ${Math.round(zone.residents)}<br>Miejsca pracy modelu: ${Math.round(zone.jobs)}<br>Dostępność: ${zone.transportAccess}% · jakość ${zone.transportSatisfaction}/100`);
+        const element = marker.getElement();
+        if (element) {
+          element.setAttribute('aria-label', `${zone.name}, rozwój modelowany`);
+          element.setAttribute('role', 'button'); element.setAttribute('tabindex', '0');
+          element.dataset.cityAreaId = point.id;
+          const selectArea = () => window.dispatchEvent(new CustomEvent('urbanflow:select-city-evolution', { detail: { id: point.id } }));
+          marker.on('click', selectArea);
+          element.addEventListener('keydown', event => {
+            if (event.key !== 'Enter' && event.key !== ' ') return;
+            event.preventDefault(); selectArea();
+          });
+        }
       }
       return;
     }
