@@ -2,10 +2,11 @@
 
 ## Status
 
-**Local status: GO. GitHub Actions: pending.** This is a feature-branch candidate; it has not been merged, tagged, released, or deployed.
+**Local status: GO. GitHub Actions: pending final push.** This is a feature-branch candidate; it has not been merged, tagged, released, or deployed.
 
 - Base: `05eb5a618701dc445e27519a5f1ff997748ff542` (`main`, 1.6.0-alpha)
-- Candidate code commit: `7a43ed382d321f450cffe33c35d0e76cb87f0e1c`
+- Candidate implementation commit: `7a43ed382d321f450cffe33c35d0e76cb87f0e1c`
+- Final code commit after regression fix: `d77a996cdcff2577f839d30994a3a5567fdbde93`
 - Branch: `feature/alpha-1.7.0-living-city`
 
 ## Scope and architecture
@@ -33,6 +34,8 @@ Candidate benchmark run (Node on the current Windows development environment):
 
 The investment changes modeled housing capacity, not immediate occupancy. Actual population changes remain gradual and bounded. In the no-service scenario, the modeled district declines over time; service improves access and the development trend. This is an internal game-model comparison, not evidence that a particular real line would cause these demographic outcomes.
 
+Final review found completed hub modernization counted twice in district investment history because the same completed effect appeared in both the asset list and completion history. The snapshot now counts active projects plus completed history exactly once. A regression test verifies the corrected count; investment effects and economy are unchanged.
+
 ## Save compatibility
 
 Save schema advances from 11 to 12 because truthful per-area weekly history is persistent state. Schema 11 migrates without changing campaign, budget, lines, fleet, cohorts, investments or current district profiles. Historical snapshots not present in old saves remain empty rather than being fabricated. Weekly history remains capped at 12 reports.
@@ -55,7 +58,7 @@ The main measurable cost is the additional bounded weekly history, which makes t
 | Check | Result |
 |---|---|
 | `npm ci` | PASS; 73 packages audited, 0 vulnerabilities |
-| `npm test` | PASS; 253 tests, 0 failed |
+| `npm test` | PASS; 254 tests, 0 failed |
 | `npm run test:browser` | PASS; 35 tests across desktop/mobile, 0 failed |
 | `npm run audit:all` | PASS; 0 vulnerabilities |
 | `npm run audit:production` | PASS; 0 vulnerabilities |
@@ -64,7 +67,7 @@ The main measurable cost is the additional bounded weekly history, which makes t
 | Local app on `127.0.0.1:3106` | PASS; health version and SHA match candidate; loopback listener |
 | GitHub Actions (six jobs) | pending push and run for the final branch SHA |
 
-Living City focused Playwright coverage has passed at 1366×768, 390×844 and 360×800 during development. It checks selecting a modeled area, its profile, two-area comparison, map selection, transition to planning, no horizontal overflow and no page errors. This is not a physical-phone test.
+Living City focused Playwright coverage has passed at 1366x768, 390x844 and 360x800 during development. It checks selecting a modeled area, its profile, two-area comparison, map selection, transition to planning, no horizontal overflow and no page errors. This is not a physical-phone test.
 
 Screenshots are kept outside the repository at `%LOCALAPPDATA%\Temp\urbanflow-alpha-1.7.0-living-city\`:
 
@@ -73,7 +76,7 @@ Screenshots are kept outside the repository at `%LOCALAPPDATA%\Temp\urbanflow-al
 - `mobile-360x800-living-city.png`
 - `desktop-live-osm-1366x768.png`
 
-The real OSM run against `http://127.0.0.1:3106/` made 7 unique tile requests, all returned 200, and at least one tile rendered. It reported no page errors. `/health` returned version `1.7.0-alpha` and commit `7a43ed382d321f450cffe33c35d0e76cb87f0e1c`. The server listener was `127.0.0.1:3106`; ports 3101–3105 were not touched. No physical-phone test was performed.
+The real OSM check must be repeated against the final code SHA before delivery. The prior run made 7 unique tile requests, all returned 200, and at least one tile rendered with no page errors. The final run's health SHA and listener are recorded after restart below. No physical-phone test was performed.
 
 ## Known limitations
 
@@ -85,4 +88,4 @@ The real OSM run against `http://127.0.0.1:3106/` made 7 unique tile requests, a
 
 ## Release decision
 
-**Local validation: GO. Overall delivery: pending all six GitHub Actions jobs on the pushed branch SHA.**
+**Local validation: GO. Overall delivery: pending all six GitHub Actions jobs on the final pushed branch SHA.**
