@@ -179,6 +179,10 @@ export class GameMap {
         record.segmentHandles?.forEach(handle => handle.bringToFront());
       }
     });
+    this.vehicles.forEach(vehicle => {
+      const selected = Boolean(id && vehicle.record?.line?.id === id);
+      vehicle.marker.getElement()?.querySelector('.map-vehicle')?.classList.toggle('selected-line-vehicle', selected);
+    });
   }
 
   render(points, gameState) {

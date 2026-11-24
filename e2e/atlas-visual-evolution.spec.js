@@ -13,7 +13,13 @@ for (const scenario of [
 ]) {
   test(`${scenario.name}: Atlas workspaces have distinct information architecture and preserve the campaign`, async ({ page }) => {
     await page.setViewportSize(scenario.viewport);
-    await page.addInitScript(() => { localStorage.clear(); Math.random = () => 0.1; });
+    await page.addInitScript(() => {
+      if (!sessionStorage.getItem('urbanflow-visual-evolution-seeded')) {
+        localStorage.clear();
+        sessionStorage.setItem('urbanflow-visual-evolution-seeded', '1');
+      }
+      Math.random = () => 0.1;
+    });
     await page.route('https://tile.openstreetmap.org/**', route => route.fulfill({ status: 200, contentType: 'image/svg+xml', body: tile }));
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
@@ -28,6 +34,22 @@ for (const scenario of [
     if (!(await lineItem.getAttribute('class')).includes('selected')) await lineItem.click();
     if (scenario.mobile) await page.locator('#mobilePanelButton').click();
     await page.locator('#pauseButton').click();
+    expect(await page.locator('.map-vehicle').count()).toBeGreaterThan(0);
+    expect(await page.locator('.map-vehicle.selected-line-vehicle').count()).toBeGreaterThan(0);
+    await page.evaluate(() => {
+      const stack = document.querySelector('#toastStack');
+      stack.replaceChildren(...['Sieć gotowa.', 'Nowy przystanek odkryty.', 'Linia działa.'].map(text => {
+        const toast = document.createElement('div'); toast.className = 'toast'; toast.textContent = text; return toast;
+      }));
+    });
+    const toastOverlaps = await page.evaluate(() => {
+      const boxes = [...document.querySelectorAll('#toastStack .toast')].map(element => element.getBoundingClientRect());
+      const fixedControls = ['.leaflet-control-zoom', '#mapLegend'].map(selector => document.querySelector(selector)?.getBoundingClientRect()).filter(Boolean);
+      return boxes.some(a => fixedControls.some(b => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top));
+    });
+    expect(toastOverlaps).toBe(false);
+    await page.screenshot({ path: join(artifacts, `${scenario.name}-toast-layout.png`), animations: 'disabled' });
+    await page.locator('#toastStack').evaluate(element => element.replaceChildren());
 
     const before = await page.evaluate(() => {
       const state = JSON.parse(localStorage.getItem('urbanflow.krakow.v2')).state;
@@ -106,6 +128,15 @@ for (const scenario of [
         fleet: state.fleet, campaign: state.campaign, investments: state.investments };
     });
     expect(after).toEqual(before);
+    await page.reload({ waitUntil: 'domcontentloaded' });
+    await expect(page.locator('#map.leaflet-container')).toBeVisible();
+    const resumed = await page.evaluate(() => {
+      const state = JSON.parse(localStorage.getItem('urbanflow.krakow.v2')).state;
+      return { budget: state.budget, elapsedMinutes: state.elapsedMinutes, carried: state.carried,
+        lines: state.lines.map(line => ({ id: line.id, stops: line.stops, vehicles: line.vehicles })),
+        fleet: state.fleet, campaign: state.campaign, investments: state.investments };
+    });
+    expect(resumed).toEqual(before);
     expect(errors).toEqual([]);
   });
 }

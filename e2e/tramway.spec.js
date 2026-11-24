@@ -182,6 +182,32 @@ test('standard game editor previews, charges and restores a geometry-only tram e
   await page.screenshot({ path: join(artifactDir, 'tramway-edit-saved-desktop.png'), animations: 'disabled' });
 });
 
+test('an in-progress tram geometry draft survives switching Atlas workspaces and can be approved on return', async ({ page }) => {
+  await openUnlockedTram(page, { width: 1366, height: 768 });
+  const handle = page.locator('.tram-control-marker').first();
+  await expect(handle).toBeVisible();
+  const before = await page.evaluate(() => {
+    const state = JSON.parse(localStorage.getItem('urbanflow.krakow.v2')).state;
+    return { control: state.tramControlPoints[0], geometry: state.lines.find(line => line.type === 'tram').routeGeometry };
+  });
+  const box = await handle.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width / 2 + 34, box.y + box.height / 2 - 18, { steps: 6 });
+  await page.mouse.up();
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('urbanflow.krakow.v2')).state.tramControlPoints[0]))
+    .not.toEqual(before.control);
+  const pendingControl = await page.evaluate(() => JSON.parse(localStorage.getItem('urbanflow.krakow.v2')).state.tramControlPoints[0]);
+  await page.locator('[data-action="atlas-view"][data-view="operations"]').click();
+  await page.locator('[data-action="atlas-view"][data-view="planning"]').click();
+  await expect(page.locator('.tram-control-marker')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('urbanflow.krakow.v2')).state.tramControlPoints[0]))
+    .toEqual(pendingControl);
+  await page.locator('#createLineButton').click();
+  const committedGeometry = await page.evaluate(() => JSON.parse(localStorage.getItem('urbanflow.krakow.v2')).state.lines.find(line => line.type === 'tram').routeGeometry);
+  expect(committedGeometry).not.toEqual(before.geometry);
+});
+
 test('manual tram control handle can be moved by touch without panning the mobile map', async ({ browser }) => {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   try {

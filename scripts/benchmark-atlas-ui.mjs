@@ -12,7 +12,7 @@ function percentile(values, ratio) {
   return Number(sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * ratio) - 1)].toFixed(2));
 }
 
-async function measure(browser, url) {
+async function measure(browser, url, sampleCount = 15) {
   const context = await browser.newContext({ viewport: { width: 1366, height: 768 } });
   const page = await context.newPage();
   await page.addInitScript(() => { localStorage.clear(); Math.random = () => 0.1; });
@@ -25,8 +25,8 @@ async function measure(browser, url) {
     await page.locator(`[data-action="atlas-view"][data-view="${workspace}"]`).click();
     for (let index = 0; index < 5; index += 1) await switchMode(page, modes[index % modes.length]);
     const samples = [];
-    for (let index = 0; index < 30; index += 1) samples.push(await switchMode(page, modes[index % modes.length]));
-    workspaces[workspace] = { samples: samples.length, medianMs: percentile(samples, 0.5), p95Ms: percentile(samples, 0.95) };
+    for (let index = 0; index < sampleCount; index += 1) samples.push(await switchMode(page, modes[index % modes.length]));
+    workspaces[workspace] = { values: samples };
   }
   await context.close();
   return { url, workspaces };
@@ -46,12 +46,23 @@ async function switchMode(page, mode) {
 
 const browser = await chromium.launch({ headless: true });
 try {
-  const baseline = await measure(browser, baselineUrl);
-  const candidate = await measure(browser, candidateUrl);
+  const measurements = { baseline: { url: baselineUrl, values: Object.fromEntries(Object.keys(workspaceModes).map(key => [key, []])) },
+    candidate: { url: candidateUrl, values: Object.fromEntries(Object.keys(workspaceModes).map(key => [key, []])) } };
+  const order = [['baseline', 'candidate'], ['candidate', 'baseline'], ['baseline', 'candidate'], ['candidate', 'baseline']];
+  for (const pair of order) {
+    for (const target of pair) {
+      const result = await measure(browser, measurements[target].url);
+      for (const workspace of Object.keys(workspaceModes)) measurements[target].values[workspace].push(...result.workspaces[workspace].values);
+    }
+  }
+  const summarize = target => ({ url: target.url, workspaces: Object.fromEntries(Object.entries(target.values).map(([workspace, values]) => [workspace,
+    { samples: values.length, medianMs: percentile(values, 0.5), p95Ms: percentile(values, 0.95) }])) });
+  const baseline = summarize(measurements.baseline);
+  const candidate = summarize(measurements.candidate);
   const medianDeltaPercent = Object.fromEntries(Object.keys(workspaceModes).map(workspace => [workspace,
     Number(((candidate.workspaces[workspace].medianMs / baseline.workspaces[workspace].medianMs - 1) * 100).toFixed(1))]));
   console.log(JSON.stringify({ viewport: '1366x768', operation: 'analytics layer selection to two paint frames after warming each workspace', baseline, candidate, medianDeltaPercent,
-    note: 'Each workspace is selected before the timed samples; measurements compare layer changes inside the same workspace. Thirty warmed samples per workspace in Chromium. Local results are not a hardware guarantee.' }, null, 2));
+    note: 'Four fresh-session rounds alternate which version is measured first; fifteen warmed samples per workspace in each round (60 samples per version). Local results are not a hardware guarantee.' }, null, 2));
 } finally {
   await browser.close();
 }
