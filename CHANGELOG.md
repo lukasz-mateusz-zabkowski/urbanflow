@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.6.0 — Atlas Operations
+
+- Added an Operations fleet summary for owned, assigned, and reserve vehicles by type, observed line operating costs, modelled reserve maintenance, capacity warnings, and potentially idle assignments.
+- Added a deterministic “Open line” action from fleet signals so it always opens the selected line details, even if that line was already selected.
+- Added a read-only decision simulator for assigning or removing a reserve vehicle, buying one vehicle, setting a uniform frequency, or applying an existing timetable profile for the current service-day type.
+- The preview compares the current transport model at the same game time and day type, labels modelled rates separately from current observed passenger data, and never predicts future passenger totals or revenue.
+- Applying a proposal requires confirmation and delegates to the existing campaign methods; no campaign schema fields or save migration were added.
+- Added Node invariants and browser coverage for preview immutability, cancellation, confirmed application, fleet reporting, schema 11, and four desktop/mobile viewports.
+- See `docs/URBANFLOW-OPERATIONS-DECISIONS.md` and `ALPHA-1.6.0-TRANSPORT-OPERATIONS-REPORT.md` for assumptions and validation.
+
 ## 1.3.0 — Alpha 10
 
 - Added Atlas Investments with housing, economic, and served-hub projects, including planning, approval, timed completion, cancellation/refunds, single-application effects, and bounded project history.

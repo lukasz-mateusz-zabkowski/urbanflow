@@ -8,7 +8,7 @@
   <title>UrbanFlow — Kraków w ruchu</title>
   <link rel="preconnect" href="https://tile.openstreetmap.org">
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css?v=1.9.4">
-  <link rel="stylesheet" href="styles.css?v=17">
+  <link rel="stylesheet" href="styles.css?v=18">
 </head>
 <body>
   <section class="city-screen" id="cityScreen" aria-labelledby="gameTitle">
@@ -106,6 +106,35 @@
               <div><span>Flota przypisana / własna</span><strong id="atlasFleet">—</strong></div>
               <div><span>Linie przeciążone</span><strong id="atlasOverloaded">—</strong></div>
             </div>
+            <section class="operations-module" aria-labelledby="fleetManagementTitle">
+              <div class="diagnostic-title"><strong id="fleetManagementTitle">Zarządzanie flotą</strong><span>pojazdy i koszty z modelu gry</span></div>
+              <div id="operationsFleetTypes" class="operations-fleet-types"></div>
+              <div class="diagnostic-title"><strong>Linie i sygnały floty</strong><span>obserwowane obciążenie i zapotrzebowanie</span></div>
+              <ul id="operationsFleetLines" class="diagnostic-list"></ul>
+            </section>
+            <section class="operations-module decision-simulator" aria-labelledby="decisionSimulatorTitle">
+              <div class="diagnostic-title"><strong id="decisionSimulatorTitle">Porównaj decyzję</strong><span>podgląd nie zmienia kampanii</span></div>
+              <div class="operations-decision-form">
+                <label>Linia<select id="opsDecisionLine" aria-label="Wybierz linię do porównania"></select></label>
+                <label>Wariant<select id="opsDecisionKind" aria-label="Wybierz wariant operacyjny">
+                  <option value="assign">Przydziel 1 pojazd z rezerwy</option>
+                  <option value="remove">Przenieś 1 pojazd do rezerwy</option>
+                  <option value="buy">Kup i przydziel 1 pojazd</option>
+                  <option value="frequency">Ustaw jednolitą częstotliwość</option>
+                  <option value="profile">Zastosuj profil rozkładu</option>
+                </select></label>
+                <label id="opsDecisionFrequencyGroup" hidden>Częstotliwość <output id="opsDecisionFrequencyValue">4 kursy/h</output>
+                  <input id="opsDecisionFrequency" type="range" min="1" max="8" step="0.5" value="4" aria-label="Proponowana częstotliwość kursowania"></label>
+                <label id="opsDecisionProfileGroup" hidden>Profil<select id="opsDecisionProfile" aria-label="Wybierz profil rozkładu"></select></label>
+              </div>
+              <p class="operations-simulator-note">Wariant porównuje modelowaną częstotliwość, miejsca na godzinę, wymagane pojazdy i koszt operacyjny przy bieżącej porze oraz typie dnia. Nie prognozuje przyszłej liczby pasażerów ani przychodów.</p>
+              <div id="opsDecisionPreview" class="operations-decision-result" aria-live="polite"><p>Wybierz linię i wariant, a następnie uruchom porównanie.</p></div>
+              <div class="operations-decision-actions">
+                <button class="secondary-button" id="opsDecisionPreviewButton" type="button">Porównaj wariant</button>
+                <button class="text-button" id="opsDecisionCancelButton" type="button" hidden>Anuluj podgląd</button>
+                <button class="primary-button" id="opsDecisionApplyButton" type="button" hidden>Zatwierdź decyzję</button>
+              </div>
+            </section>
             <div class="diagnostic-title"><strong>Najpilniejsze problemy</strong><span>dane bieżącej symulacji</span></div>
             <ul id="atlasActions" class="diagnostic-list"></ul>
           </section>
@@ -252,6 +281,6 @@
   </dialog>
   <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="false"></div>
   <script src="vendor/leaflet/leaflet.js?v=1.9.4"></script>
-  <script type="module" src="js/main.js?v=22"></script>
+  <script type="module" src="js/main.js?v=23"></script>
 </body>
 </html>

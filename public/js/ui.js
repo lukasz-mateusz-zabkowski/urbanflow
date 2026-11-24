@@ -17,6 +17,7 @@ import { LAND_USE_TYPES, landUseDominantUse, landUseDirection, landUseLabel } fr
 import { INVESTMENT_CATALOG } from './investments.js?v=1';
 import { contextualHints, getOnboardingStep, onboardingProgress, onboardingStatus } from './onboarding.js?v=1';
 import { ATLAS_VIEWS, filterAndSortLines, loadAtlasPreferences, saveAtlasPreferences } from './atlas.js?v=1';
+import { compareOperationalDecision, fleetManagementSnapshot } from './operations.js?v=1';
 
 const $ = selector => document.querySelector(selector);
 const formatNumber = value => new Intl.NumberFormat('pl-PL').format(Math.round(Number(value) || 0));
@@ -64,6 +65,8 @@ export class UI {
     this.selectedEvolutionDistrict = null;
     this.selectedLandUseDistrict = null;
     this.selectedInvestmentDistrict = null;
+    this.opsDecisionPreviewed = false;
+    this.opsDecisionLineId = null;
     this.atlasPreferences = { view: 'transport', lineFilter: 'all', lineSort: 'load' };
     this.panelStorage = null;
     try { this.panelStorage = window.localStorage; this.atlasPreferences = loadAtlasPreferences(this.panelStorage); } catch { /* Preferences are optional. */ }
@@ -103,6 +106,20 @@ export class UI {
         const result = this.onStarterSelect ? this.onStarterSelect(route) : this.game.selectStarterRoute(route);
         if (result?.ok === false) this.toast(result.message, 'warn');
         else { this.openPanel(); this.scrollToBuild(); }
+        return;
+      }
+      if (button.id === 'opsDecisionPreviewButton') {
+        this.opsDecisionPreviewed = true;
+        this.renderOperationsDashboard();
+        return;
+      }
+      if (button.id === 'opsDecisionCancelButton') {
+        this.opsDecisionPreviewed = false;
+        this.renderOperationsDashboard();
+        return;
+      }
+      if (button.id === 'opsDecisionApplyButton') {
+        await this.applyOperationalDecision();
         return;
       }
       if (button.dataset.tramMode) {
@@ -155,6 +172,13 @@ export class UI {
         return;
       }
       if (action === 'diagnose-mobility') { this.renderMobilityRelation(); return; }
+      if (action === 'open-line') {
+        this.selectedLineId = line;
+        this.opsDecisionLineId = line;
+        this.renderNetwork();
+        this.map.highlightLine?.(line);
+        return;
+      }
       if (action === 'select-line') {
         this.selectedLineId = this.selectedLineId === line ? null : line;
         if (this.game.state.carried > 0 && this.selectedLineId) this.game.markTutorialAction('fleetDetails');
@@ -310,9 +334,25 @@ export class UI {
       } else if (event.target.matches('#atlasLineSort')) {
         this.atlasPreferences = saveAtlasPreferences({ ...this.atlasPreferences, lineSort: event.target.value }, this.panelStorage);
         this.renderNetwork();
+      } else if (event.target.matches('#opsDecisionLine')) {
+        this.opsDecisionLineId = event.target.value || null;
+        this.selectedLineId = this.opsDecisionLineId;
+        this.opsDecisionPreviewed = false;
+        this.map.highlightLine?.(this.selectedLineId);
+        this.renderNetwork();
+      } else if (event.target.matches('#opsDecisionKind')) {
+        this.opsDecisionPreviewed = false;
+        this.renderOperationsDashboard();
+      } else if (event.target.matches('#opsDecisionProfile')) {
+        this.opsDecisionPreviewed = false;
       }
     }, { signal });
     document.addEventListener('input', event => {
+      if (event.target.matches('#opsDecisionFrequency')) {
+        this.setText('opsDecisionFrequencyValue', `${decimal(event.target.value)} kursów/h`);
+        this.opsDecisionPreviewed = false;
+        this.renderOperationsDecisionResult();
+      }
       if (event.target.matches('[data-frequency]')) $('#frequencyValue').textContent = `${decimal(event.target.value)} kursów/h`;
       if (event.target.matches('[data-timetable-frequency]')) {
         const output = event.target.closest('.timetable-row')?.querySelector('[data-frequency-value]');
@@ -737,6 +777,117 @@ export class UI {
     this.setHtml('atlasActions', problems.length
       ? problems.map(item => `<li><span><strong>${escapeHtml(item.label)}</strong> · ${escapeHtml(item.cause)}<small>${escapeHtml(item.impact)} ${escapeHtml(item.actions)}</small></span><b>${escapeHtml(item.observed)}</b></li>`).join('')
       : '<li class="empty-mini">Brak wykrytych problemów w bieżących obserwacjach.</li>');
+    const snapshot = fleetManagementSnapshot(state);
+    this.setHtml('operationsFleetTypes', snapshot.types.map(item => `<article class="operations-fleet-card" data-fleet-type="${item.id}">
+      <strong>${escapeHtml(item.name)}</strong>
+      <div><span>Własne</span><b>${item.owned}</b></div><div><span>Przydzielone</span><b>${item.assigned}</b></div>
+      <div><span>Rezerwa</span><b>${item.reserve}</b></div><div><span>Wykorzystanie floty</span><b>${Math.round(item.assignmentRatio * 100)}%</b></div>
+      <div><span>Koszt linii / h</span><b>${item.lineOperatingCostPerHour === null ? 'brak obserwacji' : money(item.lineOperatingCostPerHour)}</b></div>
+      <div><span>Utrzymanie rezerwy / h</span><b>${money(item.reserveMaintenancePerHour)}</b></div>
+    </article>`).join(''));
+    const attentionLines = snapshot.types.flatMap(item => item.lines.map(line => ({ ...line, typeName: item.name })))
+      .sort((a, b) => Number(b.needsCapacity) - Number(a.needsCapacity) || (b.load ?? 0) - (a.load ?? 0));
+    this.setHtml('operationsFleetLines', attentionLines.length ? attentionLines.map(line => {
+      const reason = line.needsCapacity
+        ? `Sygnał niedoboru: obciążenie ${line.load === null ? 'brak obserwacji' : `${decimal(line.load * 100)}%`}, kolejka ${line.waiting === null ? 'brak obserwacji' : formatNumber(line.waiting)}, ${line.vehicles}/${line.requiredVehicles} wymaganych pojazdów.`
+        : line.idleVehicles > 0
+          ? `Możliwy zbędny przydział: ${line.idleVehicles} poj. niewykorzystanych w tym przedziale; wymaga ${line.requiredVehicles}.`
+          : `Brak sygnału o niedoborze lub nadmiarze przydziału w tym okresie; wymaga ${line.requiredVehicles} pojazdów.`;
+      const cost = line.observedOperatingCostPerHour === null ? 'Koszt nie ma jeszcze obserwacji.' : `Obserwowany koszt linii: ${money(line.observedOperatingCostPerHour)}/h.`;
+      return `<li class="operations-line-row"><span><strong>${escapeHtml(line.name)}</strong><small>${escapeHtml(line.typeName)} · ${escapeHtml(reason)} ${escapeHtml(cost)}</small></span><button type="button" class="text-button" data-action="open-line" data-line="${escapeHtml(line.id)}">Otwórz linię</button></li>`;
+    }).join('') : '<li class="empty-mini">Brak aktywnych linii.</li>');
+
+    const lineSelect = $('#opsDecisionLine');
+    const signature = state.lines.map(line => `${line.id}:${line.name || ''}`).join('|');
+    if (lineSelect.dataset.signature !== signature) {
+      const preferred = this.opsDecisionLineId || this.selectedLineId || state.lines[0]?.id || '';
+      lineSelect.innerHTML = state.lines.map(line => `<option value="${escapeHtml(line.id)}">${escapeHtml(line.name || line.id)} · ${escapeHtml(TRANSPORT_TYPES[line.type]?.name || line.type)}</option>`).join('');
+      if (!state.lines.length) lineSelect.innerHTML = '<option value="">Najpierw utwórz linię</option>';
+      this.opsDecisionLineId = state.lines.some(line => line.id === preferred) ? preferred : state.lines[0]?.id || null;
+      lineSelect.value = this.opsDecisionLineId || '';
+      lineSelect.disabled = !state.lines.length;
+      lineSelect.dataset.signature = signature;
+    } else if (this.opsDecisionLineId && state.lines.some(line => line.id === this.opsDecisionLineId)) {
+      lineSelect.value = this.opsDecisionLineId;
+    }
+    const kind = $('#opsDecisionKind');
+    const selectedLine = state.lines.find(line => line.id === lineSelect.value);
+    const maxFrequency = TRANSPORT_TYPES[selectedLine?.type]?.maxFrequency || 8;
+    const frequencyInput = $('#opsDecisionFrequency');
+    frequencyInput.max = String(maxFrequency);
+    if (Number(frequencyInput.value) > maxFrequency) frequencyInput.value = String(maxFrequency);
+    $('#opsDecisionFrequencyGroup').hidden = kind.value !== 'frequency';
+    $('#opsDecisionProfileGroup').hidden = kind.value !== 'profile';
+    const profile = $('#opsDecisionProfile');
+    if (!profile.dataset.ready) {
+      profile.innerHTML = Object.entries(TIMETABLE_PROFILES).map(([id, value]) => `<option value="${id}">${escapeHtml(value.label)}</option>`).join('');
+      profile.dataset.ready = 'true';
+    }
+    this.renderOperationsDecisionResult();
+  }
+
+  operationalProposal() {
+    const kind = $('#opsDecisionKind').value;
+    if (kind === 'frequency') return { kind, value: Number($('#opsDecisionFrequency').value) };
+    if (kind === 'profile') return { kind, profileId: $('#opsDecisionProfile').value };
+    return { kind };
+  }
+
+  renderOperationsDecisionResult() {
+    const lineId = $('#opsDecisionLine')?.value;
+    const preview = this.opsDecisionPreviewed
+      ? compareOperationalDecision(this.game.state, lineId, this.operationalProposal()) : null;
+    const result = $('#opsDecisionPreview');
+    $('#opsDecisionCancelButton').hidden = !this.opsDecisionPreviewed;
+    $('#opsDecisionApplyButton').hidden = !this.opsDecisionPreviewed || !preview?.ok;
+    $('#opsDecisionApplyButton').disabled = this.game.state.status !== 'playing' || !preview?.ok;
+    if (!this.opsDecisionPreviewed) {
+      this.setHtml('opsDecisionPreview', '<p>Wybierz linię i wariant, a następnie uruchom porównanie.</p>');
+      return;
+    }
+    if (!preview?.ok) {
+      this.setHtml('opsDecisionPreview', `<p class="operations-error">${escapeHtml(preview?.reason || 'Wybierz działającą linię.')}</p>`);
+      return;
+    }
+    const rate = (before, after) => `<div class="operations-comparison"><span>Obecnie</span><b>${before}</b><i aria-hidden="true">→</i><span>Wariant</span><b>${after}</b></div>`;
+    const observed = preview.observed;
+    const observedText = observed.load === null && observed.waiting === null
+      ? 'Brak wystarczających obserwacji z kampanii.'
+      : `Obserwacje teraz: obciążenie ${observed.load === null ? '—' : `${decimal(observed.load * 100)}%`}, kolejka ${observed.waiting === null ? '—' : formatNumber(observed.waiting)}, przychody ${observed.revenuePerHour === null ? '—' : `${money(observed.revenuePerHour)}/h`}.`;
+    this.setHtml('opsDecisionPreview', `<strong>${escapeHtml(preview.description)} · ${escapeHtml(SERVICE_DAY_LABELS[preview.dayType] || preview.dayType)}</strong>
+      ${rate(`${decimal(preview.before.requestedFrequency)} / ${decimal(preview.before.frequency)} kursów/h efektywnie`, `${decimal(preview.after.requestedFrequency)} / ${decimal(preview.after.frequency)} kursów/h efektywnie`)}
+      ${rate(`${formatNumber(preview.before.capacityPerHour)} miejsc/h`, `${formatNumber(preview.after.capacityPerHour)} miejsc/h`)}
+      ${rate(`${preview.before.requiredVehicles} poj. wymagane`, `${preview.after.requiredVehicles} poj. wymagane`)}
+      ${rate(`${money(preview.before.costPerHour)}/h modelowo`, `${money(preview.after.costPerHour)}/h modelowo`)}
+      <p>Zmiana modelowa: ${preview.delta.capacityPerHour >= 0 ? '+' : ''}${formatNumber(preview.delta.capacityPerHour)} miejsc/h; ${preview.delta.costPerHour >= 0 ? '+' : ''}${money(preview.delta.costPerHour)}/h.${preview.oneTimeCost ? ` Koszt zakupu: ${money(preview.oneTimeCost)} jednorazowo.` : ''}</p>
+      <p>${escapeHtml(observedText)}</p><small>${escapeHtml(preview.assumptions.join(' '))}</small>`);
+  }
+
+  async applyOperationalDecision() {
+    const lineId = $('#opsDecisionLine').value;
+    const proposal = this.operationalProposal();
+    const preview = compareOperationalDecision(this.game.state, lineId, proposal);
+    if (!preview.ok || this.game.state.status !== 'playing') {
+      this.opsDecisionPreviewed = true;
+      this.renderOperationsDashboard();
+      return;
+    }
+    const afterBudget = this.game.state.budget - preview.oneTimeCost;
+    const message = `${preview.description}. Zmiana miejsc/h: ${preview.delta.capacityPerHour >= 0 ? '+' : ''}${formatNumber(preview.delta.capacityPerHour)}; modelowy koszt operacyjny zmieni się o ${money(preview.delta.costPerHour)}/h. ${preview.oneTimeCost ? `Zakup obniży budżet z ${money(this.game.state.budget)} do ${money(afterBudget)}.` : 'Nie ma dodatkowego kosztu zakupu.'} Wyniki pasażerskie nie są prognozowane. Zatwierdzić przy użyciu mechaniki kampanii?`;
+    if (!await confirmAction(message, 'Zatwierdź wariant')) return;
+    let result;
+    if (proposal.kind === 'assign') result = this.game.assignVehicle(lineId);
+    else if (proposal.kind === 'remove') result = this.game.unassignVehicle(lineId);
+    else if (proposal.kind === 'buy') result = this.game.buyVehicle(lineId);
+    else if (proposal.kind === 'frequency') result = this.game.setFrequency(lineId, proposal.value);
+    else if (proposal.kind === 'profile') {
+      result = this.game.setTimetableProfile(lineId, proposal.profileId, gameClock(this.game.state.elapsedMinutes, this.game.state.calendar).dayType);
+    }
+    if (this.checkResult(result)) {
+      this.opsDecisionPreviewed = false;
+      this.toast('Decyzja operacyjna zatwierdzona przez istniejący model gry. Obserwuj jej rzeczywiste wyniki.');
+      this.renderNetwork();
+    }
   }
 
   renderAnalytics(minuteOfDay) {
