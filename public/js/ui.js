@@ -20,6 +20,7 @@ import { contextualHints, getOnboardingStep, onboardingProgress, onboardingStatu
 import { ATLAS_VIEWS, filterAndSortLines, loadAtlasPreferences, saveAtlasPreferences } from './atlas.js?v=1';
 import { applyOperationalDecisionSafely, compareOperationalDecision, fleetManagementSnapshot, operationalDecisionFingerprint } from './operations.js?v=2';
 import { financeForecast, financeGoals, financeHistory, financeSnapshot, plannedFinancialCommitments } from './finance.js?v=1';
+import { appendSessionDecision, buildGameplayDecisionJournal, buildGameplaySessionReport } from './gameplay-insights.js?v=1';
 
 const $ = selector => document.querySelector(selector);
 const formatNumber = value => new Intl.NumberFormat('pl-PL').format(Math.round(Number(value) || 0));
@@ -47,13 +48,16 @@ export function confirmAction(message, label = 'Potwierdź') {
 }
 
 export class UI {
-  constructor(game, map, { onNewGame = () => {}, appVersion = 'unknown', appCommit = '', alphaTestMode = false } = {}) {
+  constructor(game, map, { onNewGame = () => {}, appVersion = 'unknown', appCommit = '', alphaTestMode = false, technicalErrors = () => ({}) } = {}) {
     this.game = game;
     this.map = map;
     this.onNewGame = onNewGame;
     this.appVersion = appVersion;
     this.appCommit = appCommit;
     this.alphaTestMode = alphaTestMode;
+    this.technicalErrors = technicalErrors;
+    this.sessionStartedAt = performance.now();
+    this.sessionDecisions = [];
     this.dismissedHints = new Set();
     this.activeHintId = null;
     this.selectedLineId = null;
@@ -184,7 +188,14 @@ export class UI {
       }
       if (action === 'plan-investment') {
         const result = this.game.planInvestment(this.selectedInvestmentDistrict, button.dataset.investmentType);
-        if (this.checkResult(result)) this.toast('Projekt zaplanowano. Zatwierdź go po sprawdzeniu kosztu i warunków.');
+        if (this.checkResult(result)) {
+          const project = result.project || this.game.state.investments.projects.at(-1);
+          const districtName = this.game.state.cityEvolution.districts[project?.districtId]?.name || project?.districtId;
+          this.recordSessionDecision({ type: 'investment', atMinute: this.game.state.elapsedMinutes,
+            subjectId: project?.districtId, plannedCost: project?.cost,
+            summary: `Zaplanowano ${INVESTMENT_CATALOG[project?.type]?.label || 'inwestycję'} w ${districtName || 'obszar'}; środki nie zostały pobrane.` });
+          this.toast('Projekt zaplanowano. Zatwierdź go po sprawdzeniu kosztu i warunków.');
+        }
         return;
       }
       if (action === 'approve-investment') {
@@ -267,7 +278,10 @@ export class UI {
         const metrics = lineMetrics(item, this.game.city, clock.minuteOfDay, { serviceDayType: clock.dayType });
         if (!await confirmAction(`Budżet teraz: ${money(this.game.state.budget)}. Koszt pojazdu: ${money(cost)}. Po decyzji: ${money(this.game.state.budget - cost)}. Jeden dodatkowy pojazd może zwiększyć dostępną flotę linii; obecny rozkład wymaga ${metrics.requiredVehicles} pojazdów.`, 'Kup pojazd')) return;
         const result = this.game.buyVehicle(line);
-        if (this.checkResult(result)) this.toast('Nowy pojazd dołączył do linii.');
+        if (this.checkResult(result)) {
+          this.recordSessionDecision({ type: 'fleet', atMinute: this.game.state.elapsedMinutes, subjectId: line, summary: `Kupiono i przydzielono pojazd do ${item.name || line}.` });
+          this.toast('Nowy pojazd dołączył do linii.');
+        }
         return;
       }
       if (action === 'purchase-fleet') {
@@ -275,12 +289,20 @@ export class UI {
         const cost = TRANSPORT_TYPES[vehicleType]?.vehicleCost || 0;
         if (!await confirmAction(`Budżet teraz: ${money(this.game.state.budget)}. Koszt: ${money(cost)}. Po decyzji: ${money(this.game.state.budget - cost)}. Pojazd trafi do rezerwy; sam zakup nie przypisze go do linii.`, 'Kup do rezerwy')) return;
         const result = this.game.purchaseFleetVehicle(vehicleType);
-        if (this.checkResult(result)) this.toast('Pojazd trafił do rezerwy.');
+        if (this.checkResult(result)) {
+          this.recordSessionDecision({ type: 'fleet', atMinute: this.game.state.elapsedMinutes, summary: `Kupiono pojazd ${TRANSPORT_TYPES[vehicleType]?.name || vehicleType} do rezerwy.` });
+          this.toast('Pojazd trafił do rezerwy.');
+        }
         return;
       }
       if (action === 'assign-vehicle' || action === 'unassign-vehicle') {
         const result = action === 'assign-vehicle' ? this.game.assignVehicle(line) : this.game.unassignVehicle(line);
-        if (this.checkResult(result)) this.renderNetwork();
+        if (this.checkResult(result)) {
+          const lineName = this.game.state.lines.find(item => item.id === line)?.name || line;
+          this.recordSessionDecision({ type: 'fleet', atMinute: this.game.state.elapsedMinutes, subjectId: line,
+            summary: action === 'assign-vehicle' ? `Przeniesiono pojazd z rezerwy do ${lineName}.` : `Przeniesiono pojazd z ${lineName} do rezerwy.` });
+          this.renderNetwork();
+        }
         return;
       }
       if (action === 'restore-timetable') { this.checkResult(this.game.restoreTimetable(line)); return; }
@@ -335,6 +357,7 @@ export class UI {
         case 'feedbackClose': $('#feedbackDialog').close(); break;
         case 'feedbackCopy': this.copyFeedback(); break;
         case 'feedbackDownload': this.downloadFeedback(); break;
+        case 'feedbackSessionReport': this.prepareGameplaySessionReport(); break;
         case 'mobileCenterButton': this.map.centerCity(); break;
         case 'newGameButton': case 'summaryNewGameButton': this.onNewGame(); break;
         case 'summaryCloseButton': $('#summaryDialog').close(); break;
@@ -342,11 +365,32 @@ export class UI {
     }, { signal });
     document.addEventListener('change', event => {
       if (event.target.matches('[data-frequency]')) {
-        this.checkResult(this.game.setFrequency(event.target.dataset.frequency, Number(event.target.value)));
+        const lineId = event.target.dataset.frequency;
+        const line = this.game.state.lines.find(item => item.id === lineId);
+        const before = line?.frequency;
+        if (this.checkResult(this.game.setFrequency(lineId, Number(event.target.value))) && before !== Number(event.target.value)) {
+          this.recordSessionDecision({ type: 'frequency', atMinute: this.game.state.elapsedMinutes, subjectId: lineId,
+            summary: `Zmieniono częstotliwość ${line?.name || lineId} na ${Number(event.target.value)} kursów/h.` });
+          this.toast(`Rozkład ${line?.name || lineId} zaktualizowany. Obserwuj kolejki i wynik w kolejnych okresach; bieżący pomiar nie jest prognozą.`);
+        }
       } else if (event.target.matches('[data-timetable-frequency]')) {
-        this.checkResult(this.game.setTimetableFrequency(event.target.dataset.line, event.target.dataset.timetableFrequency, Number(event.target.value), event.target.dataset.dayType));
+        const { line: lineId, timetableFrequency: period, dayType } = event.target.dataset;
+        const line = this.game.state.lines.find(item => item.id === lineId);
+        const before = line?.timetable?.[dayType]?.[period];
+        if (this.checkResult(this.game.setTimetableFrequency(lineId, period, Number(event.target.value), dayType)) && before !== Number(event.target.value)) {
+          this.recordSessionDecision({ type: 'frequency', atMinute: this.game.state.elapsedMinutes, subjectId: lineId,
+            summary: `Zmieniono rozkład ${line?.name || lineId} (${dayType}) na ${Number(event.target.value)} kursów/h.` });
+          this.toast(`Rozkład ${line?.name || lineId} zaktualizowany. Obserwuj kolejki i wynik w kolejnych okresach.`);
+        }
       } else if (event.target.matches('[data-timetable-profile]')) {
-        this.checkResult(this.game.setTimetableProfile(event.target.dataset.line, event.target.value, event.target.dataset.dayType));
+        const lineId = event.target.dataset.line;
+        const line = this.game.state.lines.find(item => item.id === lineId);
+        const before = line?.timetableProfiles?.[event.target.dataset.dayType];
+        if (this.checkResult(this.game.setTimetableProfile(lineId, event.target.value, event.target.dataset.dayType)) && before !== event.target.value) {
+          this.recordSessionDecision({ type: 'frequency', atMinute: this.game.state.elapsedMinutes, subjectId: lineId,
+            summary: `Zastosowano profil rozkładu ${event.target.value} dla ${line?.name || lineId}.` });
+          this.toast(`Profil rozkładu zastosowany do ${line?.name || lineId}. Rzeczywiste skutki będą widoczne w dalszych obserwacjach.`);
+        }
       } else if (event.target.matches('[data-service-day]')) {
         this.selectedServiceDayType = event.target.value;
         this.renderDetails();
@@ -541,6 +585,25 @@ export class UI {
     this.setText('feedbackExportLabel', `Gotowe zgłoszenie JSON · wersja gry ${this.appVersion}`);
     $('#feedbackDialog').showModal();
   }
+  recordSessionDecision(decision) {
+    this.sessionDecisions = appendSessionDecision(this.sessionDecisions, decision);
+    this.renderOperationsDashboard();
+  }
+  prepareGameplaySessionReport() {
+    const form = new FormData($('#feedbackForm'));
+    const report = buildGameplaySessionReport(this.game.state, {
+      appVersion: this.appVersion,
+      scenarioId: this.game.state.campaign?.challenge?.id || this.game.state.startScenarioId || 'classic',
+      sessionDurationSeconds: (performance.now() - this.sessionStartedAt) / 1000,
+      sessionDecisions: this.sessionDecisions,
+      technicalErrors: this.technicalErrors(),
+      feedback: { category: form.get('category'), rating: form.get('rating'), description: form.get('description') }
+    });
+    $('#feedbackJson').value = JSON.stringify(report, null, 2);
+    $('#feedbackExport').hidden = false;
+    this.setText('feedbackExportLabel', 'Anonimowy raport sesji · JSON');
+    $('#feedbackStatus').textContent = 'Raport zawiera wybrane agregaty, wpisy księgowe i same liczniki błędów. Pozostaje lokalny; nic nie zostało wysłane.';
+  }
   prepareFeedback(event) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -574,7 +637,9 @@ export class UI {
   downloadFeedback() {
     const blob = new Blob([$('#feedbackJson').value], { type: 'application/json' });
     const url = URL.createObjectURL(blob); const link = document.createElement('a');
-    link.href = url; link.download = `urbanflow-feedback-${new Date().toISOString().slice(0, 10)}.json`;
+    let reportType = '';
+    try { reportType = JSON.parse($('#feedbackJson').value).reportType || ''; } catch { /* The normal feedback export is validated before display. */ }
+    link.href = url; link.download = `urbanflow-${reportType ? 'session' : 'feedback'}-${new Date().toISOString().slice(0, 10)}.json`;
     link.click(); URL.revokeObjectURL(url); $('#feedbackStatus').textContent = 'Pobrano plik JSON.';
   }
   scrollToBuild() { this.later(() => $('#buildSection').scrollIntoView({ block: 'start', behavior: 'smooth' }), 40); }
@@ -932,6 +997,23 @@ export class UI {
       return `<li class="operations-line-row"><span><strong>${escapeHtml(line.name)}</strong><small>${escapeHtml(line.typeName)} · ${escapeHtml(reason)} ${escapeHtml(cost)}</small></span><button type="button" class="text-button" data-action="open-line" data-line="${escapeHtml(line.id)}">Otwórz linię</button></li>`;
     }).join('') : '<li class="empty-mini">Brak aktywnych linii.</li>');
 
+    const journal = buildGameplayDecisionJournal(state, this.sessionDecisions, 12);
+    this.setHtml('gameplayDecisionJournal', journal.length ? journal.map(item => {
+      const time = `T+${Math.floor(finite(item.atMinute) / 60)}h ${Math.floor(finite(item.atMinute) % 60)}m symulacji`;
+      const details = Number.isFinite(item.actualCost)
+        ? `Rzeczywisty wydatek: ${money(item.actualCost)} (księga finansowa).`
+        : Number.isFinite(item.actualCashInflow)
+          ? `Rzeczywisty wpływ: ${money(item.actualCashInflow)} (księga finansowa).`
+          : Number.isFinite(item.plannedCost)
+            ? `Koszt planowany: ${money(item.plannedCost)}; jeszcze niepobrany.`
+        : Number.isFinite(item.modelledCostPerHourDelta)
+          ? `Zmiana modelowego kosztu: ${money(item.modelledCostPerHourDelta)}/h.`
+          : 'Decyzja z tej karty; efekt należy ocenić na podstawie dalszych obserwacji.';
+      const observation = item.currentObservation
+        ? `<small>Obecnie: obciążenie ${item.currentObservation.load === null ? '—' : `${decimal(item.currentObservation.load * 100)}%`}, kolejka ${item.currentObservation.waiting === null ? '—' : formatNumber(item.currentObservation.waiting)}, wpływy/koszt ${item.currentObservation.revenuePerHour === null ? '—' : `${money(item.currentObservation.revenuePerHour)}/h`} / ${item.currentObservation.costPerHour === null ? '—' : `${money(item.currentObservation.costPerHour)}/h`}. Bieżący pomiar nie dowodzi związku przyczynowego.</small>` : '';
+      return `<li><span><strong>${escapeHtml(item.title)}</strong> · ${escapeHtml(item.subject)} · ${time}<small>${escapeHtml(item.summary || details)}</small><small>${escapeHtml(details)}</small>${observation}</span>${Number.isFinite(item.actualCost) ? `<b>${money(item.actualCost)}</b>` : ''}</li>`;
+    }).join('') : '<li class="empty-mini">Decyzje pojawią się po wykonaniu działań. Wydatki pochodzą z księgi kampanii, pozostałe wpisy obejmują tylko tę kartę.</li>');
+
     const lineSelect = $('#opsDecisionLine');
     const signature = state.lines.map(line => `${line.id}:${line.name || ''}`).join('|');
     if (lineSelect.dataset.signature !== signature) {
@@ -1080,9 +1162,21 @@ export class UI {
       return;
     }
     if (this.checkResult(result)) {
+      const preview = result.preview;
+      const selectedLine = this.game.state.lines.find(line => line.id === lineId);
+      this.recordSessionDecision({
+        type: proposal.kind === 'frequency' || proposal.kind === 'profile' ? 'frequency' : 'fleet',
+        atMinute: this.game.state.elapsedMinutes,
+        subjectId: lineId,
+        summary: `${preview?.description || proposal.kind} · decyzja zatwierdzona dla ${selectedLine?.name || lineId}.`,
+        ...(Number.isFinite(preview?.delta?.costPerHour) ? { estimatedCostPerHourDelta: preview.delta.costPerHour } : {}),
+        ...(Number.isFinite(preview?.delta?.capacityPerHour) ? { modelledCapacityDelta: preview.delta.capacityPerHour } : {})
+      });
       this.opsDecisionPreviewed = false;
       this.opsDecisionPreviewFingerprint = null;
-      this.toast('Decyzja operacyjna zatwierdzona przez istniej\u0105cy model gry. Obserwuj jej rzeczywiste wyniki.');
+      const modelled = preview ? `Model: ${preview.delta.capacityPerHour >= 0 ? '+' : ''}${formatNumber(preview.delta.capacityPerHour)} miejsc/h, koszt operacyjny ${preview.delta.costPerHour >= 0 ? '+' : ''}${money(preview.delta.costPerHour)}/h.` : 'Wariant został zastosowany przez model gry.';
+      const oneTime = preview?.oneTimeCost ? ` Wydatek jednorazowy: ${money(preview.oneTimeCost)}.` : '';
+      this.toast(`Decyzja zatwierdzona. ${modelled}${oneTime} Liczba pasażerów nie jest prognozowana; sprawdź późniejsze obserwacje.`);
       this.renderNetwork();
     }
   }

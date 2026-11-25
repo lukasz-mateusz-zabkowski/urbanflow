@@ -1,7 +1,7 @@
 import { getCity, loadStops } from './cities.js?v=11';
 import { UrbanFlowGame } from './game.js?v=15';
 import { GameMap } from './map.js?v=19';
-import { UI, confirmAction } from './ui.js?v=19';
+import { UI, confirmAction } from './ui.js?v=20';
 import { TRANSPORT_TYPES } from './transport.js?v=10';
 import { SIMULATION } from './simulation.js?v=10';
 import { applyAtlasView } from './theme.js?v=10';
@@ -12,6 +12,9 @@ import { CAMPAIGN_CHALLENGES, getCampaignChallenge } from './campaign-challenges
 let game, gameMap, ui, timer, removeStarterRoutes;
 let storage, storageWarningShown = false;
 let saveExportedForReplacement = false;
+const gameplayTechnicalErrors = { scriptErrors: 0, unhandledRejections: 0 };
+window.addEventListener('error', event => { if (event instanceof ErrorEvent && event.error) gameplayTechnicalErrors.scriptErrors += 1; });
+window.addEventListener('unhandledrejection', () => { gameplayTechnicalErrors.unhandledRejections += 1; });
 try { storage = window.localStorage; } catch { /* Private mode can refuse storage entirely. */ }
 const city = getCity('krakow');
 applyAtlasView();
@@ -148,7 +151,7 @@ async function startCity(savedState = null, challengeId = null) {
     if (!result.ok) ui?.toast(result.message, 'warn');
   });
   gameMap.loadCity(city);
-  ui = new UI(game, gameMap, { appVersion, appCommit, alphaTestMode, onNewGame: () => {
+  ui = new UI(game, gameMap, { appVersion, appCommit, alphaTestMode, technicalErrors: () => ({ ...gameplayTechnicalErrors }), onNewGame: () => {
     game.setPaused(true); gameMap.setVisible(false); gameElement.classList.add('is-hidden'); cityScreen.classList.remove('is-hidden');
     saveExportedForReplacement = false; renderCityScreen();
   } });

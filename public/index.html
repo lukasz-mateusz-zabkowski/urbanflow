@@ -8,7 +8,7 @@
   <title>UrbanFlow — Kraków w ruchu</title>
   <link rel="preconnect" href="https://tile.openstreetmap.org">
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css?v=1.9.4">
-  <link rel="stylesheet" href="styles.css?v=20">
+  <link rel="stylesheet" href="styles.css?v=21">
 </head>
 <body>
   <section class="city-screen" id="cityScreen" aria-labelledby="gameTitle">
@@ -161,6 +161,11 @@
                 <button class="primary-button" id="opsDecisionApplyButton" type="button" hidden>Zatwierdź decyzję</button>
               </div>
             </section>
+            <section class="operations-module gameplay-decision-log" aria-labelledby="gameplayDecisionJournalTitle">
+              <div class="diagnostic-title"><strong id="gameplayDecisionJournalTitle">Dziennik decyzji</strong><span>rzeczywiste koszty i działania tej karty</span></div>
+              <p class="operations-simulator-note">Wydatki pochodzą z zapisanej księgi finansowej. Bieżące obciążenie i kolejki są obserwacją, nie dowodem skutku decyzji. Działania niekosztowe znikają po zamknięciu karty.</p>
+              <ul id="gameplayDecisionJournal" class="diagnostic-list" aria-live="polite"></ul>
+            </section>
             <div class="diagnostic-title"><strong>Najpilniejsze problemy</strong><span>dane bieżącej symulacji</span></div>
             <ul id="atlasActions" class="diagnostic-list"></ul>
           </section>
@@ -298,6 +303,8 @@
   <dialog class="summary-dialog feedback-dialog" id="feedbackDialog" aria-labelledby="feedbackTitle">
     <button class="dialog-close" type="button" id="feedbackClose" aria-label="Zamknij formularz">×</button>
     <p class="eyebrow">Program Alpha Testers</p><h2 id="feedbackTitle">Opinia z rozgrywki</h2>
+    <p>Możesz opcjonalnie przygotować lokalny raport sesji. Zawiera ograniczone statystyki kampanii, liczniki błędów oraz — jeśli formularz jest wypełniony — wpisaną opinię. Nie dodaje identyfikatora testera, urządzenia ani treści błędów i niczego nie wysyła. Nie wpisuj w opinii danych osobowych.</p>
+    <button class="secondary-button" type="button" id="feedbackSessionReport">Przygotuj anonimowy raport sesji</button>
     <form id="feedbackForm">
       <label>Rodzaj opinii<select name="category" required><option value="">Wybierz kategorię</option><option>Błąd</option><option>Niezrozumiała mechanika</option><option>Sugestia</option><option>Problem z wydajnością</option><option>Problem z interfejsem</option><option>Ocena pierwszej rozgrywki</option></select></label>
       <label>Ocena od 1 do 5<select name="rating" required><option value="">Wybierz ocenę</option><option value="1">1 — bardzo słabo</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5 — bardzo dobrze</option></select></label>
@@ -312,6 +319,6 @@
   </dialog>
   <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="false"></div>
   <script src="vendor/leaflet/leaflet.js?v=1.9.4"></script>
-  <script type="module" src="js/main.js?v=25"></script>
+  <script type="module" src="js/main.js?v=26"></script>
 </body>
 </html>
