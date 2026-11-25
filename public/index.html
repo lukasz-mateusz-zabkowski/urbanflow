@@ -8,7 +8,7 @@
   <title>UrbanFlow — Kraków w ruchu</title>
   <link rel="preconnect" href="https://tile.openstreetmap.org">
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css?v=1.9.4">
-  <link rel="stylesheet" href="styles.css?v=22">
+  <link rel="stylesheet" href="styles.css?v=23">
 </head>
 <body>
   <section class="city-screen" id="cityScreen" aria-labelledby="gameTitle">
@@ -75,6 +75,19 @@
           <span class="atlas-workspace-eyebrow" id="atlasWorkspaceEyebrow">ATLAS / SIEĆ</span>
           <div class="atlas-workspace-heading"><h3 id="atlasWorkspaceTitle">Sieć transportowa</h3><span id="atlasWorkspaceIndex">01 / 05</span></div>
           <p id="atlasWorkspaceDescription">Obserwuj przebieg linii, obsługiwane punkty i problemy sieci.</p>
+        </section>
+
+        <section class="atlas-studio" id="atlasStudioPanel" aria-labelledby="atlasStudioTitle" hidden>
+          <div class="atlas-studio-heading"><div><span class="section-kicker">ATLAS STUDIO / PLANOWANIE</span><h3 id="atlasStudioTitle">Jedno miejsce pracy nad połączeniem</h3></div><span class="studio-status" id="studioStatus">TRASA</span></div>
+          <div class="atlas-studio-context" id="studioContext" aria-live="polite"></div>
+          <nav class="atlas-studio-tools" aria-label="Narzędzia projektu transportowego">
+            <button type="button" data-action="studio-tool" data-studio-tool="route"><span>01</span><strong>Trasa i koszt</strong><small>Budowa lub geometria</small></button>
+            <button type="button" data-action="studio-tool" data-studio-tool="timetable" disabled><span>02</span><strong>Rozkład</strong><small>Częstotliwość i obsługa</small></button>
+            <button type="button" data-action="studio-tool" data-studio-tool="fleet" disabled><span>03</span><strong>Flota</strong><small>Rezerwa i wymagania</small></button>
+            <button type="button" data-action="studio-tool" data-studio-tool="compare" disabled><span>04</span><strong>Porównaj</strong><small>Wariant operacyjny</small></button>
+            <button type="button" data-action="studio-tool" data-studio-tool="investments"><span>05</span><strong>Inwestycje</strong><small>Rozwój obszaru</small></button>
+          </nav>
+          <p class="atlas-studio-note">Wartości pochodzą z bieżącego podglądu albo z istniejącej linii. Przejścia otwierają dotychczasowe narzędzia; podgląd nie pobiera kosztów ani nie zmienia kampanii.</p>
         </section>
 
         <section class="place-profile" id="placeProfile" aria-live="polite" aria-labelledby="placeProfileName" hidden>

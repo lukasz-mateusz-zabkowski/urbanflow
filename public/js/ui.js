@@ -21,6 +21,7 @@ import { ATLAS_VIEWS, filterAndSortLines, loadAtlasPreferences, saveAtlasPrefere
 import { applyOperationalDecisionSafely, compareOperationalDecision, fleetManagementSnapshot, operationalDecisionFingerprint } from './operations.js?v=2';
 import { financeForecast, financeGoals, financeHistory, financeSnapshot, plannedFinancialCommitments } from './finance.js?v=1';
 import { appendSessionDecision, buildGameplayDecisionJournal, buildGameplaySessionReport } from './gameplay-insights.js?v=2';
+import { planningStudioSnapshot } from './atlas-studio.js?v=1';
 import { SAVE_VERSION } from './storage.js?v=15';
 
 export function downloadJsonFile(value, filename, { documentObject = globalThis.document, urlApi = globalThis.URL, BlobClass = globalThis.Blob } = {}) {
@@ -187,6 +188,7 @@ export class UI {
       }
       if (action === 'analytics-mode') { this.setAnalyticsModeFromControl(button.dataset.mode); return; }
       if (action === 'atlas-view') { this.setAtlasView(button.dataset.view); return; }
+      if (action === 'studio-tool') { this.openStudioTool(button.dataset.studioTool); return; }
       if (action === 'living-city-plan') {
         this.setAtlasView('planning');
         this.openPanel(); this.scrollToBuild();
@@ -674,6 +676,71 @@ export class UI {
   }
   scrollToBuild() { this.later(() => $('#buildSection').scrollIntoView({ block: 'start', behavior: 'smooth' }), 40); }
 
+  openStudioTool(tool) {
+    const lineId = this.game.state.editingLineId || this.selectedLineId;
+    const line = this.game.state.lines.find(item => item.id === lineId);
+    if (['timetable', 'fleet', 'compare'].includes(tool) && !line) return;
+    if (line) {
+      this.selectedLineId = line.id;
+      this.opsDecisionLineId = line.id;
+    }
+    if (tool === 'route') {
+      this.setAtlasView('planning', { updateLayer: false });
+      this.openPanel(); this.scrollToBuild();
+      return;
+    }
+    if (tool === 'timetable') {
+      this.setAtlasView('planning', { updateLayer: false });
+      this.openPanel();
+      this.later(() => $('#lineDetail .timetable-control')?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 60);
+      return;
+    }
+    if (tool === 'fleet' || tool === 'compare') {
+      this.setAtlasView('operations');
+      this.openPanel();
+      const target = tool === 'fleet' ? $('#operationsFleetTypes') : $('.decision-simulator');
+      this.later(() => target?.scrollIntoView({ block: 'start', behavior: 'smooth' }), 60);
+      return;
+    }
+    if (tool === 'investments') {
+      this.setAtlasView('development');
+      this.setAnalyticsModeFromControl('investments');
+      this.openPanel();
+      this.later(() => $('#investmentCatalog')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 60);
+    }
+  }
+
+  renderPlanningStudio(currentPreview) {
+    const panel = $('#atlasStudioPanel');
+    if (!panel) return;
+    const active = this.atlasPreferences.view === 'planning';
+    panel.hidden = !active;
+    if (!active) return;
+    const snapshot = planningStudioSnapshot(this.game, this.selectedLineId, currentPreview);
+    const labels = { empty: 'ROZPOCZNIJ', incomplete: 'DRAFT', ready: 'GOTOWE DO PODGLĄDU', unavailable: 'SPRAWDŹ TRASĘ', selected: 'WYBRANA LINIA', editing: 'EDYCJA' };
+    const status = $('#studioStatus');
+    status.textContent = labels[snapshot.status] || 'PLANOWANIE';
+    status.dataset.status = snapshot.status;
+    const cost = snapshot.constructionCost !== null && snapshot.constructionCost !== undefined
+      ? `<div><dt>Koszt budowy / przebudowy</dt><dd>${money(snapshot.constructionCost)}</dd></div>`
+      : snapshot.costPerHour !== null && snapshot.costPerHour !== undefined
+        ? `<div><dt>${snapshot.costSource === 'observed' ? 'Obserwowany koszt operacyjny' : 'Modelowany koszt operacyjny'}</dt><dd>${money(snapshot.costPerHour)}/h</dd></div>`
+        : '';
+    const route = snapshot.route?.length ? snapshot.route.map(escapeHtml).join(' → ') : 'Nie wybrano jeszcze przystanków.';
+    const distance = snapshot.distanceKm === null || snapshot.distanceKm === undefined ? '—' : `${decimal(snapshot.distanceKm)} km`;
+    const time = snapshot.travelMinutes === null || snapshot.travelMinutes === undefined ? '—' : `${decimal(snapshot.travelMinutes)} min`;
+    const vehicles = snapshot.requiredVehicles === null || snapshot.requiredVehicles === undefined ? '—' : `${formatNumber(snapshot.requiredVehicles)} poj.`;
+    const lineControlsDisabled = !['line', 'editing'].includes(snapshot.kind);
+    this.setHtml('studioContext', `<div class="studio-context-heading"><strong>${escapeHtml(snapshot.title)}</strong><span>${escapeHtml(snapshot.transport || '')} · ${snapshot.stopCount} przyst.</span></div>
+      <p>${escapeHtml(route)}</p>
+      <dl><div><dt>Długość</dt><dd>${distance}</dd></div><div><dt>Przejazd</dt><dd>${time}</dd></div><div><dt>Flota w modelu</dt><dd>${vehicles}</dd></div>${cost}</dl>
+      <small>${escapeHtml(snapshot.note || '')}</small>`);
+    panel.querySelectorAll('[data-studio-tool]').forEach(button => {
+      button.disabled = lineControlsDisabled && ['timetable', 'fleet', 'compare'].includes(button.dataset.studioTool);
+      button.setAttribute('aria-disabled', String(button.disabled));
+    });
+  }
+
   renderStarterRoutes(onSelect) {
     this.onStarterSelect = onSelect;
     this.setHtml('routeOptions', this.game.starterRoutes.map(route => {
@@ -725,6 +792,7 @@ export class UI {
     this.renderInvestmentsPanel(this.game.visiblePoints());
     this.renderDraft(unlocked, counts, preview);
     this.renderNetwork();
+    this.renderPlanningStudio(preview);
     this.renderFleet();
     this.renderProgress(unlocked, counts);
     this.renderPlaceProfile();

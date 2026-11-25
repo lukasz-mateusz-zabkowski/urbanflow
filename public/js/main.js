@@ -1,7 +1,7 @@
 import { getCity, loadStops } from './cities.js?v=11';
 import { UrbanFlowGame } from './game.js?v=15';
 import { GameMap } from './map.js?v=19';
-import { UI, confirmAction } from './ui.js?v=21';
+import { UI, confirmAction } from './ui.js?v=22';
 import { TRANSPORT_TYPES } from './transport.js?v=10';
 import { SIMULATION } from './simulation.js?v=10';
 import { applyAtlasView } from './theme.js?v=10';

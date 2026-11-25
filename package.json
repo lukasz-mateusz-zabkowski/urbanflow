@@ -1,6 +1,6 @@
 {
   "name": "urbanflow",
-  "version": "1.11.1-alpha",
+  "version": "2.0.0-alpha",
   "private": true,
   "type": "module",
   "description": "Lekka przeglądarkowa strategia transportowa oparta o prawdziwą geografię miast.",
