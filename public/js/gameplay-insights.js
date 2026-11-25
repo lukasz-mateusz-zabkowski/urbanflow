@@ -59,6 +59,21 @@ function observedWaitingPassengers(passengerState) {
   return Number.isFinite(total) && total >= 0 ? Math.floor(total) : null;
 }
 
+const SURVEY_CHOICES = new Set(['yes', 'no', 'not-sure']);
+function playtestSurvey(input = {}) {
+  const rating = Number(input.firstImpression);
+  const result = {};
+  if (Number.isInteger(rating) && rating >= 1 && rating <= 5) result.firstImpression = rating;
+  for (const key of ['nextStepClear', 'costsClear', 'playAgain']) {
+    if (SURVEY_CHOICES.has(input[key])) result[key] = input[key];
+  }
+  for (const key of ['frustratingMoment', 'likedMost']) {
+    const value = safeText(input[key], 500);
+    if (value) result[key] = value;
+  }
+  return Object.keys(result).length ? result : null;
+}
+
 export function buildGameplayDecisionJournal(state = {}, sessionDecisions = [], limit = 12) {
   const entries = [];
   const transactions = Array.isArray(state.finance?.transactions) ? state.finance.transactions : [];
@@ -172,6 +187,7 @@ export function buildGameplaySessionReport(state = {}, options = {}) {
       unhandledRejections: Math.max(0, Math.floor(safeNumber(errors.unhandledRejections)))
     },
     feedback,
+    playtestSurvey: playtestSurvey(options.playtestSurvey),
     decisions
   };
   return report;

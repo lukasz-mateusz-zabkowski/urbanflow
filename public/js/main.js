@@ -1,7 +1,7 @@
 import { getCity, loadStops } from './cities.js?v=11';
 import { UrbanFlowGame } from './game.js?v=15';
 import { GameMap } from './map.js?v=19';
-import { UI, confirmAction } from './ui.js?v=20';
+import { UI, confirmAction } from './ui.js?v=21';
 import { TRANSPORT_TYPES } from './transport.js?v=10';
 import { SIMULATION } from './simulation.js?v=10';
 import { applyAtlasView } from './theme.js?v=10';
@@ -59,6 +59,11 @@ function renderCityScreen(error = null) {
   const buildBadge = document.getElementById('buildBadge');
   buildBadge.classList.toggle('is-hidden', !alphaTestMode);
   buildBadge.textContent = alphaTestMode ? `ALPHA TEST · ${appVersion}${appCommit ? ` · ${appCommit.slice(0, 12)}` : ''}` : '';
+  document.getElementById('playtestGuideButton').hidden = !alphaTestMode;
+  document.getElementById('playtestGuideFeedback').hidden = !game;
+  document.getElementById('playtestBuildInfo').textContent = alphaTestMode
+    ? `Wersja ${appVersion}${appCommit ? ` · commit ${appCommit}` : ''}. Stan gry i raport pozostają lokalne; nic nie jest wysyłane.`
+    : 'Informacje o prywatnym teście.';
   document.querySelector('.resume-card')?.addEventListener('click', () => {
     cityScreen.classList.add('is-hidden'); gameElement.classList.remove('is-hidden');
     gameMap.setVisible(true); gameMap.invalidate(); ui.render();
@@ -174,6 +179,9 @@ document.getElementById('backToCities').addEventListener('click', () => {
   game.setPaused(true); gameMap.setVisible(false); ui.closePanel();
   gameElement.classList.add('is-hidden'); cityScreen.classList.remove('is-hidden'); renderCityScreen();
 });
+document.getElementById('playtestGuideButton').addEventListener('click', () => document.getElementById('playtestGuideDialog').showModal());
+document.getElementById('playtestGuideClose').addEventListener('click', () => document.getElementById('playtestGuideDialog').close());
+document.getElementById('playtestGuideCloseAction').addEventListener('click', () => document.getElementById('playtestGuideDialog').close());
 document.addEventListener('visibilitychange', () => { if (document.hidden) persist(); });
 window.addEventListener('pagehide', persist);
 renderCityScreen(initial.error);

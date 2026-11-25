@@ -225,3 +225,29 @@ test('missing or malformed optional passenger queues are reported as unavailable
   }
   assert.equal(buildGameplaySessionReport({ status: 'playing', lines: [], passengers: {} }).metrics.waitingPassengers, 0);
 });
+
+test('optional playtest survey is allowlisted, bounded, and omitted when unanswered', () => {
+  const report = buildGameplaySessionReport(sampleState(), {
+    playtestSurvey: {
+      firstImpression: 5,
+      nextStepClear: 'yes',
+      costsClear: 'not-sure',
+      frustratingMoment: 'Nie znalazłem od razu rozkładu.',
+      likedMost: 'Mapa miasta.',
+      playAgain: 'yes',
+      email: 'private@example.test',
+      testerId: 'internal-42'
+    }
+  });
+  assert.deepEqual(report.playtestSurvey, {
+    firstImpression: 5,
+    nextStepClear: 'yes',
+    costsClear: 'not-sure',
+    frustratingMoment: 'Nie znalazłem od razu rozkładu.',
+    likedMost: 'Mapa miasta.',
+    playAgain: 'yes'
+  });
+  assert.deepEqual(buildGameplaySessionReport(sampleState()).playtestSurvey, null);
+  assert.equal(JSON.stringify(report).includes('private@example.test'), false);
+  assert.equal(JSON.stringify(report).includes('internal-42'), false);
+});

@@ -8,7 +8,7 @@
   <title>UrbanFlow — Kraków w ruchu</title>
   <link rel="preconnect" href="https://tile.openstreetmap.org">
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css?v=1.9.4">
-  <link rel="stylesheet" href="styles.css?v=21">
+  <link rel="stylesheet" href="styles.css?v=22">
 </head>
 <body>
   <section class="city-screen" id="cityScreen" aria-labelledby="gameTitle">
@@ -18,6 +18,7 @@
       <p class="city-intro">Twoje linie. Rytm całego miasta.</p>
       <p class="city-description">Zacznij w losowej miejscowości aglomeracji. Zbuduj sieć przesiadkową, opanuj szczyt i doprowadź transport do lotniska.</p>
       <p class="build-badge is-hidden" id="buildBadge" aria-label="Wersja testowa"></p>
+      <button class="secondary-button playtest-guide-trigger" id="playtestGuideButton" type="button" hidden>Przewodnik prywatnego playtestu</button>
       <div class="session-facts"><span>8 celów</span><span>12–20 minut</span><span>Automatyczny zapis</span></div>
       <div class="city-grid" id="cityGrid"></div>
       <p class="map-credit">Geografia © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">autorzy OpenStreetMap</a> · graf ulic na <a href="https://opendatacommons.org/licenses/odbl/1.0/" target="_blank" rel="noreferrer">ODbL‑1.0</a> · stwórz własny Kraków w ruchu</p>
@@ -280,7 +281,7 @@
           <p class="muted-copy" id="unlockExplanation">Użyteczna linia: 6 godzin pracy, 80 przewozów, średnio 8 przewozów/h lub dodatni bilans. Zadowolenie co najmniej 60%. Każdy typ pozostaje odblokowany.</p>
           <p class="airport-rule" id="airportRule"></p>
         </section>
-        <div class="panel-foot"><span id="saveStatus" role="status">Zapis automatyczny</span><div class="panel-foot-actions"><button class="text-button" id="feedbackButton" type="button">Zgłoś uwagę</button><button class="text-button" id="newGameButton" type="button">Nowa gra</button></div></div>
+        <div class="panel-foot"><span id="saveStatus" role="status">Zapis automatyczny</span><div class="panel-foot-actions"><button class="text-button" id="playtestGuideGameButton" type="button" hidden>Ścieżki testowe</button><button class="text-button" id="feedbackButton" type="button">Zgłoś uwagę</button><button class="text-button" id="newGameButton" type="button">Nowa gra</button></div></div>
       </aside>
     </section>
 
@@ -303,22 +304,47 @@
   <dialog class="summary-dialog feedback-dialog" id="feedbackDialog" aria-labelledby="feedbackTitle">
     <button class="dialog-close" type="button" id="feedbackClose" aria-label="Zamknij formularz">×</button>
     <p class="eyebrow">Program Alpha Testers</p><h2 id="feedbackTitle">Opinia z rozgrywki</h2>
-    <p>Możesz opcjonalnie przygotować lokalny raport sesji. Zawiera ograniczone agregaty kampanii i liczniki błędów oraz — jeśli wpiszesz opinię — jej treść. Raport nie dodaje identyfikatora testera, urządzenia, danych z pamięci przeglądarki, stanu losowości ani prywatnych komunikatów błędów i nie jest nigdzie wysyłany. Przed udostępnieniem pobranego raportu przejrzyj go, szczególnie dobrowolnie wpisaną opinię, i usuń z niej dane osobowe.</p>
+    <p>Możesz opcjonalnie przygotować lokalny raport sesji. Zawiera ograniczone agregaty kampanii i liczniki błędów oraz — jeśli wpiszesz opinię lub odpowiedzi ankiety — ich treść. Raport sesji nie dodaje identyfikatora testera, urządzenia, danych z pamięci przeglądarki, stanu losowości ani prywatnych komunikatów błędów. Nic nie jest wysyłane. Zwykłe zgłoszenie może zawierać dobrowolny kod sesji; nie wpisuj tam imienia, e-maila ani innych danych osobowych. Przed udostępnieniem pobranego JSON przejrzyj tekst i usuń dane osobowe.</p>
     <button class="secondary-button" type="button" id="feedbackSessionReport">Przygotuj anonimowy raport sesji</button>
     <form id="feedbackForm">
       <label>Rodzaj opinii<select name="category" required><option value="">Wybierz kategorię</option><option>Błąd</option><option>Niezrozumiała mechanika</option><option>Sugestia</option><option>Problem z wydajnością</option><option>Problem z interfejsem</option><option>Ocena pierwszej rozgrywki</option></select></label>
       <label>Ocena od 1 do 5<select name="rating" required><option value="">Wybierz ocenę</option><option value="1">1 — bardzo słabo</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5 — bardzo dobrze</option></select></label>
       <label>Co było jasne lub trudne?<textarea name="description" rows="4" maxlength="3000" required placeholder="Opisz konkretny moment z rozgrywki."></textarea></label>
-      <label>Identyfikator testera (opcjonalnie)<input name="testerId" maxlength="60" autocomplete="off"></label>
+      <label>Anonimowy kod sesji (opcjonalnie)<input name="testerId" maxlength="60" autocomplete="off" aria-describedby="testerCodeHelp"></label><small id="testerCodeHelp">Nie wpisuj imienia, adresu e-mail ani innych danych osobowych.</small>
       <label class="consent-row"><input name="includeContext" type="checkbox"><span>Dołącz wersję, typ urządzenia, rozdzielczość, ekran i krok samouczka.</span></label>
       <label class="consent-row"><input name="includeDiagnostics" type="checkbox"><span>Pokaż podstawową diagnostykę kampanii (budżet, linie, oczekujący i przewiezieni pasażerowie). Dane będą widoczne poniżej przed eksportem.</span></label>
+      <fieldset class="playtest-survey" id="playtestSurvey" hidden>
+        <legend>Ankieta po sesji · dobrowolna</legend>
+        <label>Pierwsze wrażenie
+          <select name="firstImpression"><option value="">Pomiń</option><option value="1">1 · bardzo słabe</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5 · bardzo dobre</option></select>
+        </label>
+        <label>Czy było jasne, co zrobić dalej?<select name="nextStepClear"><option value="">Pomiń</option><option value="yes">Tak</option><option value="no">Nie</option><option value="not-sure">Nie wiem</option></select></label>
+        <label>Czy koszty decyzji były zrozumiałe?<select name="costsClear"><option value="">Pomiń</option><option value="yes">Tak</option><option value="no">Nie</option><option value="not-sure">Nie wiem</option></select></label>
+        <label>Co było najbardziej frustrujące?<textarea name="frustratingMoment" rows="2" maxlength="500"></textarea></label>
+        <label>Co podobało Ci się najbardziej?<textarea name="likedMost" rows="2" maxlength="500"></textarea></label>
+        <label>Czy chcesz zagrać ponownie?<select name="playAgain"><option value="">Pomiń</option><option value="yes">Tak</option><option value="no">Nie</option><option value="not-sure">Nie wiem</option></select></label>
+        <p class="muted-copy">Ankieta jest opcjonalna. Tekst wpisany w odpowiedziach trafi do JSON tylko po przygotowaniu raportu. Przejrzyj go przed udostępnieniem i usuń dane osobowe.</p>
+      </fieldset>
       <p class="feedback-error" id="feedbackError" role="alert"></p>
       <button class="primary-button" type="submit">Przygotuj zgłoszenie</button>
     </form>
     <section class="feedback-export" id="feedbackExport" hidden><label id="feedbackExportLabel" for="feedbackJson">Gotowe zgłoszenie JSON</label><p>Sprawdź zawartość. Zgłoszenie pozostaje na tym urządzeniu i nie jest wysyłane automatycznie.</p><textarea id="feedbackJson" rows="8" readonly></textarea><div class="feedback-actions"><button class="secondary-button" type="button" id="feedbackCopy">Kopiuj JSON</button><button class="secondary-button" type="button" id="feedbackDownload">Pobierz JSON</button></div><p role="status" id="feedbackStatus"></p></section>
+    <section class="save-export"><h3>Kopia kampanii</h3><p>Eksport zapisuje lokalny stan gry do pliku JSON. Nie jest wysyłany.</p><button class="secondary-button" type="button" id="feedbackExportSave">Pobierz kopię zapisu</button><p id="feedbackSaveStatus" role="status"></p></section>
+  </dialog>
+  <dialog class="summary-dialog playtest-guide-dialog" id="playtestGuideDialog" aria-labelledby="playtestGuideTitle">
+    <button class="dialog-close" type="button" id="playtestGuideClose" aria-label="Zamknij przewodnik">×</button>
+    <p class="eyebrow">UrbanFlow Atlas · Private Playtest</p><h2 id="playtestGuideTitle">Wybierz swoją ścieżkę testową</h2>
+    <p id="playtestBuildInfo">Wersja i commit są widoczne w oznaczeniu ALPHA.</p>
+    <div class="playtest-path-grid">
+      <article><span>01 · około 15 minut</span><h3>Pierwsza kampania</h3><ol><li>Rozpocznij klasyczną kampanię i poznaj mapę.</li><li>Przejdź samouczek albo zanotuj moment, w którym nie wiadomo, co zrobić.</li><li>Zbuduj pierwszą linię i sprawdź podgląd kosztów.</li></ol><p>Oceń, czy cele i następny krok były czytelne.</p></article>
+      <article><span>02 · około 45–60 minut</span><h3>Transport i decyzje</h3><ol><li>Uruchom autobusy, obserwuj kolejki i rozkład.</li><li>Po odblokowaniu tramwaju zaplanuj połączenie, jeśli chcesz.</li><li>Sprawdź flotę, finanse i inwestycje.</li></ol><p>Nie musisz kończyć kampanii; wybierz własne rozwiązania.</p></article>
+      <article><span>03 · dłuższa sesja</span><h3>Zapis i wznowienie</h3><ol><li>Rozbuduj kampanię do momentu, który chcesz zachować.</li><li>Wróć do ekranu kampanii i pobierz kopię zapisu.</li><li>Odśwież grę lub wróć później, a następnie sprawdź ciągłość kampanii.</li></ol><p>Porównaj budżet, linie, flotę i postęp po wznowieniu.</p></article>
+    </div>
+    <p class="playtest-privacy-note">Nie podawaj danych osobowych. Zgłoszenia i raporty są przygotowywane lokalnie i nie są wysyłane automatycznie. OSM wymaga połączenia z internetem; przy niedostępnych kafelkach funkcje gry nadal mogą działać.</p>
+    <div class="feedback-actions"><button class="secondary-button" type="button" id="playtestGuideFeedback">Przejdź do opinii</button><button class="primary-button" type="button" id="playtestGuideCloseAction">Wróć do gry</button></div>
   </dialog>
   <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="false"></div>
   <script src="vendor/leaflet/leaflet.js?v=1.9.4"></script>
-  <script type="module" src="js/main.js?v=26"></script>
+  <script type="module" src="js/main.js?v=27"></script>
 </body>
 </html>

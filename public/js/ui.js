@@ -20,7 +20,24 @@ import { contextualHints, getOnboardingStep, onboardingProgress, onboardingStatu
 import { ATLAS_VIEWS, filterAndSortLines, loadAtlasPreferences, saveAtlasPreferences } from './atlas.js?v=1';
 import { applyOperationalDecisionSafely, compareOperationalDecision, fleetManagementSnapshot, operationalDecisionFingerprint } from './operations.js?v=2';
 import { financeForecast, financeGoals, financeHistory, financeSnapshot, plannedFinancialCommitments } from './finance.js?v=1';
-import { appendSessionDecision, buildGameplayDecisionJournal, buildGameplaySessionReport } from './gameplay-insights.js?v=1';
+import { appendSessionDecision, buildGameplayDecisionJournal, buildGameplaySessionReport } from './gameplay-insights.js?v=2';
+import { SAVE_VERSION } from './storage.js?v=15';
+
+export function downloadJsonFile(value, filename, { documentObject = globalThis.document, urlApi = globalThis.URL, BlobClass = globalThis.Blob } = {}) {
+  let objectUrl = '';
+  try {
+    const blob = new BlobClass([typeof value === 'string' ? value : JSON.stringify(value, null, 2)], { type: 'application/json' });
+    objectUrl = urlApi.createObjectURL(blob);
+    const link = documentObject.createElement('a');
+    link.href = objectUrl; link.download = filename; link.hidden = true;
+    documentObject.body.append(link); link.click(); link.remove();
+    setTimeout(() => { try { urlApi.revokeObjectURL(objectUrl); } catch { /* Browser cleanup is best effort. */ } }, 1000);
+    return { ok: true };
+  } catch {
+    if (objectUrl) { try { urlApi.revokeObjectURL(objectUrl); } catch { /* Keep export failure non-fatal. */ } }
+    return { ok: false, message: 'Nie udało się pobrać pliku. Skopiuj widoczny JSON albo spróbuj ponownie.' };
+  }
+}
 
 const $ = selector => document.querySelector(selector);
 const formatNumber = value => new Intl.NumberFormat('pl-PL').format(Math.round(Number(value) || 0));
@@ -358,6 +375,9 @@ export class UI {
         case 'feedbackCopy': this.copyFeedback(); break;
         case 'feedbackDownload': this.downloadFeedback(); break;
         case 'feedbackSessionReport': this.prepareGameplaySessionReport(); break;
+        case 'feedbackExportSave': this.downloadCampaignSave(); break;
+        case 'playtestGuideGameButton': $('#playtestGuideDialog').showModal(); break;
+        case 'playtestGuideFeedback': $('#playtestGuideDialog').close(); this.openFeedback(); break;
         case 'mobileCenterButton': this.map.centerCity(); break;
         case 'newGameButton': case 'summaryNewGameButton': this.onNewGame(); break;
         case 'summaryCloseButton': $('#summaryDialog').close(); break;
@@ -582,8 +602,17 @@ export class UI {
   }
   openFeedback() {
     $('#feedbackForm').reset(); $('#feedbackError').textContent = ''; $('#feedbackExport').hidden = true;
+    $('#playtestSurvey').hidden = !this.alphaTestMode;
+    $('#feedbackSaveStatus').textContent = '';
     this.setText('feedbackExportLabel', `Gotowe zgłoszenie JSON · wersja gry ${this.appVersion}`);
     $('#feedbackDialog').showModal();
+  }
+  downloadCampaignSave() {
+    const payload = { version: SAVE_VERSION, cityId: this.game.city.id, savedAt: Date.now(), state: this.game.state };
+    const result = downloadJsonFile(payload, `urbanflow-campaign-${new Date().toISOString().slice(0, 10)}.json`);
+    $('#feedbackSaveStatus').textContent = result.ok
+      ? 'Pobrano kopię bieżącej kampanii. Plik pozostaje na tym urządzeniu.' : result.message;
+    return result;
   }
   recordSessionDecision(decision) {
     this.sessionDecisions = appendSessionDecision(this.sessionDecisions, decision);
@@ -597,12 +626,14 @@ export class UI {
       sessionDurationSeconds: (performance.now() - this.sessionStartedAt) / 1000,
       sessionDecisions: this.sessionDecisions,
       technicalErrors: this.technicalErrors(),
-      feedback: { category: form.get('category'), rating: form.get('rating'), description: form.get('description') }
+      feedback: { category: form.get('category'), rating: form.get('rating'), description: form.get('description') },
+      playtestSurvey: this.alphaTestMode ? Object.fromEntries(['firstImpression', 'nextStepClear', 'costsClear', 'frustratingMoment', 'likedMost', 'playAgain']
+        .map(key => [key, form.get(key)])) : undefined
     });
     $('#feedbackJson').value = JSON.stringify(report, null, 2);
     $('#feedbackExport').hidden = false;
     this.setText('feedbackExportLabel', 'Anonimowy raport sesji · JSON');
-    $('#feedbackStatus').textContent = 'Raport zawiera wybrane agregaty, wpisy księgowe i same liczniki błędów. Pozostaje lokalny; nic nie zostało wysłane.';
+    $('#feedbackStatus').textContent = 'Raport zawiera wybrane agregaty, wpisy księgowe i liczniki błędów. Dobrowolne odpowiedzi tekstowe mogą ujawnić dane osobowe — przejrzyj JSON. Pozostaje lokalny; nic nie zostało wysłane.';
   }
   prepareFeedback(event) {
     event.preventDefault();
@@ -635,12 +666,11 @@ export class UI {
     $('#feedbackStatus').textContent = 'Skopiowano JSON.';
   }
   downloadFeedback() {
-    const blob = new Blob([$('#feedbackJson').value], { type: 'application/json' });
-    const url = URL.createObjectURL(blob); const link = document.createElement('a');
     let reportType = '';
     try { reportType = JSON.parse($('#feedbackJson').value).reportType || ''; } catch { /* The normal feedback export is validated before display. */ }
-    link.href = url; link.download = `urbanflow-${reportType ? 'session' : 'feedback'}-${new Date().toISOString().slice(0, 10)}.json`;
-    link.click(); URL.revokeObjectURL(url); $('#feedbackStatus').textContent = 'Pobrano plik JSON.';
+    const result = downloadJsonFile($('#feedbackJson').value, `urbanflow-${reportType ? 'session' : 'feedback'}-${new Date().toISOString().slice(0, 10)}.json`);
+    $('#feedbackStatus').textContent = result.ok ? 'Pobrano plik JSON.' : result.message;
+    return result;
   }
   scrollToBuild() { this.later(() => $('#buildSection').scrollIntoView({ block: 'start', behavior: 'smooth' }), 40); }
 
@@ -680,6 +710,8 @@ export class UI {
     const buildBadge = $('#gameBuildBadge');
     buildBadge.classList.toggle('is-hidden', !this.alphaTestMode);
     buildBadge.textContent = this.alphaTestMode ? `ALPHA TEST · ${this.appVersion}${this.appCommit ? ` · ${this.appCommit.slice(0, 12)}` : ''}` : '';
+    $('#playtestGuideFeedback').hidden = !this.alphaTestMode;
+    $('#playtestGuideGameButton').hidden = !this.alphaTestMode;
     this.setText('speedButton', `×${state.speed}`);
     $('#speedButton').disabled = state.status !== 'playing';
     this.setText('trafficStatus', state.status !== 'playing' ? 'Koniec kampanii' : state.paused ? 'Pauza' : demandMultiplier(clock.minuteOfDay) > 1.5 ? 'Godziny szczytu' : clock.hour >= 22 || clock.hour < 5 ? 'Nocne kursy' : 'Ruch zwykły');

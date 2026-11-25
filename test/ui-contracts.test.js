@@ -32,6 +32,20 @@ test('tester feedback can be copied or downloaded and explains that diagnostics 
   assert.match(ui, /Nic nie zostało wysłane/);
 });
 
+test('private playtest guide, post-session survey, and campaign export are available without requiring personal data', () => {
+  assert.match(html, /id="playtestGuideDialog"/);
+  assert.match(html, /id="playtestGuideButton"/);
+  assert.match(html, /id="playtestGuideGameButton"/);
+  for (const marker of ['15 minut', '45–60 minut', 'Zapis i wznowienie']) assert.ok(html.includes(marker), marker);
+  assert.match(html, /id="playtestSurvey"/);
+  for (const field of ['firstImpression', 'nextStepClear', 'costsClear', 'frustratingMoment', 'likedMost', 'playAgain']) {
+    assert.ok(html.includes(`name="${field}"`), field);
+  }
+  assert.match(html, /id="feedbackExportSave"/);
+  assert.match(ui, /playtestSurvey/);
+  assert.match(ui, /downloadJsonFile/);
+});
+
 test('onboarding is dismissible and state-backed, and line decisions reveal budget, risks and expected service', () => {
   assert.match(html, /id="tutorialSkip"/);
   assert.match(html, /id="tutorialRestart"/);
