@@ -7,7 +7,7 @@ Status: **GO for technical review; not merged, tagged, or deployed**
 
 - Base: `5f67fb9884e1776856406d5bebc258e635e34445` (`v1.9.0-alpha`). The requested `a9e82fe...` is an ancestor, but current `origin/main` and the release tag point to the later 1.9.0 quality-gate commit. The feature branch was created from that verified current main.
 - Implementation commit: `e68792d8e0944e04bf88bb4085b31da13e2b63b8`.
-- Documentation commit currently containing this report: `5529db626051f71736c267f49a446a92ef422e30`.
+- Initial documentation commit: `5529db626051f71736c267f49a446a92ef422e30` (its six-job CI run passed).
 - Branch: `feature/alpha-1.10.0-campaign-challenges`.
 - `origin/main` remains unchanged at the base SHA.
 - Application version: `1.10.0-alpha`; save schema remains **13**.
