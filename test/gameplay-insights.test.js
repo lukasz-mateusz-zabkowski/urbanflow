@@ -1,13 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { CITIES } from '../public/js/cities.js';
+import { UrbanFlowGame } from '../public/js/game.js';
+import { loadGame, saveGame, SAVE_KEY, SAVE_VERSION } from '../public/js/storage.js';
+import { totalWaiting } from '../public/js/passengers.js';
 import {
   appendSessionDecision, buildGameplayDecisionJournal, buildGameplaySessionReport
 } from '../public/js/gameplay-insights.js';
 
+const city = CITIES.krakow;
+const memoryStorage = () => {
+  const values = new Map();
+  return { getItem: key => values.get(key) ?? null, setItem: (key, value) => values.set(key, String(value)) };
+};
+
 function sampleState() {
   return {
     status: 'playing', elapsedMinutes: 1440, budget: 120000, carried: 345,
-    satisfaction: 78, passengers: { waiting: [{ count: 9 }, { count: 3 }] },
+    satisfaction: 78, passengers: { residential: { waiting: 9, destinations: {} }, commercial: { waiting: 3, destinations: {} } },
     lines: [{ id: 'line-1', name: 'Linia 1', type: 'bus', stats: { load: 0.7, waiting: 12, revenuePerHour: 400, costPerHour: 250 } }],
     fleet: { bus: { owned: 4 } },
     campaign: { challenge: { id: 'recovery', status: 'active', completed: ['recovery-service'] }, completed: [] },
@@ -73,6 +83,7 @@ test('gameplay session report exports only anonymous allowlisted aggregates and 
   assert.equal(report.result, 'playing');
   assert.equal(report.metrics.activeLines, 1);
   assert.equal(report.metrics.carriedPassengers, 345);
+  assert.equal(report.metrics.waitingPassengers, 12);
   assert.equal(report.latestObservedWeek.balance, 1000);
   assert.equal(report.technicalErrors.scriptErrors, 2);
   assert.equal(report.feedback.rating, 4);
@@ -125,4 +136,92 @@ test('a session purchase matching an actual finance transaction does not duplica
   const journal = buildGameplayDecisionJournal(state, decisions);
   assert.equal(journal.filter(item => Number.isFinite(item.actualCost)).length, 1);
   assert.equal(journal.reduce((sum, item) => sum + (item.actualCost || 0), 0), 9000);
+});
+
+test('a retained line-build fleet charge stays visible if the bounded finance ledger rotated out its paired construction entry', () => {
+  const state = { lines: [{ id: 'line-1', name: 'Linia 1' }], finance: { transactions: [
+    { id: 'finance-2', type: 'fleetPurchase', amount: 9000, at: 60, eventKey: 'line-build-fleet:line-1' }
+  ] } };
+  const journal = buildGameplayDecisionJournal(state);
+  assert.equal(journal.length, 1);
+  assert.equal(journal[0].type, 'fleetPurchase');
+  assert.equal(journal[0].actualCost, 9000);
+});
+
+test('distinct financial entries with identical time and amount are not collapsed', () => {
+  const state = { lines: [], finance: { transactions: [
+    { id: 'finance-1', type: 'fleetPurchase', amount: 9000, at: 60 },
+    { id: 'finance-2', type: 'fleetPurchase', amount: 9000, at: 60 }
+  ] } };
+  const journal = buildGameplayDecisionJournal(state);
+  assert.equal(journal.length, 2);
+  assert.equal(journal.reduce((sum, item) => sum + (item.actualCost || 0), 0), 18000);
+});
+
+test('identical session costs consume separate matching ledger entries one-to-one', () => {
+  const state = { lines: [], finance: { transactions: [
+    { id: 'finance-1', type: 'fleetPurchase', amount: 9000, at: 60 },
+    { id: 'finance-2', type: 'fleetPurchase', amount: 9000, at: 60 }
+  ] } };
+  const decisions = [1, 2].map(() => ({ type: 'fleet', atMinute: 60, actualCost: 9000, summary: 'Zakup pojazdu.' }));
+  const journal = buildGameplayDecisionJournal(state, decisions);
+  assert.equal(journal.filter(item => Number.isFinite(item.actualCost)).length, 2);
+  assert.equal(journal.reduce((sum, item) => sum + (item.actualCost || 0), 0), 18000);
+});
+
+test('a single identical ledger event does not hide a second distinct session charge', () => {
+  const state = { lines: [], finance: { transactions: [
+    { id: 'finance-1', type: 'fleetPurchase', amount: 9000, at: 60 }
+  ] } };
+  const decisions = [1, 2].map(() => ({ type: 'fleet', atMinute: 60, actualCost: 9000, summary: 'Zakup pojazdu.' }));
+  const journal = buildGameplayDecisionJournal(state, decisions);
+  assert.equal(journal.reduce((sum, item) => sum + (item.actualCost || 0), 0), 18000);
+});
+
+test('session report reads real UrbanFlowGame passenger queues before and after service', () => {
+  const game = new UrbanFlowGame(city, { startScenarioId: 'wieliczka', random: () => 0.5 });
+  const initialWaiting = totalWaiting(game.state.passengers);
+  assert.equal(initialWaiting, 0);
+  assert.equal(buildGameplaySessionReport(game.state).metrics.waitingPassengers, initialWaiting);
+
+  game.chooseStarterRoute('loop-center');
+  const created = game.addLine('bus', ['ruczaj', 'dworzec', 'bronowice']);
+  assert.equal(created.ok, true);
+  for (let tick = 0; tick < 25; tick += 1) game.tick(() => 0.5);
+
+  const actualWaiting = totalWaiting(game.state.passengers);
+  assert.ok(game.state.generated > 0, 'the real simulation generated passenger demand');
+  assert.ok(game.state.carried > 0, 'the real simulation transported passengers');
+  assert.ok(actualWaiting > 0, 'the real simulation has waiting passengers');
+  const report = buildGameplaySessionReport(game.state);
+  assert.equal(report.metrics.waitingPassengers, Math.floor(actualWaiting));
+  assert.equal(report.metrics.carriedPassengers, game.state.carried);
+});
+
+test('session report remains accurate after campaign completion and save/resume', () => {
+  const game = new UrbanFlowGame(city, { startScenarioId: 'wieliczka', random: () => 0.5 });
+  game.chooseStarterRoute('loop-center');
+  assert.equal(game.addLine('bus', ['ruczaj', 'dworzec', 'bronowice']).ok, true);
+  for (let tick = 0; tick < 25; tick += 1) game.tick(() => 0.5);
+
+  const storage = memoryStorage();
+  assert.deepEqual(saveGame(storage, game.state), { ok: true });
+  const loaded = loadGame(storage, city);
+  assert.equal(loaded.error, null);
+  const resumed = new UrbanFlowGame(city, {}, loaded.state);
+  assert.equal(buildGameplaySessionReport(resumed.state).metrics.waitingPassengers,
+    Math.floor(totalWaiting(resumed.state.passengers)));
+
+  resumed.finish('won', 'Scenariusz testowy ukończony.');
+  const completedReport = buildGameplaySessionReport(resumed.state);
+  assert.equal(completedReport.result, 'won');
+  assert.equal(completedReport.metrics.waitingPassengers, Math.floor(totalWaiting(resumed.state.passengers)));
+});
+
+test('missing or malformed optional passenger queues are reported as unavailable, never fabricated as zero', () => {
+  for (const passengers of [undefined, null, [], { stopA: null }, { stopA: { waiting: Number.NaN } }, { stopA: { waiting: -1 } }]) {
+    const report = buildGameplaySessionReport({ status: 'playing', lines: [], ...(passengers === undefined ? {} : { passengers }) });
+    assert.equal(report.metrics.waitingPassengers, null);
+  }
+  assert.equal(buildGameplaySessionReport({ status: 'playing', lines: [], passengers: {} }).metrics.waitingPassengers, 0);
 });

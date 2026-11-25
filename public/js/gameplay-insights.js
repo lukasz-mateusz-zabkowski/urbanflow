@@ -1,3 +1,5 @@
+import { totalWaiting } from './passengers.js?v=11';
+
 const MAX_SESSION_DECISIONS = 32;
 const MAX_JOURNAL_ITEMS = 24;
 const safeNumber = value => Number.isFinite(Number(value)) ? Number(value) : 0;
@@ -36,18 +38,31 @@ function observedLine(line) {
   };
 }
 
-function hasMatchingLedgerCost(decision, transactions) {
+function consumeMatchingLedgerCost(decision, transactions, consumedIndexes) {
   if (!Number.isFinite(decision.actualCost)) return false;
   const ledgerTypes = decision.type === 'fleet' ? new Set(['fleetPurchase'])
     : decision.type === 'investment' ? new Set(['investment'])
       : decision.type === 'route' ? new Set(['lineConstruction', 'lineRebuild']) : new Set();
-  return transactions.some(transaction => ledgerTypes.has(transaction.type)
-    && transaction.at === decision.atMinute && transaction.amount === decision.actualCost);
+  const index = transactions.findIndex((transaction, transactionIndex) => !consumedIndexes.has(transactionIndex)
+    && ledgerTypes.has(transaction.type) && transaction.at === decision.atMinute && transaction.amount === decision.actualCost);
+  if (index < 0) return false;
+  consumedIndexes.add(index);
+  return true;
+}
+
+function observedWaitingPassengers(passengerState) {
+  if (!passengerState || typeof passengerState !== 'object' || Array.isArray(passengerState)) return null;
+  const queues = Object.values(passengerState);
+  if (queues.some(queue => !queue || typeof queue !== 'object' || Array.isArray(queue)
+    || !Number.isFinite(queue.waiting) || queue.waiting < 0)) return null;
+  const total = totalWaiting(passengerState);
+  return Number.isFinite(total) && total >= 0 ? Math.floor(total) : null;
 }
 
 export function buildGameplayDecisionJournal(state = {}, sessionDecisions = [], limit = 12) {
   const entries = [];
   const transactions = Array.isArray(state.finance?.transactions) ? state.finance.transactions : [];
+  const consumedDecisionLedgerIndexes = new Set();
   for (const decision of Array.isArray(sessionDecisions) ? sessionDecisions : []) {
     const line = state.lines?.find(item => item.id === decision.subjectId);
     const district = state.cityEvolution?.districts?.[decision.subjectId];
@@ -57,7 +72,7 @@ export function buildGameplayDecisionJournal(state = {}, sessionDecisions = [], 
           : decision.type === 'fleet' ? 'Decyzja dotycząca floty' : 'Decyzja bieżącej sesji',
       subject: line?.name || line?.id || district?.name || decision.subjectId || 'Kampania',
       atMinute: decision.atMinute, summary: safeText(decision.summary),
-      ...(Number.isFinite(decision.actualCost) && !hasMatchingLedgerCost(decision, transactions) ? { actualCost: decision.actualCost } : {}),
+      ...(Number.isFinite(decision.actualCost) && !consumeMatchingLedgerCost(decision, transactions, consumedDecisionLedgerIndexes) ? { actualCost: decision.actualCost } : {}),
       ...(Number.isFinite(decision.actualCashInflow) ? { actualCashInflow: decision.actualCashInflow } : {}),
       ...(Number.isFinite(decision.plannedCost) ? { plannedCost: decision.plannedCost } : {}),
       ...(Number.isFinite(decision.estimatedCostPerHourDelta) ? { modelledCostPerHourDelta: decision.estimatedCostPerHourDelta } : {}),
@@ -67,6 +82,10 @@ export function buildGameplayDecisionJournal(state = {}, sessionDecisions = [], 
   }
 
   const consumed = new Set();
+  const groupedFleetTransactions = new Set(transactions.filter(item => item.type === 'fleetPurchase'
+    && typeof item.id === 'string' && item.eventKey?.startsWith('line-build-fleet:')
+    && transactions.some(construction => construction.type === 'lineConstruction' && construction.at === item.at
+      && construction.eventKey === `line-build:${item.eventKey.slice('line-build-fleet:'.length)}`)).map(item => item.id));
   for (const transaction of transactions) {
     if (!Number.isFinite(transaction.at) || !Number.isFinite(transaction.amount)) continue;
     if (transaction.type === 'lineConstruction' && transaction.eventKey?.startsWith('line-build:')) {
@@ -74,12 +93,13 @@ export function buildGameplayDecisionJournal(state = {}, sessionDecisions = [], 
       const key = `${transaction.at}:${lineId}`;
       if (consumed.has(key)) continue;
       consumed.add(key);
-      const fleet = transactions.find(item => item.at === transaction.at && item.type === 'fleetPurchase' && item.eventKey === `line-build-fleet:${lineId}`);
+      const fleet = transactions.find(item => item.at === transaction.at && item.type === 'fleetPurchase'
+        && item.eventKey === `line-build-fleet:${lineId}`);
       entries.push({ type: 'lineConstruction', title: 'Budowa linii', subject: lineName(state, lineId), atMinute: transaction.at,
         actualCost: safeNumber(transaction.amount) + safeNumber(fleet?.amount), costSource: 'zaksięgowany wydatek jednorazowy' });
       continue;
     }
-    if (transaction.type === 'fleetPurchase' && transaction.eventKey?.startsWith('line-build-fleet:')) continue;
+    if (transaction.type === 'fleetPurchase' && groupedFleetTransactions.has(transaction.id)) continue;
     if (transaction.type === 'investment') {
       const projectId = transaction.eventKey?.replace('investment-approval:', '');
       const project = state.investments?.projects?.find(item => item.id === projectId);
@@ -94,7 +114,8 @@ export function buildGameplayDecisionJournal(state = {}, sessionDecisions = [], 
     const title = transaction.type === 'lineRebuild' ? 'Przebudowa linii'
       : transaction.type === 'investmentMaintenance' ? 'Utrzymanie inwestycji'
         : transaction.type === 'investmentRefund' ? 'Zwrot inwestycji'
-          : transaction.type === 'campaignGrant' ? 'Grant kampanii' : 'Zdarzenie finansowe';
+          : transaction.type === 'campaignGrant' ? 'Grant kampanii'
+            : transaction.type === 'fleetPurchase' ? 'Zakup floty' : 'Zdarzenie finansowe';
     entries.push({ type: transaction.type, title, subject: transaction.subject || 'Kampania', atMinute: transaction.at,
       ...(expense ? { actualCost: safeNumber(transaction.amount), costSource: 'zaksięgowany wydatek jednorazowy' } : {}),
       ...(income ? { actualCashInflow: safeNumber(transaction.amount), cashSource: 'zaksięgowany wpływ' } : {}) });
@@ -139,7 +160,7 @@ export function buildGameplaySessionReport(state = {}, options = {}) {
     metrics: {
       activeLines: lines.filter(line => !line.routingUnavailable).length,
       carriedPassengers: Math.max(0, Math.floor(safeNumber(state.carried))),
-      waitingPassengers: (state.passengers?.waiting || []).reduce((sum, item) => sum + Math.max(0, safeNumber(item.count)), 0),
+      waitingPassengers: observedWaitingPassengers(state.passengers),
       satisfaction: Number.isFinite(state.satisfaction) ? state.satisfaction : null
     },
     latestObservedWeek: latestWeek ? {

@@ -19,6 +19,23 @@ test('optional gameplay report uses local allowlisted campaign data and never up
   await page.locator('[data-action="atlas-view"][data-view="operations"]').click();
   await expect(page.locator('#gameplayDecisionJournal')).toContainText('Budowa linii');
   await page.locator('#feedbackButton').click();
+  await expect(page.locator('#feedbackDialog')).toContainText('Przed udostępnieniem pobranego raportu przejrzyj go');
+  await page.locator('#feedbackSessionReport').click();
+  const anonymousReport = JSON.parse(await page.locator('#feedbackJson').inputValue());
+  expect(anonymousReport.feedback).toBeNull();
+  expect(Number.isInteger(anonymousReport.metrics.waitingPassengers) || anonymousReport.metrics.waitingPassengers === null).toBe(true);
+  await page.locator('#feedbackClose').click();
+  for (let index = 0; index < 3; index += 1) await page.locator('#speedButton').click();
+  await expect.poll(async () => {
+    const waiting = Number((await page.locator('#waitingStat').innerText()).replace(/[^\d-]/g, '')) || 0;
+    const carried = Number((await page.locator('#carriedStat').innerText()).replace(/[^\d-]/g, '')) || 0;
+    return waiting + carried;
+  }, { timeout: 20000 }).toBeGreaterThan(0);
+  await page.locator('#feedbackButton').click();
+  await page.locator('#feedbackSessionReport').click();
+  const liveReport = JSON.parse(await page.locator('#feedbackJson').inputValue());
+  expect(liveReport.metrics.waitingPassengers).toBe(Number((await page.locator('#waitingStat').innerText()).replace(/[^\d-]/g, '')) || 0);
+  expect(liveReport.metrics.carriedPassengers).toBe(Number((await page.locator('#carriedStat').innerText()).replace(/[^\d-]/g, '')) || 0);
   await page.locator('[name="testerId"]').fill('private-tester-42');
   await page.locator('[name="category"]').selectOption({ label: 'Ocena pierwszej rozgrywki' });
   await page.locator('[name="rating"]').selectOption('4');
@@ -29,6 +46,7 @@ test('optional gameplay report uses local allowlisted campaign data and never up
   expect(report.scenarioId).toBe('recovery');
   expect(report.gameVersion).toMatch(/1\.11\.0-alpha/);
   expect(report.metrics.activeLines).toBe(1);
+  expect(Number.isInteger(report.metrics.waitingPassengers) || report.metrics.waitingPassengers === null).toBe(true);
   expect(report.decisions.some(item => item.type === 'lineConstruction' && item.actualCost > 0)).toBe(true);
   expect(report.feedback.rating).toBe(4);
   const json = JSON.stringify(report);
