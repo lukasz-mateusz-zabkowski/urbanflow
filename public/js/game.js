@@ -3,7 +3,8 @@ import { recordNetworkHistory } from './analytics.js?v=12';
 import { airportUnlocked, haversineKm, lineCost, lineMetrics, unlockedTypes, TRANSPORT_TYPES } from './transport.js?v=10';
 import { createLineStats, createPassengerState, passengerTick, totalWaiting } from './passengers.js?v=11';
 import { SIMULATION, calendarTickContext, createSimulationCalendar, gameClock, setSpecialDay } from './simulation.js?v=10';
-import { createCampaign, updateCampaign } from './campaign.js?v=11';
+import { createCampaign, updateCampaign } from './campaign.js?v=12';
+import { createChallengeProgress, finalizeCampaignChallenge, getCampaignChallenge } from './campaign-challenges.js?v=1';
 import { pickStopsToReveal } from './stops.js?v=11';
 import { CITY_EVENT_DEFINITIONS, createCityEvent } from './city-events.js?v=10';
 import { ensureDiagnostics } from './analytics.js?v=11';
@@ -30,11 +31,12 @@ export class UrbanFlowGame {
   constructor(city, events = {}, savedState = null) {
     this.city = city; this.events = events;
     this.tramControlUndo = []; this.tramControlRedo = [];
+    const challengeDefinition = savedState ? null : getCampaignChallenge(events.challengeId);
     const savedStart = savedState?.startScenarioId || (savedState ? 'wieliczka' : null);
-    this.startScenario = chooseStartScenario(events.random || Math.random, events.startScenarioId || savedStart);
+    this.startScenario = chooseStartScenario(events.random || Math.random, events.startScenarioId || challengeDefinition?.startScenarioId || savedStart);
     this.starterRoutes = starterRoutesFor(this.startScenario);
     this.state = savedState || {
-      budget: city.startingBudget, revenue: 0, expenses: 0, subsidies: 0, passengerKm: 0, fleetPurchases: 0, carried: 0, generated: 0, abandoned: 0, satisfaction: 88,
+      budget: challengeDefinition?.startingBudget ?? city.startingBudget, revenue: 0, expenses: 0, subsidies: 0, passengerKm: 0, fleetPurchases: 0, carried: 0, generated: 0, abandoned: 0, satisfaction: 88,
       lines: [], cohorts: [], passengers: createPassengerState(city.points.filter(p => p.type !== 'stop')), revealedStops: [], stopCapacity: 120,
       calendar: createSimulationCalendar(),
       elapsedMinutes: 0, paused: false, speed: 1, selectedType: 'bus', selectedNodes: [], editingLineId: null,
@@ -71,6 +73,7 @@ export class UrbanFlowGame {
       tutorialActions: { firstGoal: false, busPlanned: false, costPreview: false, fleetDetails: false, opportunities: false, investment: false, ...(previousPreferences.tutorialActions || {}) }
     };
     this.state.campaign = { ...createCampaign(), ...(this.state.campaign || {}), stress: { ...createCampaign().stress, ...(this.state.campaign?.stress || {}) } };
+    if (challengeDefinition) this.state.fleet = { bus: { owned: challengeDefinition.startingBusFleet } };
     this.state.lines.forEach(line => {
       line.stats = { ...blankStats(), ...(line.stats || {}), segmentLoad: { ...(line.stats?.segmentLoad || {}) } };
       line.timetable ||= createWeeklyUniformTimetable(line.frequency ?? 3, TRANSPORT_TYPES[line.type]?.maxFrequency);
@@ -84,6 +87,7 @@ export class UrbanFlowGame {
     ensureDiagnostics(this.state);
     ensureMobilityState(this.state, this.visiblePoints());
     ensureCityEvolution(this.state, this.city);
+    if (challengeDefinition) this.state.campaign.challenge = createChallengeProgress(challengeDefinition.id, this.state);
     Object.defineProperty(this.state, 'city', { value: city, enumerable: false, configurable: true });
   }
   refreshRoutesFromGraph(type = 'bus') {
@@ -590,6 +594,7 @@ export class UrbanFlowGame {
   }
   finish(status, reason = '') {
     if (this.state.status !== 'playing') return;
+    finalizeCampaignChallenge(this, status);
     this.state.status = status; this.state.lossReason = reason; this.state.paused = true; this.state.finishedAt = this.state.elapsedMinutes;
     this.events.onFinish?.({ status, reason });
   }

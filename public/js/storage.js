@@ -7,6 +7,7 @@ import { createLandUseProfile } from './land-use.js?v=1';
 import { createInvestmentState, validateInvestmentState } from './investments.js?v=1';
 import { createTramInfrastructure, validateTramInfrastructure } from './tramway.js?v=1';
 import { createFinanceState, validateFinanceState } from './finance.js?v=1';
+import { validateCampaignChallengeState } from './campaign-challenges.js?v=1';
 
 export const SAVE_KEY = 'urbanflow.krakow.v2';
 export const SAVE_VERSION = 13;
@@ -148,6 +149,8 @@ export function validateState(s, city) {
     || Object.values(access.byReason).some(value => !nonnegative(value))) return false;
   const c = s.campaign;
   if (!plain(c) || !Array.isArray(c.completed) || c.completed.some(id => !goals.has(id)) || new Set(c.completed).size !== c.completed.length) return false;
+  if (c.challenge !== undefined && !validateCampaignChallengeState(c.challenge, city)) return false;
+  if (c.challenge && ((c.challenge.status === 'active') !== (s.status === 'playing') || c.challenge.status !== 'active' && c.challenge.status !== s.status)) return false;
   if (!['qualityMinutes', 'profitableDays', 'profitMinutes', 'grants'].every(k => nonnegative(c[k])) || !finite(c.profitStart)) return false;
   if (c.profitDay !== null && (!integer(c.profitDay) || c.profitDay < 1)) return false;
   if (c.stress !== undefined) {

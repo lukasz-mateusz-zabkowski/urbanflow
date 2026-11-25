@@ -2,7 +2,8 @@ import { formatMoney } from './economy.js?v=10';
 import { TRANSPORT_TYPES, eligibleCounts, lineCost, unlockedTypes, lineMetrics } from './transport.js?v=10';
 import { totalWaiting, diagnoseTransitRelation } from './passengers.js?v=11';
 import { calendarAt, gameClock, demandMultiplier } from './simulation.js?v=10';
-import { campaignObjectives } from './campaign.js?v=11';
+import { campaignObjectives } from './campaign.js?v=12';
+import { getCampaignChallenge } from './campaign-challenges.js?v=1';
 import { diagnosticSnapshot, networkProblems, FAILURE_LABELS } from './analytics.js?v=12';
 import { activeCityEvents, upcomingCityEvents, describeEventImpact } from './city-events.js?v=10';
 import { fleetSnapshot } from './fleet.js?v=10';
@@ -717,10 +718,19 @@ export class UI {
     const completed = goals.filter(goal => goal.completed);
     const active = goals.find(goal => !goal.completed);
     const state = this.game.state;
+    const challenge = state.campaign.challenge;
+    const challengeDefinition = getCampaignChallenge(challenge?.id);
+    const campaignLabel = challengeDefinition ? challengeDefinition.name : 'Plan dla Krakowa';
+    $('.campaign-card .section-kicker').textContent = campaignLabel;
+    $('#goalsTitle').textContent = challengeDefinition ? 'Cele wyzwania' : 'Cele kampanii';
     this.setText('goalCount', `${completed.length}/${goals.length}`);
-    this.setText('activeGoal', active?.title || 'Wszystkie cele Krakowa zrealizowane.');
+    this.setText('activeGoal', active?.title || (challengeDefinition ? 'Wszystkie cele wyzwania zrealizowane.' : 'Wszystkie cele Krakowa zrealizowane.'));
     this.setHtml('campaignTrack', goals.map(goal => `<i class="${goal.completed ? 'done' : ''}" style="--progress:${Math.max(0, Math.min(1, goal.progress)) * 100}%"></i>`).join(''));
-    this.setHtml('goalList', goals.map((goal, index) => `<li class="${goal.completed ? 'done' : ''}"><span class="goal-number">${goal.completed ? '✓' : String(index + 1).padStart(2, '0')}</span><div><strong>${escapeHtml(goal.title)}</strong><small>${escapeHtml(goal.description)}</small>${goal.completed ? '' : `<div class="goal-progress"><i style="width:${Math.max(0, Math.min(1, goal.progress)) * 100}%"></i></div>`}</div></li>`).join(''));
+    this.setHtml('goalList', goals.map((goal, index) => {
+      const remaining = challenge && Number.isFinite(goal.deadlineRemainingMinutes) && !goal.completed
+        ? ` Termin za ${Math.ceil(goal.deadlineRemainingMinutes / 10080)} tyg. czasu symulacji.` : '';
+      return `<li class="${goal.completed ? 'done' : ''}"><span class="goal-number">${goal.completed ? '✓' : String(index + 1).padStart(2, '0')}</span><div><strong>${escapeHtml(goal.title)}</strong><small>${escapeHtml(`${goal.description}${remaining}`)}</small>${goal.completed ? '' : `<div class="goal-progress"><i style="width:${Math.max(0, Math.min(1, goal.progress)) * 100}%"></i></div>`}${!goal.completed && goal.workspace ? `<button class="goal-workspace-link" type="button" data-action="atlas-view" data-view="${escapeHtml(goal.workspace)}">Otwórz właściwy widok Atlas →</button>` : ''}</div></li>`;
+    }).join(''));
     const buses = eligibleCounts(state.lines, state.satisfaction).bus;
     const blockers = {
       gateway: state.lines.length ? 'Połączenie startowe nie obsługuje jeszcze wymaganego węzła.' : 'Wybierz przystanki i sprawdź dostępność trasy przed budową.',
@@ -1502,17 +1512,25 @@ export class UI {
     const { state } = this.game;
     const won = state.status === 'won';
     const goals = campaignObjectives(this.game);
+    const challenge = state.campaign.challenge;
+    const challengeDefinition = getCampaignChallenge(challenge?.id);
+    const challengeSummary = challenge?.summary;
     this.setText('summaryEmblem', won ? '✦' : '↘');
-    this.setText('summaryEyebrow', won ? 'Kampania ukończona' : 'Koniec kampanii');
-    this.setText('summaryTitle', won ? 'Kraków w dobrych rękach.' : 'Miasto potrzebuje nowego planu.');
+    this.setText('summaryEyebrow', challengeDefinition ? `${challengeDefinition.name} · ${won ? 'wynik' : 'koniec'}` : won ? 'Kampania ukończona' : 'Koniec kampanii');
+    this.setText('summaryTitle', challengeDefinition ? (won ? 'Wyzwanie ukończone.' : 'Termin lub kondycja zakończyły wyzwanie.') : won ? 'Kraków w dobrych rękach.' : 'Miasto potrzebuje nowego planu.');
     const reasons = { bankruptcy: 'Budżet spadł poniżej dopuszczalnego zadłużenia.', satisfaction: 'Mieszkańcy zbyt długo czekali na sprawny transport.', unhappiness: 'Zadowolenie mieszkańców zbyt długo pozostawało na krytycznym poziomie.' };
-    this.setText('summaryDescription', won ? 'Połączyłeś dzielnice i lotnisko, przewiozłeś mieszkańców i zbudowałeś rentowną sieć. Kraków rusza dalej dzięki Tobie.' : `${reasons[state.lossReason] || state.lossReason || 'Nie udało się utrzymać sprawnej i wypłacalnej sieci.'} Spróbuj krótszych tras, wspólnych przystanków i ostrożniejszej rozbudowy.`);
+    this.setText('summaryDescription', challengeDefinition
+      ? `${challengeDefinition.description} ${state.lossReason || (won ? 'Zrealizowano wszystkie mierzone cele.' : 'Kampania została zakończona.')}`
+      : won ? 'Połączyłeś dzielnice i lotnisko, przewiozłeś mieszkańców i zbudowałeś rentowną sieć. Kraków rusza dalej dzięki Tobie.' : `${reasons[state.lossReason] || state.lossReason || 'Nie udało się utrzymać sprawnej i wypłacalnej sieci.'} Spróbuj krótszych tras, wspólnych przystanków i ostrożniejszej rozbudowy.`);
     const sessionMinutes = finite(state.realElapsedSeconds || state.playSeconds) / 60;
     this.setHtml('summaryStats', [
       ['Przewiezieni pasażerowie', formatNumber(state.carried)], ['Zrealizowane cele', `${goals.filter(goal => goal.completed).length}/${goals.length}`],
       ['Zadowolenie', `${formatNumber(state.satisfaction)}%`], ['Budżet końcowy', money(state.budget)],
       ['Aktywne linie', `${state.lines.length}`], ['Czas kampanii', sessionMinutes ? `${decimal(sessionMinutes)} min` : gameClock(state.elapsedMinutes, state.calendar).label]
     ].map(([label, value]) => `<div><span>${label}</span><strong>${value}</strong></div>`).join(''));
+    const challengeDetails = $('#challengeSummaryDetails');
+    challengeDetails.hidden = !challengeDefinition;
+    challengeDetails.innerHTML = challengeDefinition && challengeSummary ? `<h3>Bilans wyzwania</h3><div class="challenge-summary-grid"><p><strong>Czas symulacji</strong><span>${decimal(challengeSummary.elapsedMinutes / 60)} godz.</span></p><p><strong>Wynik operacyjny ostatniego tygodnia</strong><span>${money(challengeSummary.operatingBalance)}</span></p><p><strong>Zmiana mieszkańców · ${escapeHtml(challengeSummary.targetDistrict)}</strong><span>${formatNumber(challengeSummary.residentsDelta)}</span></p><p><strong>Zmiana miejsc pracy</strong><span>${formatNumber(challengeSummary.jobsDelta)}</span></p><p><strong>Ukończone inwestycje</strong><span>${challengeSummary.completedInvestments}</span></p></div><h4>Zrealizowane cele</h4><ul>${goals.filter(goal => challengeSummary.completedGoalIds.includes(goal.id)).map(goal => `<li>${escapeHtml(goal.title)}</li>`).join('') || '<li>Brak</li>'}</ul><h4>Niezrealizowane cele</h4><ul>${goals.filter(goal => challengeSummary.missedGoalIds.includes(goal.id)).map(goal => `<li>${escapeHtml(goal.title)}</li>`).join('') || '<li>Brak</li>'}</ul>` : '';
     const dialog = $('#summaryDialog');
     dialog.classList.toggle('won', won);
     if (!dialog.open) dialog.showModal();

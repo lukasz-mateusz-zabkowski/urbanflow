@@ -1,15 +1,17 @@
 import { getCity, loadStops } from './cities.js?v=11';
-import { UrbanFlowGame } from './game.js?v=14';
+import { UrbanFlowGame } from './game.js?v=15';
 import { GameMap } from './map.js?v=19';
 import { UI, confirmAction } from './ui.js?v=19';
 import { TRANSPORT_TYPES } from './transport.js?v=10';
 import { SIMULATION } from './simulation.js?v=10';
 import { applyAtlasView } from './theme.js?v=10';
-import { loadGame, saveGame, clearSave } from './storage.js?v=14';
+import { loadGame, saveGame, clearSave, SAVE_KEY, SAVE_VERSION } from './storage.js?v=15';
 import { loadRoutingGraph } from './routing.js?v=14';
+import { CAMPAIGN_CHALLENGES, getCampaignChallenge } from './campaign-challenges.js?v=1';
 
 let game, gameMap, ui, timer, removeStarterRoutes;
 let storage, storageWarningShown = false;
+let saveExportedForReplacement = false;
 try { storage = window.localStorage; } catch { /* Private mode can refuse storage entirely. */ }
 const city = getCity('krakow');
 applyAtlasView();
@@ -41,22 +43,52 @@ function persist() {
 
 function renderCityScreen(error = null) {
   const grid = document.getElementById('cityGrid');
-  grid.innerHTML = `<button class="city-card" id="startKrakow" type="button"><span class="city-number">01</span><span><strong>Kraków</strong><small>losowy start aglomeracyjny → węzły → lotnisko</small></span><i>${game ? 'Wróć do gry →' : 'Rozpocznij →'}</i></button>`;
+  const hasSaveToProtect = Boolean(game || initial.state || initial.error);
+  const choices = [
+    { id: 'classic', name: 'Kampania Kraków', difficulty: 'Klasyczna', description: 'Pełna kampania samouczkowa: od pierwszej linii do połączeń metropolitalnych.', start: 'Losowa miejscowość · standardowy budżet i flota.', goals: '8 celów · bez limitu czasu' },
+    ...CAMPAIGN_CHALLENGES.map(item => ({ id: item.id, name: item.name, difficulty: item.difficulty, description: item.description,
+      start: `${item.startingBudget.toLocaleString('pl-PL')} zł · ${item.startingBusFleet} autobusów · start: ${item.startScenarioId}`,
+      goals: `${item.objectives.length} cele · ${item.deadlineWeeks} tyg.` }))
+  ];
+  grid.innerHTML = `${game ? '<button class="city-card resume-card" id="startKrakow" type="button"><span class="city-number">↩</span><span><strong>Wznów obecną kampanię</strong><small>Dotychczasowy zapis pozostaje aktywny.</small></span><i>Wróć do gry →</i></button>' : ''}
+    ${hasSaveToProtect ? '<div class="save-protection"><p>Przed rozpoczęciem nowej kampanii wyeksportuj aktywny zapis. UrbanFlow utrzymuje jeden lokalny slot kampanii.</p><button id="exportCampaignSave" class="secondary-button" type="button">Pobierz kopię zapisu</button></div>' : ''}
+    <div class="campaign-choice-grid">${choices.map((choice, index) => `<article class="campaign-choice"><div><span class="campaign-choice-index">${String(index + 1).padStart(2, '0')}</span><span class="campaign-difficulty">${choice.difficulty}</span></div><h2>${choice.name}</h2><p>${choice.description}</p><small>${choice.start}</small><small>${choice.goals}</small><button class="${index === 0 ? 'secondary-button' : 'primary-button'}" ${choice.id === 'classic' && !game ? 'id="startKrakow"' : ''} data-start-campaign="${choice.id}" type="button" ${hasSaveToProtect ? 'disabled' : ''}>Rozpocznij kampanię</button></article>`).join('')}</div>`;
   const buildBadge = document.getElementById('buildBadge');
   buildBadge.classList.toggle('is-hidden', !alphaTestMode);
   buildBadge.textContent = alphaTestMode ? `ALPHA TEST · ${appVersion}${appCommit ? ` · ${appCommit.slice(0, 12)}` : ''}` : '';
-  document.getElementById('startKrakow').addEventListener('click', async () => {
-    if (game) {
-      cityScreen.classList.add('is-hidden'); gameElement.classList.remove('is-hidden');
-      gameMap.setVisible(true); gameMap.invalidate(); ui.render(); return;
-    }
-    if (error && !await confirmAction('Nie można odczytać poprzedniego zapisu. Rozpocząć nową grę? Kopia uszkodzonego zapisu pozostanie do odzyskania.', 'Rozpocznij')) return;
-    startCity();
+  document.querySelector('.resume-card')?.addEventListener('click', () => {
+    cityScreen.classList.add('is-hidden'); gameElement.classList.remove('is-hidden');
+    gameMap.setVisible(true); gameMap.invalidate(); ui.render();
   });
+  document.getElementById('exportCampaignSave')?.addEventListener('click', () => {
+    try {
+      const raw = game ? JSON.stringify({ version: SAVE_VERSION, cityId: city.id, savedAt: Date.now(), state: game.state }) : storage?.getItem(SAVE_KEY);
+      if (!raw) throw new Error('Brak danych zapisu do wyeksportowania.');
+      const href = URL.createObjectURL(new Blob([raw], { type: 'application/json' }));
+      const link = document.createElement('a'); link.href = href; link.download = 'urbanflow-campaign-backup.json'; link.click();
+      setTimeout(() => URL.revokeObjectURL(href), 1000);
+      saveExportedForReplacement = true;
+      grid.querySelectorAll('[data-start-campaign]').forEach(button => { button.disabled = false; });
+      grid.querySelector('.save-protection p').textContent = 'Kopia została pobrana. Możesz rozpocząć kampanię; dotychczasowy slot zostanie zastąpiony.';
+    } catch (exportError) { window.alert(exportError.message); }
+  });
+  grid.querySelectorAll('[data-start-campaign]').forEach(button => button.addEventListener('click', () => startSelectedCampaign(button.dataset.startCampaign, error)));
   if (error) { const warning = document.createElement('p'); warning.className = 'city-description'; warning.textContent = error; grid.append(warning); }
 }
 
-async function startCity(savedState = null) {
+async function startSelectedCampaign(id, error = null) {
+  const hasSaveToProtect = Boolean(game || initial.state || initial.error);
+  if (hasSaveToProtect && !saveExportedForReplacement) { window.alert('Najpierw pobierz kopię dotychczasowego zapisu.'); return; }
+  if (hasSaveToProtect && !await confirmAction('Rozpoczęcie nowej kampanii zastąpi jedyny lokalny slot. Kopia zapisu została pobrana. Kontynuować?', 'Zastąp kampanię')) return;
+  if (error && !hasSaveToProtect && !await confirmAction('Poprzedni zapis jest nieprawidłowy. Rozpocząć nową kampanię? Oryginalne dane pozostaną dostępne do odzyskania.', 'Rozpocznij')) return;
+  if (hasSaveToProtect) {
+    const result = clearSave(storage);
+    if (!result.ok && storage) { window.alert(result.message); return; }
+  }
+  saveExportedForReplacement = false;
+  startCity(null, id === 'classic' ? null : id);
+}
+async function startCity(savedState = null, challengeId = null) {
   if (!window.L) { window.alert('Nie udało się uruchomić lokalnej biblioteki mapy. Odśwież stronę.'); return; }
   let routingError = null;
   const routingStatus = document.createElement('p'); routingStatus.className = 'city-description';
@@ -67,6 +99,7 @@ async function startCity(savedState = null) {
   ui = null; storageWarningShown = false;
   cityScreen.classList.add('is-hidden'); gameElement.classList.remove('is-hidden');
   game = new UrbanFlowGame(city, {
+    challengeId,
     onSave: persist,
     onChange: () => ui?.render(),
     onLineCreated: line => {
@@ -115,16 +148,15 @@ async function startCity(savedState = null) {
     if (!result.ok) ui?.toast(result.message, 'warn');
   });
   gameMap.loadCity(city);
-  ui = new UI(game, gameMap, { appVersion, appCommit, alphaTestMode, onNewGame: async () => {
-    if (!await confirmAction('Rozpocząć nową grę? Obecny zapis kampanii Krakowa zostanie zastąpiony.', 'Rozpocznij nową grę')) return;
-    const result = clearSave(storage);
-    if (!result.ok && storage) { ui.toast(result.message, 'warn'); return; }
-    startCity();
+  ui = new UI(game, gameMap, { appVersion, appCommit, alphaTestMode, onNewGame: () => {
+    game.setPaused(true); gameMap.setVisible(false); gameElement.classList.add('is-hidden'); cityScreen.classList.remove('is-hidden');
+    saveExportedForReplacement = false; renderCityScreen();
   } });
   if (routingError) ui.toast(`Graf ulic jest niedostępny. Nowe trasy są zablokowane: ${routingError.message}`, 'warn');
   else if (routeRefresh.unavailable.length) ui.toast(`${routeRefresh.unavailable.length} zapisanych linii nie ma połączenia w grafie OSM; zachowano ich dotychczasową geometrię.`, 'warn');
-  document.getElementById('objectiveTitle').textContent = `${game.startScenario.name} → ${game.pointName(game.startScenario.localHubId)}`;
-  document.getElementById('objectiveCopy').textContent = 'Zbuduj pierwszą linię dowozową. Trasa na mapie prowadzi po lokalnym korytarzu drogowym.';
+  const challengeDefinition = getCampaignChallenge(game.state.campaign.challenge?.id);
+  document.getElementById('objectiveTitle').textContent = challengeDefinition?.name || `${game.startScenario.name} → ${game.pointName(game.startScenario.localHubId)}`;
+  document.getElementById('objectiveCopy').textContent = challengeDefinition?.description || 'Zbuduj pierwszą linię dowozową. Trasa na mapie prowadzi po lokalnym korytarzu drogowym.';
   const selectStarter = id => { const result = game.selectStarterRoute(id); if (!result.ok) ui.toast(result.message, 'warn'); return result; };
   ui.renderStarterRoutes(selectStarter);
   if (!game.state.lines.length && game.state.elapsedMinutes === 0) removeStarterRoutes = gameMap.showStarterRoutes({ ...city, starterRoutes: game.starterRoutes }, id => { selectStarter(id); ui.openPanel(); ui.scrollToBuild(); });

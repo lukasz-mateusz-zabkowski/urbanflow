@@ -8,7 +8,7 @@
   <title>UrbanFlow — Kraków w ruchu</title>
   <link rel="preconnect" href="https://tile.openstreetmap.org">
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css?v=1.9.4">
-  <link rel="stylesheet" href="styles.css?v=19">
+  <link rel="stylesheet" href="styles.css?v=20">
 </head>
 <body>
   <section class="city-screen" id="cityScreen" aria-labelledby="gameTitle">
@@ -292,6 +292,7 @@
     <h2 id="summaryTitle">Kraków w ruchu</h2>
     <p id="summaryDescription"></p>
     <div class="summary-stats" id="summaryStats"></div>
+    <section class="challenge-summary-details" id="challengeSummaryDetails" hidden></section>
     <div class="summary-actions"><button class="primary-button" id="summaryNewGameButton" type="button">Zagraj ponownie</button><button class="text-button" id="summaryCloseButton" type="button">Obejrzyj swoją sieć</button></div>
   </dialog>
   <dialog class="summary-dialog feedback-dialog" id="feedbackDialog" aria-labelledby="feedbackTitle">
@@ -311,6 +312,6 @@
   </dialog>
   <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="false"></div>
   <script src="vendor/leaflet/leaflet.js?v=1.9.4"></script>
-  <script type="module" src="js/main.js?v=24"></script>
+  <script type="module" src="js/main.js?v=25"></script>
 </body>
 </html>

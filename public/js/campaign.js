@@ -1,6 +1,7 @@
 import { eligibleCounts, PROGRESSION } from './transport.js?v=10';
 import { buildNetwork, isConnected, totalWaiting } from './passengers.js?v=10';
 import { recordFinanceEvent } from './finance.js?v=1';
+import { campaignChallengeObjectives, updateCampaignChallenge } from './campaign-challenges.js?v=1';
 
 export const STRESS_PHASES = [
   { id: 'morning', title: 'Poranny szczyt', duration: 420, demand: 1.55, locationId: 'dworzec', localDemand: 1.25, description: 'Dojazdy do głównego węzła gwałtownie rosną.' },
@@ -39,6 +40,7 @@ function completed(campaign, id) {
 
 export function campaignObjectives(game) {
   const s = game.state; const c = s.campaign; const stress = ensureStress(c);
+  if (c.challenge) return campaignChallengeObjectives(game);
   const list = definitions(game); const scenario = game.startScenario;
   const counts = eligibleCounts(s.lines, s.satisfaction); const network = buildNetwork(s.lines);
   const gateway = isConnected(network, scenario.id, scenario.localHubId);
@@ -106,6 +108,7 @@ function updateStressTest(game, delta) {
 export function updateCampaign(game, delta) {
   const s = game.state; const c = s.campaign; ensureStress(c);
   if (s.status !== 'playing') return;
+  if (c.challenge) { updateCampaignChallenge(game); return; }
   c.qualityMinutes = s.satisfaction > 75 && s.lines.length ? c.qualityMinutes + delta : 0;
   const objectives = campaignObjectives(game);
   for (const objective of objectives.slice(0, 7)) if (!objective.completed && objective.progress >= 1) {

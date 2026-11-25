@@ -8,7 +8,7 @@ import { createFeedbackReport, FEEDBACK_CATEGORIES } from '../public/js/feedback
 const packageVersion = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')).version;
 
 test('feedback report validates inputs, records the game version, and excludes diagnostics by default', () => {
-  assert.equal(packageVersion, '1.9.0-alpha');
+  assert.equal(packageVersion, '1.10.0-alpha');
   const report = createFeedbackReport({ category: FEEDBACK_CATEGORIES[0], description: 'Mapa zgubiła rozmiar.', rating: '4', testerId: '' }, null);
   assert.equal(report.ok, true);
   assert.equal(report.report.gameVersion, 'unknown');
