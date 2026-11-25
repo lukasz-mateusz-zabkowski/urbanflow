@@ -6,7 +6,8 @@ Status: **GO for technical review; not merged, tagged, or deployed**
 ## Candidate and scope
 
 - Base: `5f67fb9884e1776856406d5bebc258e635e34445` (`v1.9.0-alpha`). The requested `a9e82fe...` is an ancestor, but current `origin/main` and the release tag point to the later 1.9.0 quality-gate commit. The feature branch was created from that verified current main.
-- Implementation commit / currently pushed branch HEAD: `e68792d8e0944e04bf88bb4085b31da13e2b63b8`.
+- Implementation commit: `e68792d8e0944e04bf88bb4085b31da13e2b63b8`.
+- Documentation commit currently containing this report: `5529db626051f71736c267f49a446a92ef422e30`.
 - Branch: `feature/alpha-1.10.0-campaign-challenges`.
 - `origin/main` remains unchanged at the base SHA.
 - Application version: `1.10.0-alpha`; save schema remains **13**.
@@ -70,7 +71,7 @@ The implementation commit was pushed to the feature branch. GitHub Actions run *
 
 https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/45564310931
 
-Container health runs on GitHub Actions; Docker/Linux Engine is unavailable locally, so no local container run is claimed. This run validates the implementation commit. If the report-only commit is pushed after it, its separate workflow run is checked independently and reported in the handoff.
+Container health runs on GitHub Actions; Docker/Linux Engine is unavailable locally, so no local container run is claimed. The report-only commit `5529db626051f71736c267f49a446a92ef422e30` was also checked separately; all six jobs passed in run **45564983163**: https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/45564983163.
 
 ## Limitations and release boundary
 
