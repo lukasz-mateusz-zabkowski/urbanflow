@@ -4,7 +4,7 @@ import { GameMap } from './map.js?v=19';
 import { UI, confirmAction } from './ui.js?v=22';
 import { TRANSPORT_TYPES } from './transport.js?v=10';
 import { SIMULATION } from './simulation.js?v=10';
-import { applyAtlasView } from './theme.js?v=10';
+import { applyAtlasTheme, loadAtlasTheme } from './theme.js?v=11';
 import { loadGame, saveGame, clearSave, SAVE_KEY, SAVE_VERSION } from './storage.js?v=15';
 import { loadRoutingGraph } from './routing.js?v=14';
 import { CAMPAIGN_CHALLENGES, getCampaignChallenge } from './campaign-challenges.js?v=1';
@@ -17,7 +17,7 @@ window.addEventListener('error', event => { if (event instanceof ErrorEvent && e
 window.addEventListener('unhandledrejection', () => { gameplayTechnicalErrors.unhandledRejections += 1; });
 try { storage = window.localStorage; } catch { /* Private mode can refuse storage entirely. */ }
 const city = getCity('krakow');
-applyAtlasView();
+applyAtlasTheme(loadAtlasTheme());
 await loadStops(city);
 let appVersion = 'unknown';
 let appCommit = '';

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="pl" data-atlas-view="city">
+<html lang="pl" data-atlas-view="city" data-atlas-theme="city">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -8,7 +8,7 @@
   <title>UrbanFlow — Kraków w ruchu</title>
   <link rel="preconnect" href="https://tile.openstreetmap.org">
   <link rel="stylesheet" href="vendor/leaflet/leaflet.css?v=1.9.4">
-  <link rel="stylesheet" href="styles.css?v=23">
+  <link rel="stylesheet" href="styles.css?v=24">
 </head>
 <body>
   <section class="city-screen" id="cityScreen" aria-labelledby="gameTitle">
@@ -70,6 +70,15 @@
         </div>
 
         <nav class="atlas-view-nav" id="atlasViewNav" aria-label="Widoki UrbanFlow Atlas"></nav>
+        <div class="atlas-theme-control">
+          <label for="atlasThemeSelect">Styl wizualny mapy i interfejsu</label>
+          <select id="atlasThemeSelect" aria-describedby="atlasThemeHelp">
+            <option value="city">Atlas City — rozwój miasta</option>
+            <option value="network">Atlas Network — transport i przepływy</option>
+            <option value="midnight">Atlas Midnight — analityka w ciemnym stylu</option>
+          </select>
+          <small id="atlasThemeHelp">Preferencja jest zapisywana lokalnie i nie zmienia kampanii.</small>
+        </div>
 
         <section class="atlas-workspace-summary" id="atlasWorkspaceSummary" aria-live="polite" aria-labelledby="atlasWorkspaceTitle">
           <span class="atlas-workspace-eyebrow" id="atlasWorkspaceEyebrow">ATLAS / SIEĆ</span>
@@ -358,6 +367,6 @@
   </dialog>
   <div class="toast-stack" id="toastStack" aria-live="polite" aria-atomic="false"></div>
   <script src="vendor/leaflet/leaflet.js?v=1.9.4"></script>
-  <script type="module" src="js/main.js?v=27"></script>
+  <script type="module" src="js/main.js?v=28"></script>
 </body>
 </html>

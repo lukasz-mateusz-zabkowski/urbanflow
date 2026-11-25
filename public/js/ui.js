@@ -22,6 +22,7 @@ import { applyOperationalDecisionSafely, compareOperationalDecision, fleetManage
 import { financeForecast, financeGoals, financeHistory, financeSnapshot, plannedFinancialCommitments } from './finance.js?v=1';
 import { appendSessionDecision, buildGameplayDecisionJournal, buildGameplaySessionReport } from './gameplay-insights.js?v=2';
 import { planningStudioSnapshot } from './atlas-studio.js?v=1';
+import { applyAtlasTheme, loadAtlasTheme, saveAtlasTheme } from './theme.js?v=11';
 import { SAVE_VERSION } from './storage.js?v=15';
 
 export function downloadJsonFile(value, filename, { documentObject = globalThis.document, urlApi = globalThis.URL, BlobClass = globalThis.Blob } = {}) {
@@ -99,6 +100,8 @@ export class UI {
     this.atlasPreferences = { view: 'transport', lineFilter: 'all', lineSort: 'load' };
     this.panelStorage = null;
     try { this.panelStorage = window.localStorage; this.atlasPreferences = loadAtlasPreferences(this.panelStorage); } catch { /* Preferences are optional. */ }
+    const themeControl = $('#atlasThemeSelect');
+    if (themeControl) themeControl.value = loadAtlasTheme(this.panelStorage);
     const hasRouteDraft = Boolean(game.state.editingLineId)
       || (game.state.selectedNodes?.length || 0) >= 2
       || (game.state.tramControlPoints?.length || 0) > 0;
@@ -386,7 +389,9 @@ export class UI {
       }
     }, { signal });
     document.addEventListener('change', event => {
-      if (event.target.matches('[data-frequency]')) {
+      if (event.target.matches('#atlasThemeSelect')) {
+        this.setAtlasTheme(event.target.value);
+      } else if (event.target.matches('[data-frequency]')) {
         const lineId = event.target.dataset.frequency;
         const line = this.game.state.lines.find(item => item.id === lineId);
         const before = line?.frequency;
@@ -957,6 +962,14 @@ export class UI {
     const changedLayer = updateLayer && this.game.state.analyticsMode !== selected.analyticsMode;
     if (changedLayer) this.checkResult(this.game.setAnalyticsMode(selected.analyticsMode));
     else this.render();
+  }
+
+  setAtlasTheme(theme) {
+    const selected = saveAtlasTheme(theme, this.panelStorage);
+    applyAtlasTheme(selected);
+    const control = $('#atlasThemeSelect');
+    if (control && control.value !== selected) control.value = selected;
+    return selected;
   }
 
   setAnalyticsModeFromControl(mode) {

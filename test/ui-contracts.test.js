@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { applyAtlasView } from '../public/js/theme.js';
+import { applyAtlasView, applyAtlasTheme, ATLAS_THEMES } from '../public/js/theme.js';
 
 const html = readFileSync(new URL('../public/index.html', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../public/styles.css', import.meta.url), 'utf8');
@@ -62,4 +62,14 @@ test('game UI modules load without browser globals and unknown Atlas views fall 
   const root = { setAttribute(name, value) { this[name] = value; } };
   assert.equal(applyAtlasView('midnight', root), 'city');
   assert.equal(root['data-atlas-view'], 'city');
+});
+
+test('three Atlas visual themes apply separately from the five workspace views', () => {
+  assert.deepEqual(Object.keys(ATLAS_THEMES), ['city', 'network', 'midnight']);
+  const root = { setAttribute(name, value) { this[name] = value; } };
+  assert.equal(applyAtlasTheme('network', root), 'network');
+  assert.equal(root['data-atlas-theme'], 'network');
+  assert.equal(applyAtlasTheme('midnight', root), 'midnight');
+  assert.equal(root['data-atlas-theme'], 'midnight');
+  assert.equal(root['data-atlas-view'], undefined);
 });
