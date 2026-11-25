@@ -47,6 +47,6 @@ Mediana bez zmiany; p95 wzrósł o 0.3 ms. Ten pomiar nie wskazuje na istotną r
 
 ## GitHub i status
 
-Implementacyjny SHA `2d7d3a5c34277aa2606dfa5451bdc33a037381fe` przeszedł lokalną walidację. GitHub Actions dla dokumentacyjnego SHA `afac7cc371f6422e845209ccdcb3998b15491790` zakończył się **6/6 SUCCESS** — [run 45656258263](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/45656258263). Aktualizacja statusu w raporcie i master planie tworzy następny commit, dla którego CI zostanie sprawdzone osobno. Nie wykonano merge, tagowania, publikacji wydania ani zmian produkcyjnych.
+Implementacyjny SHA `2d7d3a5c34277aa2606dfa5451bdc33a037381fe` przeszedł lokalną walidację. GitHub Actions dla SHA `0e54d62f374c187b5ea251d55bd78f07325cec0d` zakończył się **6/6 SUCCESS** — [run 45657363522](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/45657363522). Nie wykonano merge, tagowania, publikacji wydania ani zmian produkcyjnych.
 
-**Status: kandydat PASS; dokumentacyjny commit wymaga jeszcze CI.** Kandydat zależy od niescalonego kandydata 2.0.0. Fundament II pozostaje **INCOMPLETE** do integracji wymaganych kandydatów i przejścia bramki 2.9.0.
+**Status: kandydat PASS; GitHub Actions 6/6 SUCCESS dla aktualnego SHA `0e54d62f374c187b5ea251d55bd78f07325cec0d`.** Kandydat zależy od niescalonego kandydata 2.0.0. Fundament II pozostaje **INCOMPLETE** do integracji wymaganych kandydatów i przejścia bramki 2.9.0.

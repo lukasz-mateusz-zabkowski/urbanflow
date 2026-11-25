@@ -3,6 +3,7 @@ import test from 'node:test';
 import { CITIES } from '../public/js/cities.js';
 import { UrbanFlowGame } from '../public/js/game.js';
 import { latentDemand } from '../public/js/demand.js';
+import { loadGame, saveGame, SAVE_KEY } from '../public/js/storage.js';
 import { advanceInvestmentProjects, approveInvestment, createInvestmentState, planInvestment } from '../public/js/investments.js';
 import { createWeeklyTimetable, DEFAULT_SERVICE_PERIODS, SERVICE_DAY_TYPES, setDailyFrequency } from '../public/js/timetable.js';
 import {
@@ -155,6 +156,54 @@ test('52-week district evolution stays deterministic with bounded history, land 
     assert.ok(zone.residents <= zone.capacity.residents && zone.jobs <= zone.capacity.jobs);
     assert.ok(zone.landUse.lastDevelopmentWeek <= first.lastEvolvedWeek);
   }
+});
+
+test('104-week Living City save/resume remains deterministic, capacity bounded and demand bounded', () => {
+  const makeCampaign = () => {
+    const game = new UrbanFlowGame(city);
+    assert.equal(game.chooseStarterRoute('loop-center').ok, true);
+    return game;
+  };
+  const original = makeCampaign();
+  const advanceToWeek = (game, week) => {
+    game.state.elapsedMinutes = (week - 1) * 7 * 1440;
+    evolveCityWeek(game.state, city);
+  };
+  for (let week = 2; week <= 53; week += 1) advanceToWeek(original, week);
+
+  const storage = new Map();
+  const memoryStorage = {
+    getItem: key => storage.get(key) ?? null,
+    setItem: (key, value) => storage.set(key, String(value)),
+    removeItem: key => storage.delete(key)
+  };
+  assert.equal(saveGame(memoryStorage, original.state).ok, true);
+  const loaded = loadGame(memoryStorage, city);
+  assert.equal(loaded.error, null);
+  const resumed = new UrbanFlowGame(city, {}, loaded.state);
+  assert.deepEqual(resumed.state.cityEvolution, original.state.cityEvolution);
+
+  for (let week = 54; week <= 105; week += 1) {
+    advanceToWeek(original, week);
+    advanceToWeek(resumed, week);
+    assert.deepEqual(resumed.state.cityEvolution, original.state.cityEvolution, `city state diverged in week ${week}`);
+  }
+
+  const evolution = resumed.state.cityEvolution;
+  assert.equal(evolution.lastEvolvedWeek, 105);
+  assert.equal(evolution.weeklyReports.length, 12);
+  assert.equal(evolution.weeklyReports.at(-1).week, 105);
+  assert.equal(evolution.weeklyReports.at(-1).networkWeek, null, 'missing network observations stay explicitly unavailable');
+  assert.equal(validateCityEvolutionState(evolution, city), true);
+  for (const zone of Object.values(evolution.districts)) {
+    assert.ok(zone.residents >= zone.constraints.minimumResidents && zone.residents <= zone.capacity.residents);
+    assert.ok(zone.jobs >= zone.constraints.minimumJobs && zone.jobs <= zone.capacity.jobs);
+    assert.ok(cityDemandFactor(evolution, zone) >= 0.8 && cityDemandFactor(evolution, zone) <= 1.25);
+    assert.equal(Object.values(zone.landUse.shares).reduce((sum, share) => sum + share, 0), 100);
+    assert.equal(Object.is(zone.lastChange.residentialAttractiveness, -0), false);
+    assert.equal(Object.is(zone.lastChange.economicAttractiveness, -0), false);
+  }
+  assert.ok(storage.has(SAVE_KEY));
 });
 
 test('population changes flow into bounded passenger demand factors', () => {

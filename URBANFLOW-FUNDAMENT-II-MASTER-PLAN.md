@@ -30,7 +30,7 @@ Każdy etap ma oddzielną gałąź/worktree, testy, lokalny odbiór, benchmarki 
 - `v1.11.1-alpha` oraz sukces CI 6/6 są udokumentowane w `URBANFLOW-1.11.1-FINAL-INTEGRATION.md` w worktree integracyjnym.
 - 1.12.0: istniejące wymagania ekonomiczne mają mocne pokrycie kodem i testami; pełne ponowne uruchomienie suite będzie częścią walidacji kandydata.
 - 2.0.0: Atlas Studio zaimplementowano w `feature/alpha-2.0.0-atlas-studio`; workflow 6/6 SUCCESS dla implementacyjnego SHA `5dcdf9393062ce38318b733f650080a7b61b4fba`. Nie scalono.
-- 2.5.0: trzy motywy zaimplementowano w `feature/alpha-2.5.0-atlas-visual-system`; pełna walidacja lokalna przeszła. Workflow `45656258263` zakończył się 6/6 SUCCESS dla SHA `afac7cc371f6422e845209ccdcb3998b15491790`. Nie scalono.
+- 2.5.0: trzy motywy zaimplementowano w `feature/alpha-2.5.0-atlas-visual-system`; pełna walidacja lokalna przeszła. Workflow `45657363522` zakończył się 6/6 SUCCESS dla SHA `0e54d62f374c187b5ea251d55bd78f07325cec0d`. Nie scalono.
 - 2.9.0: **FUNDAMENT II INCOMPLETE** do momentu przejścia wszystkich wymaganych bramek.
 
 ## Historia kamieni milowych
@@ -40,7 +40,7 @@ Każdy etap ma oddzielną gałąź/worktree, testy, lokalny odbiór, benchmarki 
 | Audyt bazowy 1.11.1 | Macierz i dowody bazowe zapisane. | Weryfikacja ekonomii w suite pierwszego kandydata. | CI 6/6 przy 1.11.1 według raportu wydania. | Brak zmian na `main`. | Nie traktować wersji jako dowodu ukończenia. |
 | 2.0.0 Atlas Studio | Implementacja i walidacja lokalna zakończone; CI 6/6 SUCCESS dla implementacyjnego SHA. | Osobna decyzja o integracji; docs-only SHA późniejszy niż SHA workflow. | Node 311/311, Playwright 54/54, audyty 0; live OSM 16/16; benchmark median 31.1→30.8 ms, p95 32.5→32.5 ms. | Osobna feature branch; bez merge. | Kandydat zależny pozostaje niescalony. |
 | 2.5.0 Visual System | Trzy motywy City/Network/Midnight wdrożone; preferencja niezależna od kampanii; czytelność i mobile zweryfikowane. | Ponowić CI dla commita dokumentującego zakończony run 6/6. | Node 315/315, Playwright 56/56, audyty 0; live OSM 16/16; benchmark Passenger Flow median 30.4→30.4 ms, p95 46.8→47.1 ms. | Osobna feature branch bazująca na kandydacie 2.0.0; bez merge. | Niewielka zmiana p95; wymagana osobna integracja 2.0 i 2.5. |
-| 2.9.0 Completion gate | Nie rozpoczęto. | Pełna bramka zgodnie z sekcją 13 specyfikacji. | Do zaplanowania. | Wymaga osobnej zgody na integracje. | Nie deklarować complete przed 100% kryteriów. |
+| 2.9.0 Completion gate | Audyt przeprowadzony; naprawiono niedeterministyczne `-0` w historii Living City, dodano test 104 tygodni z rzeczywistym zapisem/wznowieniem. | Wymagane osobne zatwierdzenie integracji 2.0/2.5, końcowe CI kandydata 2.9 i całościowa akceptacja po integracji. | Lokalna walidacja zakończona; brakuje push/CI końcowego SHA i zatwierdzonych integracji zależności. | Bramka końcowa | Wszystkie kryteria sekcji 13 mają jawne dowody PASS po integracji; do tego czasu INCOMPLETE. |
 
 ## Aktualizacja 2.0.0 Atlas Studio — 2026-11-25
 
@@ -65,5 +65,14 @@ Każdy etap ma oddzielną gałąź/worktree, testy, lokalny odbiór, benchmarki 
 - Pełna lokalna walidacja: Node 315/315, Playwright 56/56, oba audyty npm 0 podatności, `git diff --check` PASS.
 - Live OSM: 16/16 kafelków HTTP 200, zero błędów strony. Zrzuty desktop/mobile i rzeczywiste OSM znajdują się poza repozytorium w katalogach Temp opisanych w raporcie 2.5.0.
 - Benchmark Passenger Flow (60 próbek na wersję): 2.0.0 mediana/p95 30.4/46.8 ms; 2.5.0 30.4/47.1 ms.
-- GitHub Actions run `45656258263`: 6/6 SUCCESS dla SHA `afac7cc371f6422e845209ccdcb3998b15491790`. Aktualizacja statusu jest dokumentowana w kolejnym commicie i otrzyma osobne CI.
+- GitHub Actions run `45657363522`: 6/6 SUCCESS dla SHA `0e54d62f374c187b5ea251d55bd78f07325cec0d`.
 - Nie scalono ani nie otagowano. Fundament II pozostaje **INCOMPLETE** do osobnej integracji i bramki 2.9.0.
+
+## Aktualizacja 2.9.0 Fundament II Completion Gate — 2026-11-25
+
+- Pracę prowadzono w osobnym worktree `urbanflow-alpha-2.9.0-fundament-ii-completion`, gałąź `feature/alpha-2.9.0-fundament-ii-completion`, bazując na zweryfikowanym kandydacie 2.5.0 `0e54d62f374c187b5ea251d55bd78f07325cec0d`. `main` nie był modyfikowany.
+- Audyt 104 tygodni ujawnił konkretny błąd deterministyczności: różnice atrakcyjności zaokrąglane do ujemnego zera (`-0`) zmieniały reprezentację w JSON i po odczycie dawały `+0`. Normalizacja zaokrąglonych zer w `public/js/city-evolution.js` oraz test rzeczywistego `UrbanFlowGame` z `saveGame`/`loadGame` naprawiają i zabezpieczają to zachowanie.
+- Test regresyjny prowadzi kampanię do tygodnia 53, zapisuje, wznawia ją i porównuje dokładny stan Living City z niezapisanym przebiegiem aż do tygodnia 105. Potwierdza limit 12 raportów, land-use 100%, ograniczenia populacji/zatrudnienia i mnożnika popytu.
+- Walidacja po poprawce: Node **316/316**, Playwright **56/56**, `npm audit` pełny i produkcyjny: **0 podatności**, `npm ci` bez podatności. Benchmarki i live OSM są opisane w `URBANFLOW-FUNDAMENT-II-FINAL-REPORT.md`; live OSM: 16/16 kafelków HTTP 200, bez błędów strony.
+- Porównanie długiej kampanii na tym samym Node v24.19.0 pokazało niewielki, zmienny szum p95 ticku (mediana trzech prób 0.5780 ms bazowo / 0.6070 ms kandydat; różnica 0.029 ms), bez podstaw do deklarowania poprawy lub istotnej regresji. Rozmiar zapisu w obu wariantach: 116,970 B.
+- Fundament II pozostaje **INCOMPLETE**: kandydaci 2.0.0 i 2.5.0 nie zostały zintegrowani z `main`, a polityka wymaga osobnej zgody na każdą integrację. 2.9.0 jest bramką audytową opartą na kandydatach, nie zastępuje ich integracji. Nie utworzono tagu ani wydania.

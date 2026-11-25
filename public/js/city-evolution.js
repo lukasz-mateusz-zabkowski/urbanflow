@@ -8,6 +8,10 @@ export const CITY_EVOLUTION_VERSION = 1;
 export const CITY_EVOLUTION_LIMITS = Object.freeze({ weeklyReports: 12, demandFactorMin: 0.8, demandFactorMax: 1.25, maxWeeklyChange: 0.0045 });
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const round = value => Math.round(value);
+const roundTenth = value => {
+  const rounded = Math.round(value * 10) / 10;
+  return rounded === 0 ? 0 : rounded;
+};
 const employmentProfiles = new Set(['office', 'industrial', 'education', 'center', 'station', 'airport']);
 const residentialProfiles = new Set(['residential', 'tourist', 'education', 'industrial', 'center', 'local']);
 
@@ -139,8 +143,8 @@ export function evolveCityWeek(state, city) {
     zone.residents = round(clamp(oldResidents * (1 + residentRate), zone.constraints.minimumResidents, zone.capacity.residents));
     zone.jobs = round(clamp(oldJobs * (1 + jobRate), zone.constraints.minimumJobs, zone.capacity.jobs));
     zone.lastChange = { residents: zone.residents - oldResidents, jobs: zone.jobs - oldJobs,
-      residentialAttractiveness: round((zone.residentialAttractiveness - oldResidential) * 10) / 10,
-      economicAttractiveness: round((zone.economicAttractiveness - oldEconomic) * 10) / 10 };
+      residentialAttractiveness: roundTenth(zone.residentialAttractiveness - oldResidential),
+      economicAttractiveness: roundTenth(zone.economicAttractiveness - oldEconomic) };
   }
   const after = Object.values(evolution.districts).reduce((total, zone) => ({ residents: total.residents + zone.residents, jobs: total.jobs + zone.jobs }), { residents: 0, jobs: 0 });
   const ranked = Object.values(evolution.districts);
