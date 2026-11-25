@@ -30,7 +30,7 @@ Każdy etap ma oddzielną gałąź/worktree, testy, lokalny odbiór, benchmarki 
 - `v1.11.1-alpha` oraz sukces CI 6/6 są udokumentowane w `URBANFLOW-1.11.1-FINAL-INTEGRATION.md` w worktree integracyjnym.
 - 1.12.0: istniejące wymagania ekonomiczne mają mocne pokrycie kodem i testami; pełne ponowne uruchomienie suite będzie częścią walidacji kandydata.
 - 2.0.0: Atlas Studio zaimplementowano w `feature/alpha-2.0.0-atlas-studio`; workflow 6/6 SUCCESS dla implementacyjnego SHA `5dcdf9393062ce38318b733f650080a7b61b4fba`. Nie scalono.
-- 2.5.0: trzy motywy zaimplementowano w `feature/alpha-2.5.0-atlas-visual-system`; pełna walidacja lokalna przeszła. Końcowy CI gałęzi oczekuje po pushu raportu. Nie scalono.
+- 2.5.0: trzy motywy zaimplementowano w `feature/alpha-2.5.0-atlas-visual-system`; pełna walidacja lokalna przeszła. Workflow `45656258263` zakończył się 6/6 SUCCESS dla SHA `afac7cc371f6422e845209ccdcb3998b15491790`. Nie scalono.
 - 2.9.0: **FUNDAMENT II INCOMPLETE** do momentu przejścia wszystkich wymaganych bramek.
 
 ## Historia kamieni milowych
@@ -39,7 +39,7 @@ Każdy etap ma oddzielną gałąź/worktree, testy, lokalny odbiór, benchmarki 
 |---|---|---|---|---|---|
 | Audyt bazowy 1.11.1 | Macierz i dowody bazowe zapisane. | Weryfikacja ekonomii w suite pierwszego kandydata. | CI 6/6 przy 1.11.1 według raportu wydania. | Brak zmian na `main`. | Nie traktować wersji jako dowodu ukończenia. |
 | 2.0.0 Atlas Studio | Implementacja i walidacja lokalna zakończone; CI 6/6 SUCCESS dla implementacyjnego SHA. | Osobna decyzja o integracji; docs-only SHA późniejszy niż SHA workflow. | Node 311/311, Playwright 54/54, audyty 0; live OSM 16/16; benchmark median 31.1→30.8 ms, p95 32.5→32.5 ms. | Osobna feature branch; bez merge. | Kandydat zależny pozostaje niescalony. |
-| 2.5.0 Visual System | Trzy motywy City/Network/Midnight wdrożone; preferencja niezależna od kampanii; czytelność i mobile zweryfikowane. | Push raportu/planu i zielone CI dla końcowego SHA. | Node 315/315, Playwright 56/56, audyty 0; live OSM 16/16; benchmark Passenger Flow median 30.4→30.4 ms, p95 46.8→47.1 ms. | Osobna feature branch bazująca na kandydacie 2.0.0; bez merge. | Niewielka zmiana p95; wymagana osobna integracja 2.0 i 2.5. |
+| 2.5.0 Visual System | Trzy motywy City/Network/Midnight wdrożone; preferencja niezależna od kampanii; czytelność i mobile zweryfikowane. | Ponowić CI dla commita dokumentującego zakończony run 6/6. | Node 315/315, Playwright 56/56, audyty 0; live OSM 16/16; benchmark Passenger Flow median 30.4→30.4 ms, p95 46.8→47.1 ms. | Osobna feature branch bazująca na kandydacie 2.0.0; bez merge. | Niewielka zmiana p95; wymagana osobna integracja 2.0 i 2.5. |
 | 2.9.0 Completion gate | Nie rozpoczęto. | Pełna bramka zgodnie z sekcją 13 specyfikacji. | Do zaplanowania. | Wymaga osobnej zgody na integracje. | Nie deklarować complete przed 100% kryteriów. |
 
 ## Aktualizacja 2.0.0 Atlas Studio — 2026-11-25
@@ -57,3 +57,13 @@ Każdy etap ma oddzielną gałąź/worktree, testy, lokalny odbiór, benchmarki 
 - Implementacyjny SHA `5dcdf9393062ce38318b733f650080a7b61b4fba` wypchnięto na `feature/alpha-2.0.0-atlas-studio`.
 - GitHub Actions [run 45651570103](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/45651570103): **6/6 SUCCESS** — Node 18, Node 20, Node 22, browser-test, security-audit, container-health.
 - Kandydat nie został scalony. Fundament II nadal **INCOMPLETE**; Atlas visual themes i bramka 2.9 pozostają do wykonania.
+
+## Aktualizacja 2.5.0 Atlas Visual System — 2026-11-25
+
+- Kandydat znajduje się na `feature/alpha-2.5.0-atlas-visual-system`, zależy od niescalonego kandydata 2.0.0.
+- City, Network i Midnight są przełączalne; preferencja UI jest walidowana i odseparowana od kampanii. Uwzględniono kontrast i reduced-motion.
+- Pełna lokalna walidacja: Node 315/315, Playwright 56/56, oba audyty npm 0 podatności, `git diff --check` PASS.
+- Live OSM: 16/16 kafelków HTTP 200, zero błędów strony. Zrzuty desktop/mobile i rzeczywiste OSM znajdują się poza repozytorium w katalogach Temp opisanych w raporcie 2.5.0.
+- Benchmark Passenger Flow (60 próbek na wersję): 2.0.0 mediana/p95 30.4/46.8 ms; 2.5.0 30.4/47.1 ms.
+- GitHub Actions run `45656258263`: 6/6 SUCCESS dla SHA `afac7cc371f6422e845209ccdcb3998b15491790`. Aktualizacja statusu jest dokumentowana w kolejnym commicie i otrzyma osobne CI.
+- Nie scalono ani nie otagowano. Fundament II pozostaje **INCOMPLETE** do osobnej integracji i bramki 2.9.0.
