@@ -49,6 +49,8 @@ W każdej ścieżce zanotuj jeden moment niepewności, jedną decyzję trudną d
 - `git diff --check`: zaliczone.
 - Test prawdziwych kafelków OSM (`verify:osm:live`): 16 z 16 odpowiedzi HTTP 200, 0 błędów JS. Zrzut: `%TEMP%\urbanflow-alpha-1.11.0\desktop-live-osm-1366x768.png`. Pozostałe testy przeglądarkowe używają deterministycznych kafelków testowych i nie są dowodem usługi OSM.
 - Test przeglądarkowy raportu sesji potwierdza wyeksportowanie JSON z opinią i statystykami oraz brak żądań POST.
+- Kandydat działa lokalnie na `http://127.0.0.1:3112/`; `/health` zwrócił `1.11.0-alpha` i SHA `ecd087e28b7ac8c54b4c4cd6fb24b92740f4ef8d`. Nasłuch został ograniczony do `127.0.0.1`.
+- GitHub Actions run [45594552600](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/45594552600) dla SHA `ecd087e28b7ac8c54b4c4cd6fb24b92740f4ef8d`: **6/6 SUCCESS** — Node 18, 20, 22, Playwright, security audit i container health.
 
 ### Benchmark 1.10.0 → 1.11.0
 
@@ -71,7 +73,7 @@ Test przełączania Atlas uruchamiał dwie instancje lokalnie na 3120 (baseline)
 - Lista nieksięgowych decyzji dotyczy bieżącej karty i znika po jej zamknięciu/przeładowaniu. Trwałe działania kosztowe pochodzą z ograniczonej księgi, która może nie zawierać szczegółów starszych niż zachowany limit. Historia nie odtwarza pełnej przyczynowości.
 - Czas rzeczywisty sesji jest liczony od utworzenia UI do raportu; nie jest równoważny aktywnemu czasowi skupionej gry.
 - Porównanie mikrosekundowych różnic czasu ticku jest wrażliwe na obciążenie hosta. Mediana wzrosła o ok. 4%, podczas gdy p95 pozostał podobny. Należy obserwować ten wynik w CI i na słabszym sprzęcie.
-- Wyniki GitHub Actions i końcowy commit zostaną dopisane po push.
+- Raport opisuje pełny wynik Actions powyżej. Commit dokumentacyjny powstał po tym przebiegu i po jego push uruchamia ponowny workflow na nowym SHA.
 
 ## Status
 
@@ -81,4 +83,4 @@ Test przełączania Atlas uruchamiał dwie instancje lokalnie na 3120 (baseline)
 
 Gałąź: `feature/alpha-1.11.0-gameplay-depth`.
 
-Commit implementacji, po którym wykonano pełny zestaw końcowych testów: `734ecea612efb873a5a3ebe365549008a0e6ec38` (`feat: add gameplay decision feedback and session report`). Raport jest osobnym commitem dokumentacyjnym po tej walidacji, więc końcowy HEAD gałęzi zostanie potwierdzony po jego wypchnięciu. W chwili przygotowania dokumentu GitHub Actions dla kandydata jeszcze się nie uruchomił; status zostanie zweryfikowany po push.
+Commit implementacji, po którym wykonano pełny zestaw końcowych testów: `734ecea612efb873a5a3ebe365549008a0e6ec38` (`feat: add gameplay decision feedback and session report`). Kandydat przed aktualizacją raportu miał SHA `ecd087e28b7ac8c54b4c4cd6fb24b92740f4ef8d`, a GitHub Actions na tym SHA zakończył się 6/6 sukcesem. Commit tego uzupełnienia raportu jest dokumentacyjny; uruchamia nowy workflow dla nowego HEAD.
