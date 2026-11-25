@@ -50,4 +50,10 @@ Każdy etap ma oddzielną gałąź/worktree, testy, lokalny odbiór, benchmarki 
 - `planningStudioSnapshot` jest tylko do odczytu. Powtórny routing w panelu został usunięty przez przekazywanie wyniku z istniejącego renderu; dodano test regresyjny.
 - Testy Atlas Studio: Node 4/4 i Playwright desktop/mobile 2/2. Końcowe pełne suite po poprawce wizualnej: Node 311/311 i Playwright 54/54.
 - Audyty npm: zero podatności; live OSM: 16/16 kafelków 200. Benchmark przełączania Passenger Flow: mediana 31.1 ms bazowo / 30.8 ms kandydat; p95 32.5 ms / 32.5 ms (60 próbek na wersję).
-- Status kamienia 2.0.0: **LOKALNA WALIDACJA PASS; PUSH I CI OCZEKUJĄ**. Fundament II nadal **INCOMPLETE**; 2.5.0 i 2.9.0 nie są ukończone.
+- Status kamienia 2.0.0: **KANDYDAT PASS; GitHub Actions 6/6 SUCCESS dla implementacyjnego SHA**. Fundament II nadal **INCOMPLETE**; 2.5.0 i 2.9.0 nie są ukończone.
+
+### Wynik GitHub Actions
+
+- Implementacyjny SHA `5dcdf9393062ce38318b733f650080a7b61b4fba` wypchnięto na `feature/alpha-2.0.0-atlas-studio`.
+- GitHub Actions [run 45651570103](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/45651570103): **6/6 SUCCESS** — Node 18, Node 20, Node 22, browser-test, security-audit, container-health.
+- Kandydat nie został scalony. Fundament II nadal **INCOMPLETE**; Atlas visual themes i bramka 2.9 pozostają do wykonania.

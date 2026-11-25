@@ -3,7 +3,7 @@
 Date: 2026-11-25
 Base: `main` / `origin/main` at `4cfb07d04c27103055e69c3ad92affd836dd205a` (`v1.11.1-alpha`)
 Candidate branch: `feature/alpha-2.0.0-atlas-studio`
-Status: **NO GO — validation and GitHub Actions pending**
+Status: **CANDIDATE PASS — local validation and GitHub Actions 6/6 passed for implementation SHA `5dcdf9393062ce38318b733f650080a7b61b4fba`; branch-only, not integrated.**
 
 ## Scope and implementation
 
@@ -46,7 +46,7 @@ The panel reuses the current render's route preview instead of calculating the s
 
 ### CI and delivery
 
-Final local validation is green. Candidate commit, branch push, and GitHub Actions are pending. The candidate has not been integrated into `main`, tagged, or deployed. The base `main` remains unchanged.
+Final local validation is green. Implementation commit `5dcdf9393062ce38318b733f650080a7b61b4fba` is pushed. GitHub Actions run [45651570103](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/45651570103) completed successfully with all six jobs: Node 18, Node 20, Node 22, browser-test, security-audit, and container-health. The candidate has not been integrated into `main`, tagged, or deployed. The base `main` remains unchanged.
 
 ## Known limits and next steps
 
