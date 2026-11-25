@@ -17,7 +17,7 @@ export const CAMPAIGN_CHALLENGES = Object.freeze([
   }),
   Object.freeze({
     id: 'finance-crisis', name: 'Kryzys finansowy', difficulty: 'Trudne',
-    description: 'Mała rezerwa i presja kosztów. Dostosuj ofertę tak, aby odzyskać dodatni wynik bez utraty płynności.',
+    description: 'Startujesz bez linii i z małą rezerwą. Zbuduj ofertę przynoszącą dodatni wynik przez dwa pełne tygodnie i odbuduj budżet do 250 000 zł w ciągu ośmiu tygodni.',
     startingBudget: 220000, startingBusFleet: 6, startScenarioId: 'zielonki', targetDistrictId: 'zielonki', deadlineWeeks: 8,
     objectives: Object.freeze([
       Object.freeze({ id: 'crisis-profit', title: 'Uzyskaj dwa dodatnie tygodnie operacyjne', description: 'Dwa kolejne zamknięte tygodnie muszą mieć dodatni obserwowany bilans sieci.', type: 'positive-weeks', target: 2, deadlineWeeks: 8, workspace: 'operations' }),

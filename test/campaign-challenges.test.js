@@ -11,6 +11,9 @@ import {
 test('three challenge scenarios expose distinct, deterministic start conditions and objectives', () => {
   assert.deepEqual(CAMPAIGN_CHALLENGES.map(item => item.id), ['recovery', 'finance-crisis', 'growing-city']);
   assert.equal(new Set(CAMPAIGN_CHALLENGES.map(item => item.startingBudget)).size, 3);
+  const financeDescription = CAMPAIGN_CHALLENGES.find(item => item.id === 'finance-crisis').description;
+  assert.match(financeDescription, /bez linii/i);
+  assert.match(financeDescription, /zbuduj ofertę/i);
   for (const definition of CAMPAIGN_CHALLENGES) {
     const game = new UrbanFlowGame(CITIES.krakow, { challengeId: definition.id, random: () => 0.2 });
     const progress = game.state.campaign.challenge;
@@ -41,6 +44,83 @@ test('a challenge deadline uses simulation time, pauses do not advance it, and m
   const summary = structuredClone(challenge.summary);
   updateCampaignChallenge(game);
   assert.deepEqual(challenge.summary, summary);
+});
+
+function prepareFinanceChallenge(game, budget = 250000) {
+  game.state.networkWeeklyHistory = [
+    { week: 1, balance: 10, samples: 1680 },
+    { week: 2, balance: 10, samples: 1680 }
+  ];
+  game.state.budget = budget;
+}
+
+test('challenge objectives can complete one simulation tick before their deadline', () => {
+  const game = new UrbanFlowGame(CITIES.krakow, { challengeId: 'finance-crisis', random: () => .2 });
+  prepareFinanceChallenge(game);
+  game.state.elapsedMinutes = game.state.campaign.challenge.deadlineAt - 6;
+  updateCampaignChallenge(game);
+  assert.equal(game.state.status, 'won');
+  assert.equal(game.state.campaign.challenge.summary.finishedAt, game.state.campaign.challenge.deadlineAt - 6);
+});
+
+test('challenge objectives reached on the deadline tick take success precedence over timeout', () => {
+  const game = new UrbanFlowGame(CITIES.krakow, { challengeId: 'finance-crisis', random: () => .2 });
+  prepareFinanceChallenge(game);
+  game.state.elapsedMinutes = game.state.campaign.challenge.deadlineAt;
+  updateCampaignChallenge(game);
+  assert.equal(game.state.status, 'won');
+  assert.equal(game.state.campaign.challenge.summary.finishedAt, game.state.campaign.challenge.deadlineAt);
+});
+
+test('an unmet goal is marked failed after its deadline while completed goals stay completed', () => {
+  const game = new UrbanFlowGame(CITIES.krakow, { challengeId: 'finance-crisis', random: () => .2 });
+  prepareFinanceChallenge(game, 200000);
+  game.state.elapsedMinutes = game.state.campaign.challenge.deadlineAt + 6;
+  updateCampaignChallenge(game);
+  assert.equal(game.state.status, 'lost');
+  assert.deepEqual(game.state.campaign.challenge.summary.completedGoalIds, ['crisis-profit']);
+  assert.deepEqual(game.state.campaign.challenge.summary.missedGoalIds, ['crisis-reserve']);
+});
+
+test('a fast simulation stops on the exact deadline tick instead of skipping past it', () => {
+  const game = new UrbanFlowGame(CITIES.krakow, { challengeId: 'recovery', random: () => .2 });
+  game.state.elapsedMinutes = game.state.campaign.challenge.deadlineAt - 6;
+  game.state.speed = 4;
+  game.tick(() => .5);
+  assert.equal(game.state.elapsedMinutes, game.state.campaign.challenge.deadlineAt);
+  assert.equal(game.state.status, 'lost');
+});
+
+test('saving and resuming one tick before a deadline preserves the remaining time', () => {
+  const storage = { value: null, getItem() { return this.value; }, setItem(_key, value) { this.value = value; }, removeItem() { this.value = null; } };
+  const game = new UrbanFlowGame(CITIES.krakow, { challengeId: 'recovery', random: () => .2 });
+  game.state.elapsedMinutes = game.state.campaign.challenge.deadlineAt - 6;
+  game.state.paused = true;
+  assert.equal(saveGame(storage, game.state).ok, true);
+  const loaded = loadGame(storage, CITIES.krakow);
+  assert.equal(loaded.error, null);
+  const resumed = new UrbanFlowGame(CITIES.krakow, {}, loaded.state);
+  assert.equal(resumed.state.campaign.challenge.deadlineAt - resumed.state.elapsedMinutes, 6);
+  resumed.setPaused(false);
+  resumed.tick(() => .5);
+  assert.equal(resumed.state.elapsedMinutes, resumed.state.campaign.challenge.deadlineAt);
+  assert.equal(resumed.state.status, 'lost');
+});
+
+test('bankruptcy has priority over challenge victory on the same tick', () => {
+  const game = new UrbanFlowGame(CITIES.krakow, { challengeId: 'recovery', random: () => .2 });
+  const route = game.selectStarterRoute('starter-local');
+  assert.equal(route.ok, true);
+  assert.equal(game.createSelectedLine().ok, true);
+  game.state.carried = 2500;
+  game.state.cityEvolution.districts.wieliczka.transportAccess = 30;
+  game.state.elapsedMinutes = 6;
+  game.state.budget = -50001;
+  game.tick(() => .5);
+  assert.equal(game.state.status, 'lost');
+  assert.equal(game.state.campaign.challenge.status, 'lost');
+  assert.deepEqual(game.state.campaign.challenge.summary.completedGoalIds, ['recovery-service']);
+  assert.match(game.state.lossReason, /Bankructwo/);
 });
 
 test('a routing-unavailable saved line cannot satisfy a challenge connection goal', () => {
