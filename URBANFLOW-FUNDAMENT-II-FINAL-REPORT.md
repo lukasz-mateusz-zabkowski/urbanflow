@@ -43,4 +43,4 @@ Test długiej kampanii wykrył różnicę reprezentacji wartości ujemnego zera 
 3. Ponownie uruchomić pełny zestaw Node, Playwright, audytów, OSM, wizualny odbiór i benchmarki na wynikowym `main`.
 4. Dopiero po pełnym PASS uruchomić bramkę 2.9.0 na zintegrowanym stanie, potwierdzić CI końcowego SHA i uzyskać wymagane zgody na ewentualne tagowanie.
 
-Nie wykonano zmian na produkcji, Raspberry Pi ani na `main`. Raporty i kod bramki 2.9 są kandydatem na osobnej gałęzi; CI dla końcowego SHA tej gałęzi należy sprawdzić po wypchnięciu.
+Nie wykonano zmian na produkcji, Raspberry Pi ani na `main`. Raporty i kod bramki 2.9 są na osobnej gałęzi. GitHub Actions [run 45663846153](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/45663846153) zakończył się 6/6 SUCCESS dla SHA `57695c54506fafce096e64211d8edfeb3b23bac9`. Aktualizacja tego raportu tworzy kolejny commit, dla którego workflow należy sprawdzić osobno. Decyzja pozostaje **FUNDAMENT II INCOMPLETE**.

@@ -50,6 +50,6 @@ Zrzut rzeczywistej mapy: `C:\Users\Łukasz\AppData\Local\Temp\urbanflow-fundamen
 |---|---|---|---|
 | 2.0.0 Atlas Studio | `feature/alpha-2.0.0-atlas-studio`, implementacyjny SHA `5dcdf9393062ce38318b733f650080a7b61b4fba` | Run [45651570103](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/45651570103), 6/6 | Nie scalony; wymaga osobnej zgody |
 | 2.5.0 Atlas Visual System | `feature/alpha-2.5.0-atlas-visual-system`, SHA `0e54d62f374c187b5ea251d55bd78f07325cec0d` | Run [45657363522](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/45657363522), 6/6 | Nie scalony; zależy od 2.0.0 i wymaga osobnej zgody |
-| 2.9.0 gate | `feature/alpha-2.9.0-fundament-ii-completion` | Do uruchomienia dla końcowego SHA po pushu | Kandydat audytowy, bez merge/tagu |
+| 2.9.0 gate | `feature/alpha-2.9.0-fundament-ii-completion`, SHA `57695c54506fafce096e64211d8edfeb3b23bac9` | Run [45663846153](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/45663846153), 6/6 SUCCESS | Kandydat audytowy, bez merge/tagu |
 
 Następny logiczny krok: uzyskać osobną zgodę na integrację 2.0.0, następnie 2.5.0 zgodnie z zależnością, uruchomić CI na wynikowym `main`, a potem powtórzyć bramkę 2.9.0 na zintegrowanej bazie. Dopiero komplet dowodów PASS może zmienić decyzję na `FUNDAMENT II COMPLETE`.
