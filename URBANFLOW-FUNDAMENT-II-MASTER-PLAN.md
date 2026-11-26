@@ -35,6 +35,6 @@ The current candidate is isolated from `main`. This plan does not authorize a me
 ## Next steps
 
 1. Local Node, Playwright, audit, benchmark and live OSM validation are complete for implementation commit `797cf5d856683ddeac74259409db610620a4567f`.
-2. Push only this feature branch and verify its GitHub Actions run.
+2. Feature branch was pushed; Actions run 45792144812 passed 6/6 on evidence SHA `bea2f1fcc7ec3ceb6843065da69ddeda65c9011e`. Confirm CI again if a later report-only commit is pushed.
 3. Review report and visual evidence; keep Fundament II **INCOMPLETE** until all criteria and separate integration approvals are satisfied.
 4. Decide whether true regional boundaries/routing belong in a later foundation; do not represent the current point-based view as that feature.

@@ -22,7 +22,7 @@ Save schema: 13
 | Original visual concept comparison | PARTIAL | UI was reviewed against written Atlas requirements. Original November 2026 concept art was not available in this repository; no pixel- or concept-level match is claimed. |
 | Atlas theme screenshots | DONE for automated visual evidence | Theme-switching E2E passed on desktop and 360×800 mobile; captures show City, Network and Midnight. This is Chromium emulation, not physical-device acceptance. |
 | Real OSM runtime check | DONE | Live candidate server on `127.0.0.1:3113`; 16 unique tiles returned 200 and the page had no JavaScript errors. |
-| GitHub Actions for candidate SHA | PENDING | Must be read after pushing final SHA. |
+| GitHub Actions for evidence SHA | PASS: 6/6 | Run [45792144812](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/45792144812) succeeded on `bea2f1fcc7ec3ceb6843065da69ddeda65c9011e`: Node 18/20/22, Playwright, security audit and container health. Any later documentation-only commit receives its own workflow. |
 | Human playtest | NOT PERFORMED | No real tester responses are available. |
 | Fundamental II integration | BLOCKED pending authorization | The candidate will remain on its feature branch. No main merge, tag, GitHub Release or deployment is authorized by this master prompt. |
 
@@ -75,7 +75,7 @@ No original Atlas concept art was found, so the review compares actual UI to doc
 | Static game assets | PASS: `/`, `/js/main.js`, `/styles.css`, Leaflet all HTTP 200 |
 | Loopback bind | PASS: listener on `127.0.0.1:3113` |
 | Live OpenStreetMap tiles | PASS: 16/16 unique tiles HTTP 200, 0 page errors |
-| Candidate GitHub Actions | Pending push and final SHA workflow |
+| Candidate GitHub Actions | PASS 6/6 on `bea2f1fcc7ec3ceb6843065da69ddeda65c9011e`; see [workflow 45792144812](https://github.com/lukasz-mateusz-zabkowski/urbanflow/actions/runs/45792144812) |
 
 The initial Node run after setting 2.9.0 failed because `test/feedback.test.js` still asserted `2.5.0-alpha`. That obsolete expectation was updated to assert 2.9.0-alpha and `package-lock.json` agreement; the complete rerun passed 320/320. No assertion was removed or weakened.
 
@@ -99,4 +99,4 @@ The candidate adds map/UI list work only when the Regional perspective is active
 
 ## Release and branch decision
 
-`main` remains untouched. No tag or release was created. Implementation commit `797cf5d856683ddeac74259409db610620a4567f` was tested locally and runs on loopback port 3113. The documentation/evidence update will be pushed on the feature branch and its exact SHA must receive successful GitHub Actions before the candidate can be presented for review. Even after green CI, this report does not authorize integration. Fundament II remains **INCOMPLETE** until Regional scope is accepted or completed, visual/human gates and all other release criteria are met, and each required main integration receives separate approval.
+`main` remains untouched. No tag or release was created. Implementation commit `797cf5d856683ddeac74259409db610620a4567f` was tested locally and runs on loopback port 3113. Evidence commit `bea2f1fcc7ec3ceb6843065da69ddeda65c9011e` passed all six Actions jobs; a later documentation-only commit will be checked separately. Even after green CI, this report does not authorize integration. Fundament II remains **INCOMPLETE** until Regional scope is accepted or completed, visual/human gates and all other release criteria are met, and each required main integration receives separate approval.
