@@ -1,4 +1,5 @@
 export const ATLAS_PREFERENCE_KEY = 'urbanflow.atlas.preferences.v1';
+import { KRAKOW_STARTS } from './cities.js';
 
 export const ATLAS_VIEWS = Object.freeze([
   { id: 'transport', label: 'Transport', title: 'Sieć transportowa', eyebrow: 'ATLAS / SIEĆ', description: 'Obserwuj przebieg linii, obsługiwane punkty i problemy sieci.', analyticsMode: 'off' },
@@ -10,12 +11,50 @@ export const ATLAS_VIEWS = Object.freeze([
 
 const FILTERS = new Set(['all', 'bus', 'tram']);
 const SORTS = new Set(['load', 'cost', 'profitability']);
+const PERSPECTIVES = new Set(['city', 'regional']);
 
 const safePreferences = value => ({
   view: ATLAS_VIEWS.some(item => item.id === value?.view) ? value.view : 'transport',
   lineFilter: FILTERS.has(value?.lineFilter) ? value.lineFilter : 'all',
-  lineSort: SORTS.has(value?.lineSort) ? value.lineSort : 'load'
+  lineSort: SORTS.has(value?.lineSort) ? value.lineSort : 'load',
+  perspective: PERSPECTIVES.has(value?.perspective) ? value.perspective : 'city'
 });
+
+/**
+ * Regional coverage is a direct-service summary of modeled satellite points.
+ * It deliberately does not infer transit links from schematic city corridors.
+ */
+export function regionalNetworkSummary(city, gameState = {}) {
+  const points = Array.isArray(city?.points) ? city.points : [];
+  const lines = Array.isArray(gameState?.lines) ? gameState.lines : [];
+  const startsById = new Map(KRAKOW_STARTS.map(scenario => [scenario.id, scenario]));
+  const settlements = points.filter(point => point.type === 'satellite').map(point => {
+    const scenario = startsById.get(point.id);
+    const activeLines = lines
+      .filter(line => !line.routingUnavailable && Array.isArray(line.stops) && line.stops.includes(point.id))
+      .map(line => String(line.name || `Linia ${line.id}`));
+    const hub = points.find(item => item.id === scenario?.localHubId);
+    return {
+      id: point.id,
+      name: String(point.name || point.id),
+      profile: String(point.profile || 'local'),
+      localHubId: scenario?.localHubId || null,
+      localHubName: hub?.name || scenario?.localHubId || 'brak danych',
+      activeLines,
+      directlyServed: activeLines.length > 0,
+      availableForNewGame: scenario?.availableForNewGame !== false,
+      availabilityReason: scenario?.availabilityReason || null
+    };
+  }).sort((a, b) => a.name.localeCompare(b.name, 'pl'));
+  const directlyServedCount = settlements.filter(item => item.directlyServed).length;
+  return {
+    source: 'modelled-settlement-points-and-current-campaign-lines',
+    modelledSettlementCount: settlements.length,
+    directlyServedCount,
+    unservedCount: settlements.length - directlyServedCount,
+    settlements
+  };
+}
 
 export function loadAtlasPreferences(storage = globalThis.localStorage) {
   try {

@@ -17,7 +17,7 @@ import { cityEvolutionSnapshot } from './city-evolution.js?v=3';
 import { LAND_USE_TYPES, landUseDominantUse, landUseDirection, landUseLabel } from './land-use.js?v=1';
 import { INVESTMENT_CATALOG } from './investments.js?v=1';
 import { contextualHints, getOnboardingStep, onboardingProgress, onboardingStatus } from './onboarding.js?v=1';
-import { ATLAS_VIEWS, filterAndSortLines, loadAtlasPreferences, saveAtlasPreferences } from './atlas.js?v=1';
+import { ATLAS_VIEWS, filterAndSortLines, loadAtlasPreferences, regionalNetworkSummary, saveAtlasPreferences } from './atlas.js?v=2';
 import { applyOperationalDecisionSafely, compareOperationalDecision, fleetManagementSnapshot, operationalDecisionFingerprint } from './operations.js?v=2';
 import { financeForecast, financeGoals, financeHistory, financeSnapshot, plannedFinancialCommitments } from './finance.js?v=1';
 import { appendSessionDecision, buildGameplayDecisionJournal, buildGameplaySessionReport } from './gameplay-insights.js?v=2';
@@ -97,11 +97,14 @@ export class UI {
     this.activeWorkspaceLayout = null;
     this.activeWorkspaceView = null;
     this.analyticsModesSignature = '';
-    this.atlasPreferences = { view: 'transport', lineFilter: 'all', lineSort: 'load' };
+    this.atlasPreferences = { view: 'transport', lineFilter: 'all', lineSort: 'load', perspective: 'city' };
     this.panelStorage = null;
     try { this.panelStorage = window.localStorage; this.atlasPreferences = loadAtlasPreferences(this.panelStorage); } catch { /* Preferences are optional. */ }
     const themeControl = $('#atlasThemeSelect');
     if (themeControl) themeControl.value = loadAtlasTheme(this.panelStorage);
+    const perspectiveControl = $('#atlasPerspectiveSelect');
+    if (perspectiveControl) perspectiveControl.value = this.atlasPreferences.perspective;
+    document.documentElement.dataset.atlasPerspective = this.atlasPreferences.perspective;
     const hasRouteDraft = Boolean(game.state.editingLineId)
       || (game.state.selectedNodes?.length || 0) >= 2
       || (game.state.tramControlPoints?.length || 0) > 0;
@@ -191,6 +194,19 @@ export class UI {
       }
       if (action === 'analytics-mode') { this.setAnalyticsModeFromControl(button.dataset.mode); return; }
       if (action === 'atlas-view') { this.setAtlasView(button.dataset.view); return; }
+      if (action === 'regional-center') { this.map.focusRegional(); return; }
+      if (action === 'regional-select') {
+        this.selectPlace(button.dataset.point);
+        this.map.focusRegional(button.dataset.point);
+        return;
+      }
+      if (action === 'regional-plan') {
+        this.setAtlasView('planning');
+        this.map.focusRegional(button.dataset.point);
+        this.openPanel();
+        this.toast('Obszar wycentrowany. Wybierz przystanki na mapie; sama zmiana perspektywy nie zmienia kampanii.');
+        return;
+      }
       if (action === 'studio-tool') { this.openStudioTool(button.dataset.studioTool); return; }
       if (action === 'living-city-plan') {
         this.setAtlasView('planning');
@@ -391,6 +407,8 @@ export class UI {
     document.addEventListener('change', event => {
       if (event.target.matches('#atlasThemeSelect')) {
         this.setAtlasTheme(event.target.value);
+      } else if (event.target.matches('#atlasPerspectiveSelect')) {
+        this.setAtlasPerspective(event.target.value);
       } else if (event.target.matches('[data-frequency]')) {
         const lineId = event.target.dataset.frequency;
         const line = this.game.state.lines.find(item => item.id === lineId);
@@ -972,6 +990,18 @@ export class UI {
     return selected;
   }
 
+  setAtlasPerspective(perspective) {
+    const selected = perspective === 'regional' ? 'regional' : 'city';
+    const previous = this.atlasPreferences.perspective;
+    this.atlasPreferences = saveAtlasPreferences({ ...this.atlasPreferences, perspective: selected }, this.panelStorage);
+    document.documentElement.dataset.atlasPerspective = selected;
+    const control = $('#atlasPerspectiveSelect');
+    if (control && control.value !== selected) control.value = selected;
+    if (previous !== selected) this.map.setPerspective?.(selected);
+    this.renderRegionalPanel(true);
+    return selected;
+  }
+
   setAnalyticsModeFromControl(mode) {
     const view = ['flow', 'queues', 'unmet', 'load', 'travel', 'demand'].includes(mode) ? 'passengers'
       : ['cityEvolution', 'landUse', 'investments'].includes(mode) ? 'development'
@@ -1008,6 +1038,9 @@ export class UI {
 
   renderAtlasNavigation() {
     const active = this.atlasPreferences.view;
+    const perspective = this.atlasPreferences.perspective === 'regional' ? 'regional' : 'city';
+    document.documentElement.dataset.atlasPerspective = perspective;
+    if (this.map.perspective !== perspective) this.map.setPerspective?.(perspective);
     const nav = $('#atlasViewNav');
     const navNeedsBuild = nav.children.length !== ATLAS_VIEWS.length
       || ATLAS_VIEWS.some((view, index) => nav.children[index]?.dataset.view !== view.id);
@@ -1070,6 +1103,28 @@ export class UI {
     $('#cityEvolutionPanel').hidden = active !== 'development' || mode !== 'cityEvolution';
     $('#landUsePanel').hidden = active !== 'development' || mode !== 'landUse';
     $('#investmentsPanel').hidden = active !== 'development' || mode !== 'investments';
+    this.renderRegionalPanel();
+  }
+
+  renderRegionalPanel(force = false) {
+    const perspective = this.atlasPreferences.perspective === 'regional' ? 'regional' : 'city';
+    const panel = $('#atlasRegionalPanel');
+    if (!panel) return;
+    panel.hidden = perspective !== 'regional';
+    const control = $('#atlasPerspectiveSelect');
+    if (control && control.value !== perspective) control.value = perspective;
+    if (perspective !== 'regional') return;
+    const summary = regionalNetworkSummary(this.game.city, this.game.state);
+    this.setText('regionalSettlementCount', String(summary.modelledSettlementCount));
+    this.setText('regionalServedCount', String(summary.directlyServedCount));
+    const signature = JSON.stringify(summary.settlements.map(item => [item.id, item.activeLines, item.availableForNewGame]));
+    if (!force && signature === this.regionalSummarySignature) return;
+    this.regionalSummarySignature = signature;
+    this.setHtml('atlasRegionalList', summary.settlements.map(item => {
+      const service = item.directlyServed ? `Bezpośredni przystanek: ${item.activeLines.map(escapeHtml).join(', ')}` : 'Brak bezpośredniej obsługi aktywną linią';
+      const starter = item.availableForNewGame ? '' : '<small class="regional-limitation">Nie jest dostępna jako początkowy scenariusz nowej kampanii.</small>';
+      return `<li class="atlas-regional-place ${item.directlyServed ? 'is-served' : 'is-unserved'}"><div><strong>${escapeHtml(item.name)}</strong><span>${escapeHtml(item.profile)} · węzeł modelu: ${escapeHtml(item.localHubName)}</span><small>${service}</small>${starter}</div><div class="atlas-regional-actions"><button type="button" data-action="regional-select" data-point="${escapeHtml(item.id)}">Pokaż</button><button type="button" data-action="regional-plan" data-point="${escapeHtml(item.id)}">Planuj</button></div></li>`;
+    }).join('') || '<li class="empty-mini">Brak modelowanych miejscowości dla tego miasta.</li>');
   }
 
   renderOperationsDashboard() {

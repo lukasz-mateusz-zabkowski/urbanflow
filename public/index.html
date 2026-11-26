@@ -80,6 +80,21 @@
           <small id="atlasThemeHelp">Preferencja jest zapisywana lokalnie i nie zmienia kampanii.</small>
         </div>
 
+        <div class="atlas-perspective-control">
+          <label for="atlasPerspectiveSelect">Zakres analizy mapy</label>
+          <select id="atlasPerspectiveSelect" aria-describedby="atlasPerspectiveHelp">
+            <option value="city">Miasto</option>
+            <option value="regional">Aglomeracja</option>
+          </select>
+          <small id="atlasPerspectiveHelp">Perspektywa regionalna pokazuje modelowane miejscowości i bezpośrednią obsługę aktywnymi liniami.</small>
+        </div>
+        <section class="atlas-regional-panel" id="atlasRegionalPanel" aria-labelledby="atlasRegionalTitle" hidden>
+          <div class="atlas-regional-heading"><div><span class="section-kicker">ATLAS REGIONAL / AGLOMERACJA</span><h3 id="atlasRegionalTitle">Powiązania miasta z otoczeniem</h3></div><button type="button" data-action="regional-center" aria-label="Pokaż cały obszar aglomeracji">Pokaż region</button></div>
+          <p class="atlas-regional-note">Punkty miejscowości są modelowane na podstawie danych gry. Obsługa oznacza bezpośredni przystanek aktywnej linii. Widok nie symuluje połączeń międzyregionalnych ani granic administracyjnych.</p>
+          <div class="atlas-regional-kpis" aria-live="polite"><span><b id="regionalSettlementCount">0</b> modelowanych miejscowości</span><span><b id="regionalServedCount">0</b> z bezpośrednią obsługą</span></div>
+          <ul class="atlas-regional-list" id="atlasRegionalList"></ul>
+        </section>
+
         <section class="atlas-workspace-summary" id="atlasWorkspaceSummary" aria-live="polite" aria-labelledby="atlasWorkspaceTitle">
           <span class="atlas-workspace-eyebrow" id="atlasWorkspaceEyebrow">ATLAS / SIEĆ</span>
           <div class="atlas-workspace-heading"><h3 id="atlasWorkspaceTitle">Sieć transportowa</h3><span id="atlasWorkspaceIndex">01 / 05</span></div>

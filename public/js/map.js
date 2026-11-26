@@ -6,6 +6,7 @@ import { routeLine, routeLineDetails } from './routing.js?v=14';
 import { describePlace } from './place-profiles.js?v=10';
 import { landUseDominantUse, landUseLabel } from './land-use.js?v=1';
 import { buildManualTramGeometry, routeOnPlayerTramTracks } from './tramway.js?v=1';
+import { KRAKOW_STARTS } from './cities.js';
 
 const FRAME_MS = 50;
 const MAX_VEHICLES_PER_LINE = 12;
@@ -73,7 +74,7 @@ export class GameMap {
     this.onTramControlMove = null; this.onTramControlSelect = null; this.onTramControlDelete = null; this.onTramControlCancel = null;
     this.markers = new Map(); this.lines = new Map(); this.vehicles = new Map(); this.orderMarkers = new Map(); this.tramControlMarkers = new Map();
     this.pointViews = new Map(); this.starterLayers = new Set(); this.effectTimers = new Set();
-    this.visible = true; this.intersecting = true; this.frameId = null; this.lastFrame = 0;
+    this.visible = true; this.intersecting = true; this.frameId = null; this.lastFrame = 0; this.perspective = 'city';
     this.map = L.map(elementId, { zoomControl: false, attributionControl: true, preferCanvas: true });
     this.map.on('click', event => this.onMapClick?.(event.latlng));
     this.map.on('zoomend', () => { if (this.currentPoints && this.currentGameState) this.renderPoints(this.currentPoints, this.currentGameState); });
@@ -163,6 +164,25 @@ export class GameMap {
     const padding = this.element.clientWidth < 500 ? [30, 80] : [70, 70];
     this.map.fitBounds(this.city.points.filter(p => p.type !== 'stop').map(p => [p.lat, p.lng]), { padding, maxZoom: this.city.zoom });
   }
+  setPerspective(perspective) {
+    this.perspective = perspective === 'regional' ? 'regional' : 'city';
+    if (this.wrapper) this.wrapper.dataset.perspective = this.perspective;
+    if (this.perspective === 'regional') this.focusRegional();
+    else this.centerCity();
+    if (this.currentPoints && this.currentGameState) this.renderPoints(this.currentPoints, this.currentGameState);
+  }
+  focusRegional(pointId = null) {
+    if (!this.city) return;
+    const padding = this.element.clientWidth < 500 ? [24, 58] : [64, 64];
+    const satellitePoints = this.city.points.filter(point => point.type === 'satellite');
+    const selected = satellitePoints.find(point => point.id === pointId);
+    const scenario = selected && KRAKOW_STARTS.find(item => item.id === selected.id);
+    const localHub = scenario && this.city.points.find(point => point.id === scenario.localHubId);
+    const points = selected
+      ? [this.city.center, [selected.lat, selected.lng], ...(localHub ? [[localHub.lat, localHub.lng]] : [])]
+      : [this.city.center, ...satellitePoints.map(point => [point.lat, point.lng])];
+    this.map.fitBounds(points, { padding, maxZoom: selected ? Math.min(this.city.zoom, 10) : Math.min(this.city.zoom, 9) });
+  }
   setVisible(visible) { this.visible = Boolean(visible); this.syncAnimation(); }
 
   highlightLine(id) {
@@ -242,6 +262,9 @@ export class GameMap {
         view.count.textContent = waiting || ''; view.order.textContent = order || ''; view.order.hidden = !order;
       }
       view.dot.classList.toggle('selected', Boolean(order)); view.dot.classList.toggle('overloaded', overloaded);
+      view.dot.classList.toggle('regional-settlement', this.perspective === 'regional' && point.type === 'satellite');
+      view.dot.classList.toggle('regional-served', this.perspective === 'regional' && point.type === 'satellite'
+        && gameState.lines.some(line => !line.routingUnavailable && line.stops?.includes(point.id)));
     }
     this.pointsRendered = true;
   }

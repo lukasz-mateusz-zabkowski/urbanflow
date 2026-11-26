@@ -6,9 +6,11 @@ import { createApp } from '../server.js';
 import { createFeedbackReport, FEEDBACK_CATEGORIES } from '../public/js/feedback.js';
 
 const packageVersion = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')).version;
+const lockVersion = JSON.parse(await readFile(new URL('../package-lock.json', import.meta.url), 'utf8')).packages[''].version;
 
 test('feedback report validates inputs, records the game version, and excludes diagnostics by default', () => {
-  assert.equal(packageVersion, '2.5.0-alpha');
+  assert.equal(packageVersion, '2.9.0-alpha');
+  assert.equal(lockVersion, packageVersion, 'lockfile and app release metadata must stay aligned');
   const report = createFeedbackReport({ category: FEEDBACK_CATEGORIES[0], description: 'Mapa zgubiła rozmiar.', rating: '4', testerId: '' }, null);
   assert.equal(report.ok, true);
   assert.equal(report.report.gameVersion, 'unknown');

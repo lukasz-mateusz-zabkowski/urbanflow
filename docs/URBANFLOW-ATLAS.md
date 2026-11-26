@@ -1,15 +1,30 @@
-# UrbanFlow Atlas 2.0 — fundament
+# UrbanFlow Atlas
 
-Alpha 0.5 centralizes the current Atlas City look in CSS custom properties and records the names reserved for future views. `public/js/theme.js` is the presentation boundary: `applyAtlasView()` sets a view on the document root and falls back to `city`. No game rules or save fields depend on that setting.
+UrbanFlow is a browser strategy game about public transport, passenger service, operating finances and gradual city change. It uses JavaScript, Node.js, Leaflet and local OpenStreetMap-derived routing resources. The game does not model parcel boundaries or claim that its modeled district and settlement values are observed demographic data.
 
-The CSS token layer covers brand colors, text, surfaces, borders, spacing, radii, shadows, and the system font stack. Existing 0.4 colors remain the `city` values. Leaflet remains the map renderer.
+## Five Atlas workspaces
 
-## Future views
+- **Transport** monitors lines, vehicles, stops and network issues.
+- **Planning** builds and edits routes, previews their costs and connects to existing fleet, timetable and investment tools.
+- **Passengers** presents observed queues, load, missed demand and service accessibility.
+- **City Development** presents modeled city evolution, land use and investments.
+- **Operations** brings together fleet, finance, diagnostics and decision comparison.
 
-- **Atlas City:** current readable city palette and gameplay controls.
-- **Atlas Network:** stronger route colors and transfer hierarchy for network planning.
-- **Atlas Regional:** broader geography and regional corridors.
-- **Atlas Midnight:** low glare palette for night sessions.
-- **Atlas Studio:** higher contrast planning and diagnostics workspace.
+These workspaces operate on the same campaign state. Switching workspaces does not advance the simulation or alter campaign data. Presentation preferences are stored separately from campaign saves.
 
-Add each view as presentation tokens and map-layer styling. Keep simulation values, route selection, saved games, and passenger calculations independent from view selection. Review contrast, color-blind legibility, and mobile map visibility before enabling a view.
+## City and Regional perspectives
+
+The City Development workspace has two map perspectives:
+
+- **City** keeps the normal city-scale view.
+- **Regional** frames Kraków with the modeled satellite settlement points and reports direct service only when an active, routable line has that settlement as a stop. The list can focus a settlement or open planning around it.
+
+Regional settlement points come from the game's scenario parameters. They are not fetched from OSM. The current perspective has no verified municipal boundary polygons, regional transit timetable, or interregional demand simulation. It therefore does not draw a fictitious city boundary or infer service from proximity to a schematic corridor. An unavailable route is not counted as service.
+
+## Map data and attribution
+
+The local road and tram routing graph is generated from OpenStreetMap-derived data. Its source, date, transformations, license notes and regeneration steps are documented with the routing assets under `public/data/routing/`. Map tiles are requested from the configured tile provider at runtime; deterministic browser tests use local SVG fixtures and are not evidence that the public tile provider is reachable.
+
+## Technical boundaries
+
+Simulation changes occur in game ticks and weekly evolution updates, not as a side effect of rendering. Visual map layers are derived from the active campaign state. Long-lived campaign state is versioned and migrated by the storage layer; workspace and map perspective preferences remain separate from saves.
