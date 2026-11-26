@@ -9,6 +9,19 @@ const COMPOSE_FILE = 'compose.alpha-test.yml';
 const ENV_FILE = '.env.alpha-test';
 const HEALTH_URL = 'http://127.0.0.1:3101/health';
 
+export function withReferencedTimeout(operation, timeoutMs, label, onTimeout = () => {}) {
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      onTimeout();
+      reject(new Error(`${label} timed out after ${timeoutMs} ms.`));
+    }, timeoutMs);
+  });
+
+  return Promise.race([Promise.resolve().then(operation), timeout])
+    .finally(() => clearTimeout(timeoutId));
+}
+
 function gitOutput(cwd, args) {
   try {
     return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
@@ -94,9 +107,12 @@ async function checkHealth(expectedSha, cwd) {
   let lastError;
   for (let attempt = 0; attempt < 30; attempt += 1) {
     try {
-      const response = await fetch(HEALTH_URL, { signal: AbortSignal.timeout(3000), cache: 'no-store' });
-      if (!response.ok) throw new Error(`/health returned HTTP ${response.status}.`);
-      const health = await response.json();
+      const healthController = new AbortController();
+      const health = await withReferencedTimeout(async () => {
+        const response = await fetch(HEALTH_URL, { signal: healthController.signal, cache: 'no-store' });
+        if (!response.ok) throw new Error(`/health returned HTTP ${response.status}.`);
+        return response.json();
+      }, 3000, 'GET /health', () => healthController.abort());
       if (health.status !== 'ok' || health.version !== version || health.commit !== expectedSha || health.environment !== 'alpha-test') {
         throw new Error(`Unexpected /health: ${JSON.stringify(health)}; expected version ${version}, commit ${expectedSha}, environment alpha-test.`);
       }
@@ -106,7 +122,13 @@ async function checkHealth(expectedSha, cwd) {
       if (!containerId) throw new Error('Compose has no alpha-test container.');
       assertContainerConfiguration(containerId, expectedSha, cwd);
       for (const url of ['http://127.0.0.1:3101/', 'http://127.0.0.1:3101/vendor/leaflet/leaflet.js']) {
-        const asset = await fetch(url, { signal: AbortSignal.timeout(3000) });
+        const assetController = new AbortController();
+        const asset = await withReferencedTimeout(
+          () => fetch(url, { signal: assetController.signal }),
+          3000,
+          `GET ${url}`,
+          () => assetController.abort()
+        );
         if (!asset.ok) throw new Error(`${url} returned HTTP ${asset.status}.`);
       }
       console.log(`Alpha playtest ready: version=${version}, commit=${expectedSha}, only 127.0.0.1:3101.`);
