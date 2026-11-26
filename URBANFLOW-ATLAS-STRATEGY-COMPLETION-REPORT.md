@@ -1,10 +1,10 @@
 # UrbanFlow Atlas — strategy completion report
 
-Date: 2026-11-26  
-Branch: `feature/alpha-2.9.0-fundament-ii-completion`  
-Integrated base: `origin/main` at `d19ab71763f47585e398502e7b4ebc76d18b418f`  
-Candidate code before evidence report: `951b60e3d9dccbcae99eac72d4d6984a1f95ea07` plus uncommitted candidate changes  
-Release metadata: `2.9.0-alpha`  
+Date: 2026-11-26
+Branch: `feature/alpha-2.9.0-fundament-ii-completion`
+Integrated base: `origin/main` at `d19ab71763f47585e398502e7b4ebc76d18b418f`
+Implementation commit: `797cf5d856683ddeac74259409db610620a4567f`
+Release metadata: `2.9.0-alpha`
 Save schema: 13
 
 ## Status by work area
@@ -20,7 +20,8 @@ Save schema: 13
 | Tester kit | DONE as preparation | `URBANFLOW-ATLAS-2.9.0-PLAYTEST-KIT.md`; no external invitations or sessions conducted. |
 | Beta / AdSense / micropayment design | DONE as a proposal only | `URBANFLOW-BETA-ADS-MICROPAYMENTS-ARCHITECTURE.md`; no hosting, auth, ads, telemetry or payments enabled. |
 | Original visual concept comparison | PARTIAL | UI was reviewed against written Atlas requirements. Original November 2026 concept art was not available in this repository; no pixel- or concept-level match is claimed. |
-| Real OSM runtime check | PENDING | Run separately on the candidate loopback server; screenshots from deterministic Playwright tests use intercepted SVG tiles and are not proof of OSM availability. |
+| Atlas theme screenshots | DONE for automated visual evidence | Theme-switching E2E passed on desktop and 360×800 mobile; captures show City, Network and Midnight. This is Chromium emulation, not physical-device acceptance. |
+| Real OSM runtime check | DONE | Live candidate server on `127.0.0.1:3113`; 16 unique tiles returned 200 and the page had no JavaScript errors. |
 | GitHub Actions for candidate SHA | PENDING | Must be read after pushing final SHA. |
 | Human playtest | NOT PERFORMED | No real tester responses are available. |
 | Fundamental II integration | BLOCKED pending authorization | The candidate will remain on its feature branch. No main merge, tag, GitHub Release or deployment is authorized by this master prompt. |
@@ -53,6 +54,8 @@ Playwright captured the running game interface at the following sizes. UI-layout
 - `artifacts/alpha-2.9.0/mobile-390x844-transport.png`, `...-planning.png`, `...-passengers.png`, `...-development.png`, `...-operations.png`
 - `artifacts/alpha-2.9.0/mobile-360x800-transport.png`, `...-planning.png`, `...-passengers.png`, `...-development.png`, `...-operations.png`
 - `artifacts/alpha-2.9.0/atlas-regional-desktop.png` and `atlas-regional-mobile.png` (Regional perspective)
+- `artifacts/alpha-2.9.0/desktop-city.png`, `desktop-network.png`, `desktop-midnight.png` and `mobile-360x800-city.png`, `mobile-360x800-network.png`, `mobile-360x800-midnight.png` (theme captures from the verified theme-switch test)
+- `artifacts/alpha-2.9.0/desktop-live-osm-1366x768.png` (real OSM, separate from fixture tests)
 - Development subviews and notification layout captures are also in the same directory.
 
 No original Atlas concept art was found, so the review compares actual UI to documented requirements rather than claiming an exact match.
@@ -66,8 +69,12 @@ No original Atlas concept art was found, so the review compares actual UI to doc
 | `npm run test:browser` | PASS: 58/58, including 12-step onboarding, touch drag, tram editor, Regional, five workspaces and responsive viewports |
 | `npm run audit:all` | PASS; 0 vulnerabilities |
 | `npm run audit:production` | PASS; 0 vulnerabilities |
-| `git diff --check` | Pending final cleanup / confirmation |
-| Live OpenStreetMap tiles | Pending separate candidate server test |
+| Atlas theme visual E2E | PASS: 2/2 desktop and 360×800 mobile; theme changes preserve campaign/workspace and pass tested contrast checks |
+| `git diff --check` | PASS |
+| Candidate `/health` | PASS: `2.9.0-alpha`, commit `797cf5d856683ddeac74259409db610620a4567f` |
+| Static game assets | PASS: `/`, `/js/main.js`, `/styles.css`, Leaflet all HTTP 200 |
+| Loopback bind | PASS: listener on `127.0.0.1:3113` |
+| Live OpenStreetMap tiles | PASS: 16/16 unique tiles HTTP 200, 0 page errors |
 | Candidate GitHub Actions | Pending push and final SHA workflow |
 
 The initial Node run after setting 2.9.0 failed because `test/feedback.test.js` still asserted `2.5.0-alpha`. That obsolete expectation was updated to assert 2.9.0-alpha and `package-lock.json` agreement; the complete rerun passed 320/320. No assertion was removed or weakened.
@@ -92,4 +99,4 @@ The candidate adds map/UI list work only when the Regional perspective is active
 
 ## Release and branch decision
 
-`main` remains untouched. No tag or release was created. Candidate must be pushed and its exact SHA checked for all six GitHub Actions jobs before technical readiness can be stated. Even after green CI, this report does not authorize integration. Fundament II remains **INCOMPLETE** until Regional scope is accepted or completed, visual/human gates and all other release criteria are met, and each required main integration receives separate approval.
+`main` remains untouched. No tag or release was created. Implementation commit `797cf5d856683ddeac74259409db610620a4567f` was tested locally and runs on loopback port 3113. The documentation/evidence update will be pushed on the feature branch and its exact SHA must receive successful GitHub Actions before the candidate can be presented for review. Even after green CI, this report does not authorize integration. Fundament II remains **INCOMPLETE** until Regional scope is accepted or completed, visual/human gates and all other release criteria are met, and each required main integration receives separate approval.
